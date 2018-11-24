@@ -1,0 +1,16 @@
+[package]
+name = "rate"
+version = "0.1.0"
+authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
+description = "DRAT proof checker for DIMACS formulas"
+edition = "2018"
+
+[dependencies]
+nom = "*"
+memmap = "*"
+ansi_term = "*"
+derive_more = "*"
+clap = "*"
+
+[profile.release]
+panic = "abort"
