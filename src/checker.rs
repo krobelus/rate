@@ -1,7 +1,7 @@
 //! Proof checking
 
 use crate::{
-    assignment::{assign, reset_assignment, Assignment, ClauseStatus},
+    assignment::{assign, reset_assignment, Assignment},
     config::Config,
     formula::{member, Clause, Formula, Lemma, Proof},
     literal::Literal,
@@ -28,7 +28,15 @@ impl Checker {
     }
 }
 
-pub fn clause_status(formula: &Formula, assignment: &Assignment, c: Clause) -> ClauseStatus {
+#[derive(Debug, PartialEq, Eq)]
+enum ClauseStatus {
+    Satisfied,
+    Falsified,
+    Unknown,
+    Unit(Literal),
+}
+
+fn clause_status(formula: &Formula, assignment: &Assignment, c: Clause) -> ClauseStatus {
     let mut unknown_count = 0;
     let mut unit = Literal::new(0);
     for l in formula.clause(c) {

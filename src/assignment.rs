@@ -67,14 +67,6 @@ pub fn assign(assignment: &mut Assignment, l: Literal) {
     assignment[l] = true;
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum ClauseStatus {
-    Satisfied,
-    Falsified,
-    Unknown,
-    Unit(Literal),
-}
-
 pub fn reset_assignment(assignment: &mut Assignment) {
     let stack = &assignment.stack;
     for literal in stack {
