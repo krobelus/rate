@@ -181,15 +181,13 @@ fn check_lemma(formula: &mut Formula, checker: &mut Checker, lemma: Lemma) -> bo
 }
 
 pub fn check(mut formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> bool {
-    if crate::config::NAIVE {
-        for lemma in proof {
-            if !check_lemma(&mut formula, checker, *lemma) {
-                return false;
-            }
+    for lemma in proof {
+        if !check_lemma(&mut formula, checker, *lemma) {
+            return false;
         }
-        // ensure that UP yields a conflict
-        reset_assignment(&mut checker.assignment);
-        return propagate_existing_units(formula, checker);
     }
+    // ensure that UP yields a conflict
+    reset_assignment(&mut checker.assignment);
+    return propagate_existing_units(formula, checker);
     true
 }

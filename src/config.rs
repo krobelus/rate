@@ -2,7 +2,6 @@
 
 use clap::ArgMatches;
 
-pub const NAIVE: bool = true;
 pub const BOUNDS_CHECKING: bool = true;
 
 #[derive(Debug, PartialEq, Eq)]
