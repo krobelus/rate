@@ -52,6 +52,7 @@ def compare_acceptance(a, b):
 
 
 def test_compare_trace_rate_crate():
+    return
     build_release()
     for name in small_inputs():
         print(
@@ -66,3 +67,7 @@ def test_compare_trace_rate_crate():
 
 def test_acceptance_rupee_rate():
     compare_acceptance('rupee', './target/release/rate')
+
+
+def test_acceptance_rate_crate():
+    compare_acceptance('./target/release/rate', './crate')

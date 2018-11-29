@@ -78,6 +78,11 @@ impl<T: Clone> Stack<T> {
         self.vec[self.size] = value;
         self.size += 1
     }
+    pub fn pop(&mut self) -> &T {
+        debug_assert!(self.size != 0);
+        self.size -= 1;
+        &self.vec[self.size]
+    }
     pub fn clear(&mut self) {
         self.size = 0;
     }

@@ -67,10 +67,11 @@ pub fn assign(assignment: &mut Assignment, l: Literal) {
     assignment[l] = true;
 }
 
-pub fn reset_assignment(assignment: &mut Assignment) {
-    let stack = &assignment.stack;
-    for literal in stack {
-        assignment.map[*literal] = false;
+pub fn reset_assignment(assignment: &mut Assignment, level: usize) {
+    let stack = &mut assignment.stack;
+    while stack.len() > level {
+        let literal = *stack.pop();
+        assignment.map[literal] = false;
     }
     assignment.stack.clear();
 }

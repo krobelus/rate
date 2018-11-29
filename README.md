@@ -38,7 +38,7 @@ These features are planned to be implemented:
 - [ ] Operational DRAT
 - [ ] Double-sweep DRAT checking
 - [ ] Two watched literals
-- [ ] Incremental prepropagation
+- [x] Incremental prepropagation
 - [ ] Core-first propagation
 - [ ] Resolution candidate caching
 - [ ] Comprehensive input validation

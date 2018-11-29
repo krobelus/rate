@@ -102,6 +102,11 @@ pub struct ClauseIterator<'a> {
 }
 
 impl<'a> ClauseIterator<'a> {
+    pub fn empty(&self) -> bool {
+        let db = &self.formula.db;
+        debug_assert!(self.index == 0 || db[self.index - 1] == Literal::new(0));
+        db[self.index] == Literal::new(0)
+    }
     fn new(formula: &'a Formula, clause: Clause) -> ClauseIterator {
         debug_assert!(
             formula.clause_active[clause],
