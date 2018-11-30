@@ -22,10 +22,10 @@ Refer to the [cargo documentation](https://doc.rust-lang.org/cargo/) for other u
 # Tests
 Currently, there are some unit tests that can be run with `cargo test`.
 
-Additionally, there is a system test suite, that compares the Rate to other
-checkers, in particular [rupee](https://github.com/arpj-rebola/rupee) to make
-sure we get the same result. Install `python3` (version 3.6 or above) and `pytest` and
-run `pytest test.py`.
+Additionally, there is a system test suite, that compares the output of Rate to
+previous versions of itself and to other checkers, in particular
+[rupee](https://github.com/arpj-rebola/rupee). Install `python3` (version 3.6 or
+above) and `pytest` and run `pytest test.py`.
 
 Currently, we provide a C reimplementation of Rate in [crate.c](crate.c) which
 can be built with `make`.  It is useful to catch some bugs early and to measure
