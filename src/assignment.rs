@@ -96,6 +96,10 @@ pub fn reset_assignment(assignment: &mut Assignment, level: usize) {
     ensure!(assignment.stack.len() <= level);
 }
 
+pub fn was_assigned_before(assignment: &Assignment, l: Literal, level: usize) -> bool {
+    assignment[l] && assignment.position_in_stack[l] < level
+}
+
 fn format_clause_under_assignment(formula: &Formula, assignment: &Assignment, c: Clause) -> String {
     let mut result = String::new();
     for l in formula.clause(c) {

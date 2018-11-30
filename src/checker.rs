@@ -1,7 +1,7 @@
 //! Proof checking
 
 use crate::{
-    assignment::{assign, reset_assignment, unassign, Assignment},
+    assignment::{assign, reset_assignment, was_assigned_before, Assignment},
     config::Config,
     formula::{member, Clause, Formula, Lemma, Proof},
     literal::Literal,
@@ -40,14 +40,24 @@ enum ClauseStatus {
     Unit(Literal),
 }
 
-fn clause_status(formula: &Formula, assignment: &Assignment, c: Clause) -> ClauseStatus {
+fn clause_status(
+    formula: &Formula,
+    assignment: &Assignment,
+    c: Clause,
+    before_level: Option<usize>,
+) -> ClauseStatus {
     let mut unknown_count = 0;
     let mut unit = Literal::new(0);
+    let is_assigned = |l| {
+        before_level
+            .map(|level| was_assigned_before(assignment, l, level))
+            .unwrap_or(assignment[l])
+    };
     for l in formula.clause(c) {
-        if assignment[l] {
+        if is_assigned(l) {
             return ClauseStatus::Satisfied;
         }
-        if !assignment[-l] {
+        if !is_assigned(-l) {
             unit = l;
             unknown_count += 1;
         }
@@ -59,7 +69,11 @@ fn clause_status(formula: &Formula, assignment: &Assignment, c: Clause) -> Claus
     }
 }
 
-fn propagate(formula: &Formula, checker: &mut Checker, l: Literal) -> bool {
+fn propagate_temporarily(formula: &Formula, checker: &mut Checker, l: Literal) -> bool {
+    propagate(formula, checker, l, None)
+}
+
+fn propagate(formula: &Formula, checker: &mut Checker, l: Literal, reason: Option<Clause>) -> bool {
     {
         trace!(checker, "prop {}\n", l);
         trace!(checker, "assignment[{}] :", checker.assignment.len());
@@ -75,14 +89,19 @@ fn propagate(formula: &Formula, checker: &mut Checker, l: Literal) -> bool {
     if checker.assignment[l] {
         return false;
     }
+    reason.map(|clause| {
+        ensure!(formula.clause_active[clause]);
+        checker.clause_to_unit[clause] = l;
+    });
     assign(&mut checker.assignment, l);
     for c in formula.clauses() {
-        match clause_status(&formula, &checker.assignment, c) {
+        match clause_status(&formula, &checker.assignment, c, None) {
             ClauseStatus::Falsified => {
                 return true;
             }
             ClauseStatus::Unit(literal) => {
-                if propagate_unit(formula, checker, c, literal) {
+                let reason_clause = reason.map(|_| c);
+                if propagate(formula, checker, literal, reason_clause) {
                     return true;
                 }
             }
@@ -92,18 +111,13 @@ fn propagate(formula: &Formula, checker: &mut Checker, l: Literal) -> bool {
     false
 }
 
-fn propagate_unit(formula: &Formula, checker: &mut Checker, c: Clause, l: Literal) -> bool {
-    checker.clause_to_unit[c] = l;
-    propagate(formula, checker, l)
-}
-
 fn propagate_existing_units(formula: &Formula, checker: &mut Checker) -> bool {
     trace!(checker, "propagate existing\n");
     for c in formula.clauses() {
-        match clause_status(&formula, &checker.assignment, c) {
+        match clause_status(&formula, &checker.assignment, c, None) {
             ClauseStatus::Falsified => return true,
             ClauseStatus::Unit(literal) => {
-                if propagate_unit(formula, checker, c, literal) {
+                if propagate(formula, checker, literal, Some(c)) {
                     return true;
                 }
             }
@@ -134,11 +148,11 @@ fn is_rat_on(
         &mut checker.assignment,
         formula
             .clause(c)
-            .any(|literal| propagate(formula, checker, -literal))
+            .any(|literal| propagate_temporarily(formula, checker, -literal))
             || formula
                 .clause(d)
                 .filter(|literal| *literal != -pivot)
-                .any(|literal| propagate(formula, checker, -literal))
+                .any(|literal| propagate_temporarily(formula, checker, -literal))
     )
 }
 
@@ -164,7 +178,7 @@ pub fn rup(formula: &Formula, checker: &mut Checker, c: Clause) -> bool {
         &mut checker.assignment,
         formula
             .clause(c)
-            .any(|literal| propagate(formula, checker, -literal))
+            .any(|literal| propagate_temporarily(formula, checker, -literal))
     )
 }
 
@@ -175,12 +189,19 @@ enum LemmaEvaluation {
 }
 
 fn perform_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> LemmaEvaluation {
-    let unit = checker.clause_to_unit[c];
-    let handle_deletion = !checker.config.skip_deletions && unit != Literal::new(0);
+    let recorded_unit = checker.clause_to_unit[c];
+    let level = checker.assignment.level_prior_to_assigning(recorded_unit);
+    let handle_deletion = !checker.config.skip_deletions && recorded_unit != Literal::new(0);
     if handle_deletion {
-        unassign(&mut checker.assignment, unit);
-        let level = checker.assignment.level_prior_to_assigning(unit);
         reset_assignment(&mut checker.assignment, level);
+        ensure!(
+            match clause_status(formula, &checker.assignment, c, Some(level)) {
+                ClauseStatus::Unit(literal) => literal == recorded_unit,
+                _ => false,
+            },
+            "Deleted clause was unit previously, which it should still be with respect to the \
+             assignment immediately before it propagated."
+        );
     }
     formula.clause_active[c] = false;
     if handle_deletion {
@@ -199,8 +220,8 @@ fn check_insertion(formula: &mut Formula, checker: &mut Checker, lemma: Clause) 
         return LemmaEvaluation::Rejected;
     }
     formula.proof_start += 1;
-    if let ClauseStatus::Unit(literal) = clause_status(formula, &checker.assignment, lemma) {
-        if propagate_unit(formula, checker, lemma, literal) {
+    if let ClauseStatus::Unit(literal) = clause_status(formula, &checker.assignment, lemma, None) {
+        if propagate(formula, checker, literal, Some(lemma)) {
             return LemmaEvaluation::ProofComplete;
         }
     }
