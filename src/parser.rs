@@ -230,7 +230,7 @@ fn parse_formula(input: &[u8]) -> Result<Parser, ParseError> {
 }
 
 fn lemma_binary(input: &[u8]) -> (&[u8], char) {
-    debug_assert!(input.len() > 0);
+    ensure!(input.len() > 0);
     (&input[1..], input[0] as char)
 }
 
@@ -264,7 +264,7 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
                 if addition_or_deletion == 'd' {
                     state = LemmaPositionBinary::Deletion;
                 } else {
-                    debug_assert!(addition_or_deletion == 'a');
+                    ensure!(addition_or_deletion == 'a');
                     state = LemmaPositionBinary::Addition;
                     let clause = start_clause(&mut parser);
                     parser.proof.push(Lemma::Addition(clause));
@@ -463,8 +463,8 @@ p cnf 2 2
 
     #[test]
     fn invalid_formulas() {
-        assert!(parse_formula(b"p c").is_err());
-        assert!(parse_formula(b"p cnf 1 1\na").is_err());
+        ensure!(parse_formula(b"p c").is_err());
+        ensure!(parse_formula(b"p cnf 1 1\na").is_err());
     }
 
     #[test]

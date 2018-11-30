@@ -74,12 +74,12 @@ impl<T: Clone> Stack<T> {
         self.size
     }
     pub fn push(&mut self, value: T) {
-        debug_assert!(self.size < self.vec.capacity());
+        ensure!(self.size < self.vec.capacity());
         self.vec[self.size] = value;
         self.size += 1
     }
     pub fn pop(&mut self) -> &T {
-        debug_assert!(self.size != 0);
+        ensure!(self.size != 0);
         self.size -= 1;
         &self.vec[self.size]
     }

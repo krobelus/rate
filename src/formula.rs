@@ -107,11 +107,11 @@ pub struct ClauseIterator<'a> {
 impl<'a> ClauseIterator<'a> {
     pub fn empty(&self) -> bool {
         let db = &self.formula.db;
-        debug_assert!(self.index == 0 || db[self.index - 1] == Literal::new(0));
+        ensure!(self.index == 0 || db[self.index - 1] == Literal::new(0));
         db[self.index] == Literal::new(0)
     }
     fn new(formula: &'a Formula, clause: Clause) -> ClauseIterator {
-        debug_assert!(
+        ensure!(
             formula.clause_active[clause],
             "Must not iterate over deleted clause."
         );
@@ -145,7 +145,7 @@ impl<'a> Display for ClauseIterator<'a> {
             }
             write!(f, "{} ", literal)?;
             i += 1;
-            debug_assert!(i < self.formula.db.capacity())
+            ensure!(i < self.formula.db.capacity())
         }
         write!(f, "0")
     }

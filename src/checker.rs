@@ -189,7 +189,7 @@ fn perform_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> 
 }
 
 fn check_insertion(formula: &mut Formula, checker: &mut Checker, lemma: Clause) -> LemmaEvaluation {
-    debug_assert!(lemma == formula.proof_start);
+    ensure!(lemma == formula.proof_start);
     // we should already have reached a conflict here
     if formula.clause(lemma).empty() {
         return LemmaEvaluation::Rejected;

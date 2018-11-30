@@ -3,6 +3,7 @@
 use clap::ArgMatches;
 
 pub const BOUNDS_CHECKING: bool = true;
+pub const ASSERTIONS: bool = true;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Config {
@@ -48,5 +49,13 @@ macro_rules! die {
         eprint!("*** Fatal error: ");
         eprintln!($($arg)*);
         std::process::exit(2);
+    })
+}
+
+macro_rules! ensure {
+    ($($arg:tt)*) => ({
+        if crate::config::ASSERTIONS {
+            assert!($($arg)*);
+        }
     })
 }

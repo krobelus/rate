@@ -60,7 +60,7 @@ impl Display for Assignment {
 impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
-        debug_assert!(
+        ensure!(
             literal != Literal::new(0),
             "Illegal read of assignment to literal 0."
         );
@@ -74,7 +74,7 @@ impl IndexMut<Literal> for Assignment {
 }
 
 pub fn assign(assignment: &mut Assignment, l: Literal) {
-    debug_assert!(!assignment[-l] && !assignment[l]);
+    ensure!(!assignment[-l] && !assignment[l]);
     assignment.position_in_stack[l] = assignment.stack.len();
     assignment.stack.push(l);
     assignment[l] = true;
@@ -93,7 +93,7 @@ pub fn reset_assignment(assignment: &mut Assignment, level: usize) {
         // Literal::new(0) will never be read.
         unassign(assignment, literal);
     }
-    debug_assert!(assignment.stack.len() <= level);
+    ensure!(assignment.stack.len() <= level);
 }
 
 fn format_clause_under_assignment(formula: &Formula, assignment: &Assignment, c: Clause) -> String {
