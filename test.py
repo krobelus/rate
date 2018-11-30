@@ -65,7 +65,7 @@ def compare_acceptance(a, b):
         assert accepts(a) == accepts(b)
 
 
-def test_compare_trace_rate_crate():
+def test_compare_trace_crate():
     return
     build_release()
     for name in small_inputs():
@@ -79,15 +79,15 @@ def test_compare_trace_rate_crate():
         assert Popen(command).wait() == 0
 
 
-def test_acceptance_rupee_rate():
-    compare_acceptance('rupee', rate())
+def test_acceptance_rupee():
+    compare_acceptance(rate(), 'rupee')
 
 
-def test_acceptance_rate_crate():
+def test_acceptance_crate():
     compare_acceptance(rate(), './crate')
 
 
-def test_acceptance_rate_initial_commit():
+def test_acceptance_initial_commit():
     initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
     build_release(initial_commit)
     compare_acceptance(rate(), rate(initial_commit))
