@@ -110,7 +110,7 @@ impl<I: Offset, T: Clone> TypedArray<I, T> {
         }
     }
     pub fn capacity(&self) -> usize {
-        self.vec.capacity()
+        self.vec.len()
     }
 }
 

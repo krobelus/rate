@@ -59,6 +59,9 @@ impl Formula {
     pub fn clause(&self, clause: Clause) -> ClauseIterator {
         ClauseIterator::new(self, clause)
     }
+    pub fn num_clauses(&self) -> usize {
+        self.clause_to_offset.capacity()
+    }
 }
 
 pub struct FormulaIterator<'a> {

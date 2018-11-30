@@ -16,18 +16,26 @@ use std::{
 #[derive(Debug, PartialEq, Eq)]
 pub struct Assignment {
     map: TypedArray<Literal, bool>,
+    // We use Literal::new(0) to replace literals in the assignment stack that
+    // have been unassigned as a result of deleting a unit clause.
     stack: Stack<Literal>,
+    position_in_stack: TypedArray<Literal, usize>,
 }
 
 impl Assignment {
     pub fn new(num_variables: usize) -> Assignment {
+        let array_size_literals = 2 * (num_variables + 1);
         Assignment {
-            map: TypedArray::new(false, 2 * (num_variables + 1)),
+            map: TypedArray::new(false, array_size_literals),
             stack: Stack::new(Literal::new(0), num_variables),
+            position_in_stack: TypedArray::new(0, array_size_literals),
         }
     }
     pub fn len(&self) -> usize {
         self.stack.len()
+    }
+    pub fn level_prior_to_assigning(&self, l: Literal) -> usize {
+        self.position_in_stack[l]
     }
 }
 
@@ -52,6 +60,10 @@ impl Display for Assignment {
 impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
+        debug_assert!(
+            literal != Literal::new(0),
+            "Illegal read of assignment to literal 0."
+        );
         &self.map[literal]
     }
 }
@@ -62,18 +74,26 @@ impl IndexMut<Literal> for Assignment {
 }
 
 pub fn assign(assignment: &mut Assignment, l: Literal) {
+    debug_assert!(!assignment[-l] && !assignment[l]);
+    assignment.position_in_stack[l] = assignment.stack.len();
     assignment.stack.push(l);
-    debug_assert!(!assignment[-l]);
     assignment[l] = true;
 }
 
+pub fn unassign(assignment: &mut Assignment, l: Literal) {
+    assignment[l] = false;
+    // It is not necessary to reset assignment.position_in_stack here, as it
+    // will be written before the next use.
+}
+
 pub fn reset_assignment(assignment: &mut Assignment, level: usize) {
-    let stack = &mut assignment.stack;
-    while stack.len() > level {
-        let literal = *stack.pop();
-        assignment.map[literal] = false;
+    while assignment.stack.len() > level {
+        let literal = *assignment.stack.pop();
+        // literal can be 0 here but we don't need to introduce a branch since the assignment for
+        // Literal::new(0) will never be read.
+        unassign(assignment, literal);
     }
-    assignment.stack.clear();
+    debug_assert!(assignment.stack.len() <= level);
 }
 
 fn format_clause_under_assignment(formula: &Formula, assignment: &Assignment, c: Clause) -> String {
