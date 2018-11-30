@@ -22,8 +22,6 @@ shift
 
 checkouts=checkouts
 
-echo executing "$@" in version "$commit"
-
 mkdir -p "$checkouts"
 
 dest="$checkouts"/"$commit"
