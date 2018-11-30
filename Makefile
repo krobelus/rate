@@ -9,3 +9,6 @@ format:
 	cargo fmt
 	clang-format -i *.[ch]
 	autopep8 --in-place --aggressive --aggressive *.py
+
+lint:
+	checkbashisms scripts/*.sh

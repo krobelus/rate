@@ -7,9 +7,23 @@ from subprocess import Popen, PIPE
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
-def build_release():
-    assert os.system('cargo build --release') == 0
-    assert os.system('make') == 0
+def run(command):
+    assert Popen(command).wait() == 0
+
+
+def build_release(commit_sha=None):
+    cargo_release = ['cargo', 'build', '--release']
+    if commit_sha:
+        return run(['./scripts/exec-in-version.sh',
+                    commit_sha] + cargo_release)
+    run(cargo_release)
+    run(['make'])
+
+
+def rate(commit_sha=None):
+    if commit_sha:
+        return f'./checkouts/{commit_sha}/{rate()}'
+    return './target/release/rate'
 
 
 benchmark_location = 'benchmarks'
@@ -66,8 +80,14 @@ def test_compare_trace_rate_crate():
 
 
 def test_acceptance_rupee_rate():
-    compare_acceptance('rupee', './target/release/rate')
+    compare_acceptance('rupee', rate())
 
 
 def test_acceptance_rate_crate():
-    compare_acceptance('./target/release/rate', './crate')
+    compare_acceptance(rate(), './crate')
+
+
+def test_acceptance_rate_initial_commit():
+    initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
+    build_release(initial_commit)
+    compare_acceptance(rate(), rate(initial_commit))
