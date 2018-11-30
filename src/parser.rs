@@ -317,7 +317,7 @@ fn parse_proof(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
         }
     }
     if binary {
-        info!("Turning on binary mode.");
+        eprintln!("Turning on binary mode.");
         Ok(parse_proof_binary(input, parser))
     } else {
         parse_proof_text(input, parser)

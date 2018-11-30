@@ -34,23 +34,12 @@ macro_rules! trace {
     }};
 }
 
-// print to stderr
-macro_rules! info {
-    ($($arg:tt)*) => ({
-        if cfg!(debug_assertions) {
-            eprintln!("{}", $($arg)*);
-        }
-    })
-}
-
 // print a warning to stderr
 macro_rules! warn {
     ($($arg:tt)*) => ({
-        if cfg!(debug_assertions) {
-            let style = ansi_term::Colour::Red.normal();
-            eprint!("{}", style.paint("Warning: "));
-            eprintln!("{}", style.paint(&format!($($arg)*)));
-        }
+        let style = ansi_term::Colour::Red.normal();
+        eprint!("{}", style.paint("Warning: "));
+        eprintln!("{}", style.paint(&format!($($arg)*)));
     })
 }
 
