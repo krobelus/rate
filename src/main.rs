@@ -25,10 +25,10 @@ use crate::{
 fn main() {
     let matches = clap_app!(rate =>
     (version: env!("CARGO_PKG_VERSION"))
-    (author: env!("CARGO_PKG_AUTHORS"))
     (about: env!("CARGO_PKG_DESCRIPTION"))
     (@arg INPUT: +required "input file in DIMACS format")
     (@arg PROOF: +required "proof file in DRAT format")
+    (@arg SKIP_DELETIONS: -d long("skip-deletions") "Ignore deletion of unit clauses, as does drat-trim")
     (@arg TRACE: -t --trace "Outputs a trace of the execution")
     )
     .get_matches();

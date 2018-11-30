@@ -176,13 +176,14 @@ enum LemmaEvaluation {
 
 fn perform_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> LemmaEvaluation {
     let unit = checker.clause_to_unit[c];
-    if unit != Literal::new(0) {
+    let handle_deletion = !checker.config.skip_deletions && unit != Literal::new(0);
+    if handle_deletion {
         unassign(&mut checker.assignment, unit);
         let level = checker.assignment.level_prior_to_assigning(unit);
         reset_assignment(&mut checker.assignment, level);
     }
     formula.clause_active[c] = false;
-    if unit != Literal::new(0) {
+    if handle_deletion {
         propagate_existing_units(formula, checker);
     }
     LemmaEvaluation::Accepted

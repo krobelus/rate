@@ -8,12 +8,14 @@ pub const ASSERTIONS: bool = true;
 #[derive(Debug, PartialEq, Eq)]
 pub struct Config {
     pub trace: bool,
+    pub skip_deletions: bool,
 }
 
 impl Config {
     pub fn new(matches: ArgMatches) -> Config {
         Config {
             trace: matches.is_present("TRACE"),
+            skip_deletions: matches.is_present("SKIP_DELETIONS"),
         }
     }
 }

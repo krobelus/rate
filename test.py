@@ -20,10 +20,11 @@ def build_release(commit_sha=None):
     run(['make'])
 
 
-def rate(commit_sha=None):
+def rate(commit_sha=None, *, flags=[]):
+    executable = './target/release/rate'
     if commit_sha:
-        return f'./checkouts/{commit_sha}/{rate()}'
-    return './target/release/rate'
+        executable = f'./checkouts/{commit_sha}/{executable}'
+    return [executable] + flags
 
 
 benchmark_location = 'benchmarks'
@@ -52,17 +53,22 @@ def small_inputs():
 
 def compare_acceptance(a, b):
     build_release()
-    for checker in a, b:
+    for command in a, b:
+        checker = command[0]
         assert Popen(('which', checker)).wait(
         ) == 0, f'{checker} not found in PATH'
     for name in small_inputs():
         print(f'##### Comparing result of {a} and {b} for {name} #####')
         args = [f'{name}.cnf', f'{name}.drat']
 
-        def accepts(checker):
-            stdout = Popen([checker] + args, stdout=PIPE).communicate()[0]
-            return b's ACCEPTED' in stdout
-        assert accepts(a) == accepts(b)
+        # we take name here to see the benchmark name immediately when a test
+        # fails
+        def accepts(checker, name):
+            stdout = Popen(checker + args, stdout=PIPE).communicate()[0]
+            print(stdout)
+            return b's ACCEPTED\n' in stdout or (
+                'drat-trim' in checker[0] and b's VERIFIED' in stdout)
+        assert accepts(a, name) == accepts(b, name)
 
 
 def test_compare_trace_crate():
@@ -70,7 +76,7 @@ def test_compare_trace_crate():
     build_release()
     for name in small_inputs():
         print(
-            f'##### Comparing output trace of rate and crate for {name} #####')
+            f'##### Comparing output trace of rate and crate for {name}')
         command = (
             './scripts/diff-rate-crate.sh',
             f'{name}.cnf',
@@ -79,12 +85,16 @@ def test_compare_trace_crate():
         assert Popen(command).wait() == 0
 
 
+def test_acceptance_drat_trim():
+    compare_acceptance(rate(flags=['--skip-deletions']), ['drat-trim'])
+
+
 def test_acceptance_rupee():
-    compare_acceptance(rate(), 'rupee')
+    compare_acceptance(rate(), ['rupee'])
 
 
 def test_acceptance_crate():
-    compare_acceptance(rate(), './crate')
+    compare_acceptance(rate(), ['./crate'])
 
 
 def test_acceptance_initial_commit():

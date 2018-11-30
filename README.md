@@ -35,7 +35,7 @@ the performance of some language features.
 These features are planned to be implemented:
 
 - [x] Specified DRAT
-- [ ] Operational DRAT
+- [x] Operational DRAT
 - [ ] Double-sweep DRAT checking
 - [ ] Two watched literals
 - [x] Incremental prepropagation
