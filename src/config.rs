@@ -44,26 +44,9 @@ macro_rules! warn {
 }
 
 macro_rules! die {
-    () => ({
-        die_impl!("");
-    });
     ($($arg:tt)*) => ({
-        die_impl!($($arg)*);
-    })
-}
-
-#[cfg(debug_assertions)]
-macro_rules! die_impl {
-    ($($arg:tt)*) => ({
-        panic!($($arg)*);
-    })
-}
-
-#[cfg(not(debug_assertions))]
-macro_rules! die_impl {
-    ($($arg:tt)*) => ({
-        print!("*** Fatal error: ");
-        println!($($arg)*);
+        eprint!("*** Fatal error: ");
+        eprintln!($($arg)*);
         std::process::exit(2);
     })
 }
