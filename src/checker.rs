@@ -222,7 +222,11 @@ fn backward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause
 }
 
 fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> bool {
-    ensure!(formula.clause_active[c], "Clause deleted multiple times.");
+    ensure!(
+        formula.clause_active[c],
+        "Clause {} deleted multiple times.",
+        c
+    );
     let recorded_unit = checker.clause_to_unit[c];
     let level = checker.assignment.level_prior_to_assigning(recorded_unit);
     let handle_deletion = !checker.config.skip_deletions && recorded_unit != Literal::new(0);

@@ -18,6 +18,7 @@ struct Parser {
     pub maxvar: u32,
     pub db: Vec<Literal>,
     pub clause_to_offset: Vec<usize>,
+    pub clause_scheduled_for_deletion: Vec<bool>,
     pub proof_start: Clause,
     pub proof: Vec<Lemma>,
 }
@@ -87,7 +88,10 @@ fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Vec<Literal>
                 "Deleted clause is not present in the formula: {}",
                 show_slice_as_clause(&buffer[..])
             ),
-            Some(clause) => parser.proof.push(Lemma::Deletion(clause)),
+            Some(clause) => {
+                parser.clause_scheduled_for_deletion[clause.as_offset()] = true;
+                parser.proof.push(Lemma::Deletion(clause))
+            }
         }
         buffer.clear();
     } else {
@@ -103,6 +107,7 @@ fn add_deletion_ascii(parser: &mut Parser, input: &[u8], buffer: &mut Vec<Litera
 fn start_clause(parser: &mut Parser) -> Clause {
     let clause = parser.clause_to_offset.len();
     parser.clause_to_offset.push(parser.db.len());
+    parser.clause_scheduled_for_deletion.push(false);
     Clause(clause)
 }
 
@@ -130,6 +135,7 @@ named!(formula_header<&[u8], Parser>,
                (Parser { maxvar: maxvar,
                           db: Vec::new(),
                           clause_to_offset: Vec::new(),
+                          clause_scheduled_for_deletion: Vec::new(),
                           proof_start: Clause(0),
                           proof: Vec::new(),
                })
@@ -170,6 +176,7 @@ fn clauses_equal(parser: &Parser, needle: &[Literal], clause: Clause) -> bool {
 fn find_clause(needle: &[Literal], parser: &Parser) -> Option<Clause> {
     (0..parser.clause_to_offset.len())
         .map(Clause)
+        .filter(|c| !parser.clause_scheduled_for_deletion[c.as_offset()])
         .filter(|c| clauses_equal(parser, needle, *c))
         .next()
 }
@@ -455,6 +462,7 @@ p cnf 2 2
                 maxvar: 2,
                 db: vec_of_literals!(1, 2, 0, -1, -2, 0),
                 clause_to_offset: vec!(0, 3),
+                clause_scheduled_for_deletion: vec!(false, false),
                 proof_start: Clause(0),
                 proof: Vec::new(),
             }
@@ -475,6 +483,7 @@ p cnf 2 2
                 maxvar: 3,
                 db: vec_of_literals!(1, 2, 0, -1, -2, 0, 1, 2, 3, 0),
                 clause_to_offset: vec!(0, 3, 6),
+                clause_scheduled_for_deletion: vec!(true, false, false),
                 proof_start: Clause(2),
                 proof: vec![Lemma::Addition(Clause(2)), Lemma::Deletion(Clause(0))]
             })
