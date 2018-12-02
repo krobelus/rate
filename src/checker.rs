@@ -220,23 +220,13 @@ fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> 
     );
     let recorded_unit = checker.clause_to_unit[c];
     let level = checker.assignment.level_prior_to_assigning(recorded_unit);
-    let handle_deletion = !checker.config.skip_deletions && recorded_unit != Literal::new(0);
-    if handle_deletion {
-        reset_assignment(&mut checker.assignment, level);
-        let status = clause_status_before(formula, &checker.assignment, c, level);
-        println!("clause {} status {:?}", formula.clause(c), status);
-        println!("assignment is level {} from {}", level, checker.assignment);
-        ensure!(
-            match clause_status_before(formula, &checker.assignment, c, level) {
-                ClauseStatus::Unit(literal) => literal == recorded_unit,
-                _ => false,
-            },
-            "Deleted clause was unit previously, which it should still be with respect to the \
-             assignment immediately before it propagated."
-        );
-    }
+    let handle_deletion = !checker.config.skip_deletions
+        && recorded_unit != Literal::new(0)
+        && clause_status_before(formula, &checker.assignment, c, level)
+            == ClauseStatus::Unit(recorded_unit);
     formula.clause_active[c] = false;
     if handle_deletion {
+        reset_assignment(&mut checker.assignment, level);
         propagate(formula, checker, true);
     }
     false
