@@ -85,10 +85,15 @@ fn clause_status_impl(
 }
 
 fn propagate_temporarily(formula: &Formula, checker: &mut Checker, l: Literal) -> bool {
-    propagate(formula, checker, l, None)
+    propagate_literal(formula, checker, l, None)
 }
 
-fn propagate(formula: &Formula, checker: &mut Checker, l: Literal, reason: Option<Clause>) -> bool {
+fn propagate_literal(
+    formula: &Formula,
+    checker: &mut Checker,
+    l: Literal,
+    reason: Option<Clause>,
+) -> bool {
     {
         trace!(checker, "prop {}\n", l);
         trace!(checker, "assignment[{}] :", checker.assignment.len());
@@ -104,35 +109,21 @@ fn propagate(formula: &Formula, checker: &mut Checker, l: Literal, reason: Optio
     if checker.assignment[l] {
         return false;
     }
-    reason.map(|clause| {
-        ensure!(formula.clause_active[clause]);
-        checker.clause_to_unit[clause] = l;
+    reason.map(|unit_clause| {
+        ensure!(formula.clause_active[unit_clause]);
+        checker.clause_to_unit[unit_clause] = l;
     });
     assign(&mut checker.assignment, l);
-    for c in formula.clauses() {
-        match clause_status(&formula, &checker.assignment, c) {
-            ClauseStatus::Falsified => {
-                return true;
-            }
-            ClauseStatus::Unit(literal) => {
-                let reason_clause = reason.map(|_| c);
-                if propagate(formula, checker, literal, reason_clause) {
-                    return true;
-                }
-            }
-            ClauseStatus::Satisfied | ClauseStatus::Unknown => (),
-        }
-    }
-    false
+    propagate(formula, checker, reason.is_some())
 }
 
-fn propagate_existing_units(formula: &Formula, checker: &mut Checker) -> bool {
-    trace!(checker, "propagate existing\n");
+fn propagate(formula: &Formula, checker: &mut Checker, record_reasons: bool) -> bool {
     for c in formula.clauses() {
         match clause_status(&formula, &checker.assignment, c) {
             ClauseStatus::Falsified => return true,
             ClauseStatus::Unit(literal) => {
-                if propagate(formula, checker, literal, Some(c)) {
+                let reason = if record_reasons { Some(c) } else { None };
+                if propagate_literal(formula, checker, literal, reason) {
                     return true;
                 }
             }
@@ -201,7 +192,7 @@ fn forward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause)
     ensure!(lemma == formula.proof_start);
     checker.lemma_to_level[lemma] = checker.assignment.len();
     if let ClauseStatus::Unit(literal) = clause_status(formula, &checker.assignment, lemma) {
-        if propagate(formula, checker, literal, Some(lemma)) {
+        if propagate_literal(formula, checker, literal, Some(lemma)) {
             return true;
         }
     }
@@ -232,6 +223,9 @@ fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> 
     let handle_deletion = !checker.config.skip_deletions && recorded_unit != Literal::new(0);
     if handle_deletion {
         reset_assignment(&mut checker.assignment, level);
+        let status = clause_status_before(formula, &checker.assignment, c, level);
+        println!("clause {} status {:?}", formula.clause(c), status);
+        println!("assignment is level {} from {}", level, checker.assignment);
         ensure!(
             match clause_status_before(formula, &checker.assignment, c, level) {
                 ClauseStatus::Unit(literal) => literal == recorded_unit,
@@ -243,7 +237,7 @@ fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> 
     }
     formula.clause_active[c] = false;
     if handle_deletion {
-        propagate_existing_units(formula, checker);
+        propagate(formula, checker, true);
     }
     false
 }
@@ -299,10 +293,10 @@ fn backward(
 }
 
 pub fn check(formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> bool {
-    if propagate_existing_units(formula, checker) {
+    if propagate(formula, checker, true) {
         return true;
     }
-    forward(formula, proof, checker)
-        .map(|conflict_at| backward(formula, proof, checker, conflict_at))
-        .unwrap_or(false)
+    forward(formula, proof, checker).map_or(false, |conflict_at| {
+        backward(formula, proof, checker, conflict_at)
+    })
 }
