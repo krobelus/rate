@@ -13,6 +13,7 @@ pub struct Checker {
     pub assignment: Assignment,
     // The last unit that was propagated because of this clause, or Literal::new(0).
     pub clause_to_unit: TypedArray<Clause, Literal>,
+    pub lemma_to_level: TypedArray<Clause, usize>,
     pub propcount: usize,
     pub ratcalls: usize,
     pub rupcalls: usize,
@@ -24,6 +25,7 @@ impl Checker {
         Checker {
             assignment: Assignment::new(formula.maxvar as usize),
             clause_to_unit: TypedArray::new(Literal::new(0), formula.num_clauses()),
+            lemma_to_level: TypedArray::new(0, formula.num_clauses()),
             propcount: 0,
             ratcalls: 0,
             rupcalls: 0,
@@ -40,7 +42,20 @@ enum ClauseStatus {
     Unit(Literal),
 }
 
-fn clause_status(
+fn clause_status(formula: &Formula, assignment: &Assignment, c: Clause) -> ClauseStatus {
+    clause_status_impl(formula, assignment, c, None)
+}
+
+fn clause_status_before(
+    formula: &Formula,
+    assignment: &Assignment,
+    c: Clause,
+    before_level: usize,
+) -> ClauseStatus {
+    clause_status_impl(formula, assignment, c, Some(before_level))
+}
+
+fn clause_status_impl(
     formula: &Formula,
     assignment: &Assignment,
     c: Clause,
@@ -95,7 +110,7 @@ fn propagate(formula: &Formula, checker: &mut Checker, l: Literal, reason: Optio
     });
     assign(&mut checker.assignment, l);
     for c in formula.clauses() {
-        match clause_status(&formula, &checker.assignment, c, None) {
+        match clause_status(&formula, &checker.assignment, c) {
             ClauseStatus::Falsified => {
                 return true;
             }
@@ -114,7 +129,7 @@ fn propagate(formula: &Formula, checker: &mut Checker, l: Literal, reason: Optio
 fn propagate_existing_units(formula: &Formula, checker: &mut Checker) -> bool {
     trace!(checker, "propagate existing\n");
     for c in formula.clauses() {
-        match clause_status(&formula, &checker.assignment, c, None) {
+        match clause_status(&formula, &checker.assignment, c) {
             ClauseStatus::Falsified => return true,
             ClauseStatus::Unit(literal) => {
                 if propagate(formula, checker, literal, Some(c)) {
@@ -182,20 +197,37 @@ pub fn rup(formula: &Formula, checker: &mut Checker, c: Clause) -> bool {
     )
 }
 
-enum LemmaEvaluation {
-    Accepted,
-    Rejected,
-    ProofComplete,
+fn forward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause) -> bool {
+    ensure!(lemma == formula.proof_start);
+    checker.lemma_to_level[lemma] = checker.assignment.len();
+    if let ClauseStatus::Unit(literal) = clause_status(formula, &checker.assignment, lemma) {
+        if propagate(formula, checker, literal, Some(lemma)) {
+            return true;
+        }
+    }
+    formula.proof_start += 1;
+    false
 }
 
-fn perform_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> LemmaEvaluation {
+fn backward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause) -> bool {
+    ensure!(!formula.clause(lemma).empty());
+    ensure!(lemma == formula.proof_start);
+    let level = checker.lemma_to_level[lemma];
+    reset_assignment(&mut checker.assignment, level);
+    let ok = rup(&formula, checker, lemma) || rat(&formula, checker, lemma);
+    formula.proof_start -= 1;
+    ok
+}
+
+fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> bool {
+    ensure!(formula.clause_active[c], "Clause deleted multiple times.");
     let recorded_unit = checker.clause_to_unit[c];
     let level = checker.assignment.level_prior_to_assigning(recorded_unit);
     let handle_deletion = !checker.config.skip_deletions && recorded_unit != Literal::new(0);
     if handle_deletion {
         reset_assignment(&mut checker.assignment, level);
         ensure!(
-            match clause_status(formula, &checker.assignment, c, Some(level)) {
+            match clause_status_before(formula, &checker.assignment, c, level) {
                 ClauseStatus::Unit(literal) => literal == recorded_unit,
                 _ => false,
             },
@@ -207,45 +239,60 @@ fn perform_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> 
     if handle_deletion {
         propagate_existing_units(formula, checker);
     }
-    LemmaEvaluation::Accepted
+    false
 }
 
-fn check_insertion(formula: &mut Formula, checker: &mut Checker, lemma: Clause) -> LemmaEvaluation {
-    ensure!(lemma == formula.proof_start);
-    // we should already have reached a conflict here
-    if formula.clause(lemma).empty() {
-        return LemmaEvaluation::Rejected;
-    }
-    if !rup(&formula, checker, lemma) && !rat(&formula, checker, lemma) {
-        return LemmaEvaluation::Rejected;
-    }
-    formula.proof_start += 1;
-    if let ClauseStatus::Unit(literal) = clause_status(formula, &checker.assignment, lemma, None) {
-        if propagate(formula, checker, literal, Some(lemma)) {
-            return LemmaEvaluation::ProofComplete;
+fn backward_deletion(formula: &mut Formula, c: Clause) -> bool {
+    ensure!(!formula.clause_active[c]);
+    formula.clause_active[c] = true;
+    true
+}
+
+fn forward(formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> Option<usize> {
+    for (i, lemma) in proof.into_iter().enumerate() {
+        let conflict_detected = match lemma {
+            Lemma::Deletion(clause) => forward_deletion(formula, checker, *clause),
+            Lemma::Addition(clause) => {
+                let conflict_claimed = formula.clause(*clause).empty();
+                if conflict_claimed {
+                    warn!("conflict claimed but not detected");
+                    return None;
+                }
+                forward_addition(formula, checker, *clause)
+            }
+        };
+        if conflict_detected {
+            return Some(i);
         }
     }
-    trace!(checker, "proofstart: {}\n", formula.proof_start);
-    LemmaEvaluation::Accepted
+    None
 }
 
-fn check_lemma(formula: &mut Formula, checker: &mut Checker, lemma: Lemma) -> LemmaEvaluation {
-    match lemma {
-        Lemma::Deletion(clause) => perform_deletion(formula, checker, clause),
-        Lemma::Addition(clause) => check_insertion(formula, checker, clause),
+fn backward(
+    formula: &mut Formula,
+    proof: &Proof,
+    checker: &mut Checker,
+    conflict_at: usize,
+) -> bool {
+    for i in (0..=conflict_at).rev() {
+        let lemma = proof[i];
+
+        let accepted = match lemma {
+            Lemma::Deletion(clause) => backward_deletion(formula, clause),
+            Lemma::Addition(clause) => backward_addition(formula, checker, clause),
+        };
+        if !accepted {
+            return false;
+        }
     }
+    true
 }
 
-pub fn check(mut formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> bool {
+pub fn check(formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> bool {
     if propagate_existing_units(formula, checker) {
         return true;
     }
-    for lemma in proof {
-        match check_lemma(&mut formula, checker, *lemma) {
-            LemmaEvaluation::Accepted => (),
-            LemmaEvaluation::Rejected => return false,
-            LemmaEvaluation::ProofComplete => return true,
-        }
-    }
-    false
+    forward(formula, proof, checker)
+        .map(|conflict_at| backward(formula, proof, checker, conflict_at))
+        .unwrap_or(false)
 }

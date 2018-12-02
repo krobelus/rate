@@ -45,7 +45,7 @@ These features are planned to be implemented:
 
 - [x] Specified DRAT
 - [x] Operational DRAT
-- [ ] Double-sweep DRAT checking
+- [x] Double-sweep DRAT checking
 - [ ] Two watched literals
 - [x] Incremental prepropagation
 - [ ] Core-first propagation

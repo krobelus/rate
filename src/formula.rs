@@ -4,7 +4,12 @@ use crate::{
     literal::Literal,
     memory::{Offset, TypedArray},
 };
-use std::{fmt, fmt::Display, iter, ops::AddAssign};
+use std::{
+    fmt,
+    fmt::Display,
+    iter,
+    ops::{AddAssign, Sub, SubAssign},
+};
 
 /// The index of a clause or lemma, immutable during the lifetime of the program.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add)]
@@ -19,6 +24,19 @@ impl Offset for Clause {
 impl AddAssign<usize> for Clause {
     fn add_assign(&mut self, increment: usize) {
         self.0 += increment;
+    }
+}
+
+impl Sub<usize> for Clause {
+    type Output = Clause;
+    fn sub(self, decrement: usize) -> Clause {
+        Clause(self.0 - decrement)
+    }
+}
+
+impl SubAssign<usize> for Clause {
+    fn sub_assign(&mut self, decrement: usize) {
+        self.0 -= decrement;
     }
 }
 
