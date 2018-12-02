@@ -58,7 +58,7 @@ def compare_acceptance(a, b):
         assert Popen(('which', checker)).wait(
         ) == 0, f'{checker} not found in PATH'
     for name in small_inputs():
-        print(f'##### Comparing result of {a} and {b} for {name} #####')
+        print(f'##### Comparing result of {a} and {b} for {name}')
         args = [f'{name}.cnf', f'{name}.drat']
 
         # we take name here to see the benchmark name immediately when a test
