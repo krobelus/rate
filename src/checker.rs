@@ -214,9 +214,11 @@ fn backward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause
     ensure!(lemma == formula.proof_start);
     let level = checker.lemma_to_level[lemma];
     reset_assignment(&mut checker.assignment, level);
-    let ok = rup(&formula, checker, lemma) || rat(&formula, checker, lemma);
-    formula.proof_start -= 1;
-    ok
+    if checker.clause_to_unit[lemma] == Literal::new(0) {
+        // No need to check clauses that were not used to derive a conflict.
+        return true;
+    }
+    rup(&formula, checker, lemma) || rat(&formula, checker, lemma)
 }
 
 fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> bool {
@@ -279,7 +281,11 @@ fn backward(
 
         let accepted = match lemma {
             Lemma::Deletion(clause) => backward_deletion(formula, clause),
-            Lemma::Addition(clause) => backward_addition(formula, checker, clause),
+            Lemma::Addition(clause) => {
+                let ok = backward_addition(formula, checker, clause);
+                formula.proof_start -= 1;
+                ok
+            }
         };
         if !accepted {
             return false;
