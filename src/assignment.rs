@@ -59,10 +59,7 @@ impl Display for Assignment {
 impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
-        ensure!(
-            literal != Literal::new(0),
-            "Illegal read of assignment to literal 0."
-        );
+        ensure!(!literal.zero(), "Illegal read of assignment to literal 0.");
         &self.map[literal]
     }
 }

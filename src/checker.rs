@@ -348,7 +348,7 @@ fn backward_addition(state: &mut State, constants: &Constants, c: Clause) -> boo
     ensure!(clause.id == state.proof_start);
     let level = state.lemma_to_level[clause.id];
     reset_assignment(&mut state.assignment, level);
-    if state.clause_to_unit[clause.id] == Literal::new(0) {
+    if state.clause_to_unit[clause.id].zero() {
         // No need to check clauses that were not used to derive a conflict.
         return true;
     }
@@ -380,7 +380,7 @@ fn forward_deletion(state: &mut State, constants: &Constants, c: Clause) -> bool
     let recorded_unit = state.clause_to_unit[c];
     let level = state.assignment.level_prior_to_assigning(recorded_unit);
     let handle_deletion = !constants.config.skip_deletions
-        && recorded_unit != Literal::new(0)
+        && !recorded_unit.zero()
         && clause_status_before(
             clause_as_slice(&state.db, &constants.clause_offset, c),
             &state.assignment,

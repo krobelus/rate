@@ -90,7 +90,7 @@ fn start_clause(parser: &mut Parser) -> Clause {
 }
 
 fn add_literal(parser: &mut Parser, literal: Literal) {
-    if literal != Literal::new(0) {
+    if !literal.zero() {
         parser.maxvar = cmp::max(parser.maxvar, literal.var());
         parser.db.push(literal);
     }
@@ -200,7 +200,7 @@ fn parse_formula(input: &[u8]) -> Result<Parser, ParseError> {
                         start_clause(&mut parser);
                     }
                     let literal = add_literal_ascii(&mut parser, &rest[start..i]);
-                    head = literal == Literal::new(0);
+                    head = literal.zero();
                     state = ClauseState::NotInLiteral;
                 }
                 _ => return error(),
@@ -262,7 +262,7 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
             LemmaPositionBinary::Addition => match number_binary(input) {
                 (input, literal) => {
                     add_literal(&mut parser, literal);
-                    if literal == Literal::new(0) {
+                    if literal.zero() {
                         state = LemmaPositionBinary::Start;
                     }
                     input
@@ -271,7 +271,7 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
             LemmaPositionBinary::Deletion => match number_binary(input) {
                 (input, literal) => {
                     add_deletion(&mut parser, literal, &mut buffer);
-                    if literal == Literal::new(0) {
+                    if literal.zero() {
                         state = LemmaPositionBinary::Start;
                     }
                     input
@@ -346,8 +346,8 @@ fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseErr
             LemmaPositionText::LemmaLiteral => match c {
                 b' ' | b'\n' => {
                     let literal = add_literal_ascii(&mut parser, &input[start..i]);
-                    head = literal == Literal::new(0);
-                    state = if literal == Literal::new(0) {
+                    head = literal.zero();
+                    state = if head {
                         LemmaPositionText::Start
                     } else {
                         LemmaPositionText::PostLemmaLiteral
