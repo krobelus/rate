@@ -142,8 +142,8 @@ macro_rules! propagate_literal {
             &mut $state.clause_to_unit,
             &mut $state.assignment,
             &$constants,
-            &$state.clause_active,
             $state.proof_start,
+            &$state.clause_active,
             &$state.db,
         )
     };
@@ -155,8 +155,8 @@ fn propagate_literal(
     clause_to_unit: &mut TypedArray<Clause, Literal>,
     assignment: &mut Assignment,
     constants: &Constants,
-    clause_active: &TypedArray<Clause, bool>,
     proof_start: Clause,
+    clause_active: &TypedArray<Clause, bool>,
     db: &TypedArray<usize, Literal>,
 ) -> bool {
     {
@@ -188,8 +188,8 @@ fn propagate_literal(
                     clause_to_unit,
                     assignment,
                     constants,
-                    clause_active,
                     proof_start,
+                    clause_active,
                     db,
                 ) {
                     return true;
@@ -217,8 +217,8 @@ fn propagate(state: &mut State, constants: &Constants, record_reasons: bool) -> 
                     &mut state.clause_to_unit,
                     &mut state.assignment,
                     constants,
-                    &state.clause_active,
                     state.proof_start,
+                    &state.clause_active,
                     &state.db,
                 ) {
                     return true;
@@ -239,35 +239,6 @@ macro_rules! preserve_assignment {
     }};
 }
 
-fn is_resolvent_rup(
-    c: ClauseView,
-    d: ClauseView,
-    pivot: Literal,
-    clause_to_unit: &mut TypedArray<Clause, Literal>,
-    mut assignment: &mut Assignment,
-    constants: &Constants,
-    clause_active: &TypedArray<Clause, bool>,
-    proof_start: Clause,
-    db: &TypedArray<usize, Literal>,
-) -> bool {
-    trace!(constants, "is_resolvent_rup({}, {})\n", c, d);
-    preserve_assignment!(
-        &mut assignment,
-        c.iter()
-            .chain(d.iter().filter(|&literal| *literal != -pivot))
-            .any(|&literal| propagate_literal(
-                -literal,
-                None,
-                clause_to_unit,
-                assignment,
-                constants,
-                clause_active,
-                proof_start,
-                db
-            ))
-    )
-}
-
 fn member(needle: Literal, clause: &[Literal]) -> bool {
     clause.iter().position(|&lit| needle == lit).is_some()
 }
@@ -275,7 +246,7 @@ fn member(needle: Literal, clause: &[Literal]) -> bool {
 fn rat(
     clause: ClauseView,
     clause_to_unit: &mut TypedArray<Clause, Literal>,
-    assignment: &mut Assignment,
+    mut assignment: &mut Assignment,
     constants: &Constants,
     proof_start: Clause,
     clause_active: &TypedArray<Clause, bool>,
@@ -283,47 +254,54 @@ fn rat(
 ) -> bool {
     trace!(constants, "rat({}) - {}\n", clause.id, clause);
     let pivot = clause[0];
-    clauses(proof_start, &clause_active, &db, &constants.clause_offset)
-        .filter(|d| member(-pivot, d.literals))
-        .all(|d| {
-            is_resolvent_rup(
-                clause,
-                d,
-                pivot,
-                clause_to_unit,
-                assignment,
-                constants,
-                &clause_active,
-                proof_start,
-                &db,
-            )
-        })
+    preserve_assignment!(
+        &mut assignment,
+        rup(
+            clause.iter(),
+            clause_to_unit,
+            assignment,
+            &constants,
+            proof_start,
+            &clause_active,
+            db
+        ) || clauses(proof_start, &clause_active, &db, &constants.clause_offset)
+            .filter(|d| member(-pivot, d.literals))
+            .all(|d| preserve_assignment!(
+                &mut assignment,
+                rup(
+                    d.iter().filter(|&literal| *literal != -pivot),
+                    clause_to_unit,
+                    assignment,
+                    constants,
+                    proof_start,
+                    clause_active,
+                    db
+                )
+            ))
+    )
 }
 
-fn rup(
-    clause: ClauseView,
+fn rup<'a>(
+    mut clause: impl Iterator<Item = &'a Literal>,
     clause_to_unit: &mut TypedArray<Clause, Literal>,
-    mut assignment: &mut Assignment,
+    assignment: &mut Assignment,
     constants: &Constants,
     proof_start: Clause,
     clause_active: &TypedArray<Clause, bool>,
     db: &TypedArray<usize, Literal>,
 ) -> bool {
-    trace!(constants, "rup({}) - {}\n", clause.id, clause);
-    trace!(constants, "propagating reverse clause\n");
-    preserve_assignment!(
-        &mut assignment,
-        clause.into_iter().any(|&literal| propagate_literal(
+    clause.any(|&literal| {
+        propagate_literal(
             -literal,
             None,
             clause_to_unit,
             assignment,
             constants,
-            clause_active,
             proof_start,
+            clause_active,
             db,
-        ))
-    )
+        )
+    })
 }
 
 fn forward_addition(state: &mut State, constants: &Constants, clause: Clause) -> bool {
@@ -352,15 +330,8 @@ fn backward_addition(state: &mut State, constants: &Constants, c: Clause) -> boo
         // No need to check clauses that were not used to derive a conflict.
         return true;
     }
-    rup(
-        clause,
-        &mut state.clause_to_unit,
-        &mut state.assignment,
-        &constants,
-        state.proof_start,
-        &state.clause_active,
-        &state.db,
-    ) || rat(
+    trace!(constants, "rup({}) - {}\n", clause.id, clause);
+    rat(
         clause,
         &mut state.clause_to_unit,
         &mut state.assignment,
