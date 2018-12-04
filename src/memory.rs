@@ -41,6 +41,30 @@ pub struct Stack<T: Clone> {
     size: usize,
 }
 
+impl<I: Offset, T: Clone> TypedArray<I, T> {
+    pub fn new(value: T, size: usize) -> TypedArray<I, T> {
+        TypedArray {
+            vec: vec![value; size],
+            phantom: PhantomData,
+        }
+    }
+    pub fn from(vector: Vec<T>) -> TypedArray<I, T> {
+        TypedArray {
+            vec: vector,
+            phantom: PhantomData,
+        }
+    }
+    pub fn capacity(&self) -> usize {
+        self.vec.len()
+    }
+    pub fn as_slice(&self) -> &[T] {
+        &self.vec[..]
+    }
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self.vec[..]
+    }
+}
+
 impl<'a, I: Offset, T: Clone> IntoIterator for &'a TypedArray<I, T> {
     type Item = &'a T;
     type IntoIter = slice::Iter<'a, T>;
@@ -93,24 +117,6 @@ impl<'a, T: Clone> IntoIterator for &'a Stack<T> {
     type IntoIter = slice::Iter<'a, T>;
     fn into_iter(self) -> slice::Iter<'a, T> {
         self.vec.vec[0..self.size].into_iter()
-    }
-}
-
-impl<I: Offset, T: Clone> TypedArray<I, T> {
-    pub fn new(value: T, size: usize) -> TypedArray<I, T> {
-        TypedArray {
-            vec: vec![value; size],
-            phantom: PhantomData,
-        }
-    }
-    pub fn from(vector: Vec<T>) -> TypedArray<I, T> {
-        TypedArray {
-            vec: vector,
-            phantom: PhantomData,
-        }
-    }
-    pub fn capacity(&self) -> usize {
-        self.vec.len()
     }
 }
 

@@ -9,7 +9,7 @@ extern crate clap;
 mod config;
 mod assignment;
 mod checker;
-mod formula;
+mod clause;
 mod literal;
 mod memory;
 mod parser;
@@ -33,18 +33,13 @@ fn main() {
     )
     .get_matches();
 
-    let (mut formula, proof) = parse_files(
+    let parser = parse_files(
         matches.value_of("INPUT").unwrap(),
         matches.value_of("PROOF").unwrap(),
     );
 
-    let mut checker = Checker::new(&formula, Config::new(matches));
-    trace!(checker, "proof_start: {}\n", formula.proof_start);
-    let ok = check(&mut formula, &proof, &mut checker);
-    trace!(checker, "proof_start: {}\n", formula.proof_start);
-    trace!(checker, "propcount: {}\n", checker.propcount);
-    trace!(checker, "ratcalls: {}\n", checker.ratcalls);
-    trace!(checker, "rupcalls: {}\n", checker.rupcalls);
+    let mut checker = Checker::new(parser, Config::new(matches));
+    let ok = check(&mut checker);
     echo!("s {}", if ok { "ACCEPTED" } else { "REJECTED" });
     process::exit(if ok { 0 } else { 1 });
 }

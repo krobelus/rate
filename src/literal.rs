@@ -3,12 +3,28 @@
 use crate::memory::Offset;
 use std::{fmt, fmt::Display, ops};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Variable(pub u32);
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
+pub struct Variable(u32);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Literal {
     encoding: u32,
+}
+
+impl Variable {
+    pub fn new(value: u32) -> Variable {
+        Variable(value)
+    }
+}
+
+impl Offset for Variable {
+    fn as_offset(self) -> usize {
+        self.0 as usize
+    }
+}
+
+pub fn literal_array_len(maxvar: Variable) -> usize {
+    2 * (maxvar.as_offset() + 1)
 }
 
 impl Literal {

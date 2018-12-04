@@ -29,8 +29,8 @@ macro_rules! echo {
 
 // trace of the algorithm, for comparison against crate
 macro_rules! trace {
-    ($checker:expr, $($arg:tt)*) => {{
-        if $checker.config.trace
+    ($constants:expr, $($arg:tt)*) => {{
+        if $constants.config.trace
         {
             print!($($arg)*);
         }

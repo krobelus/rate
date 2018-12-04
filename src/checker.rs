@@ -2,34 +2,54 @@
 
 use crate::{
     assignment::{assign, reset_assignment, was_assigned_before, Assignment},
+    clause::{clause_as_slice, Clause, ClauseView, Lemma},
     config::Config,
-    formula::{member, Clause, Formula, Lemma, Proof},
     literal::Literal,
-    memory::TypedArray,
+    memory::{Offset, TypedArray},
+    parser::Parser,
 };
 
-#[derive(Debug, PartialEq, Eq)]
 pub struct Checker {
-    pub assignment: Assignment,
+    state: State,
+    constants: Constants,
+}
+
+struct Constants {
+    config: Config,
+    clause_offset: TypedArray<Clause, usize>,
+    proof: TypedArray<usize, Lemma>,
+}
+
+struct State {
+    assignment: Assignment,
     // The last unit that was propagated because of this clause, or Literal::new(0).
-    pub clause_to_unit: TypedArray<Clause, Literal>,
-    pub lemma_to_level: TypedArray<Clause, usize>,
-    pub propcount: usize,
-    pub ratcalls: usize,
-    pub rupcalls: usize,
-    pub config: Config,
+    clause_to_unit: TypedArray<Clause, Literal>,
+    lemma_to_level: TypedArray<Clause, usize>,
+    proof_start: Clause,
+    clause_active: TypedArray<Clause, bool>,
+    db: TypedArray<usize, Literal>,
 }
 
 impl Checker {
-    pub fn new(formula: &Formula, config: Config) -> Checker {
+    pub fn new(parser: Parser, config: Config) -> Checker {
+        let num_clauses = parser.clause_offset.len();
+        let maxvar = parser.maxvar;
         Checker {
-            assignment: Assignment::new(formula.maxvar as usize),
-            clause_to_unit: TypedArray::new(Literal::new(0), formula.num_clauses()),
-            lemma_to_level: TypedArray::new(0, formula.num_clauses()),
-            propcount: 0,
-            ratcalls: 0,
-            rupcalls: 0,
-            config: config,
+            constants: Constants {
+                config: config,
+                clause_offset: TypedArray::from(parser.clause_offset),
+                proof: TypedArray::from(parser.proof),
+            },
+            state: State {
+                clause_active: TypedArray::new(true, num_clauses),
+                proof_start: parser.proof_start,
+
+                db: TypedArray::<usize, Literal>::from(parser.db),
+
+                assignment: Assignment::new(maxvar),
+                clause_to_unit: TypedArray::new(Literal::new(0), num_clauses),
+                lemma_to_level: TypedArray::new(0, num_clauses),
+            },
         }
     }
 }
@@ -42,23 +62,53 @@ enum ClauseStatus {
     Unit(Literal),
 }
 
-fn clause_status(formula: &Formula, assignment: &Assignment, c: Clause) -> ClauseStatus {
-    clause_status_impl(formula, assignment, c, None)
+macro_rules! clause_view {
+    ($state:expr, $constants:expr, $clause:expr) => {
+        ClauseView::new(
+            $clause,
+            clause_as_slice(&$state.db, &$constants.clause_offset, $clause),
+        )
+    };
+}
+
+macro_rules! clauses {
+    ($state:expr, $constants:expr) => {
+        clauses(
+            $state.proof_start,
+            &$state.clause_active,
+            &$state.db,
+            &$constants.clause_offset,
+        )
+    };
+}
+
+fn clauses<'a>(
+    proof_start: Clause,
+    clause_active: &'a TypedArray<Clause, bool>,
+    db: &'a TypedArray<usize, Literal>,
+    clause_offset: &'a TypedArray<Clause, usize>,
+) -> impl Iterator<Item = ClauseView<'a>> + 'a {
+    (0..proof_start.as_offset())
+        .map(Clause)
+        .filter(move |&c| clause_active[c])
+        .map(move |c| ClauseView::new(c, clause_as_slice(db, clause_offset, c)))
+}
+
+fn clause_status(clause: &[Literal], assignment: &Assignment) -> ClauseStatus {
+    clause_status_impl(clause, assignment, None)
 }
 
 fn clause_status_before(
-    formula: &Formula,
+    clause: &[Literal],
     assignment: &Assignment,
-    c: Clause,
     before_level: usize,
 ) -> ClauseStatus {
-    clause_status_impl(formula, assignment, c, Some(before_level))
+    clause_status_impl(clause, assignment, Some(before_level))
 }
 
 fn clause_status_impl(
-    formula: &Formula,
+    clause: &[Literal],
     assignment: &Assignment,
-    c: Clause,
     before_level: Option<usize>,
 ) -> ClauseStatus {
     let mut unknown_count = 0;
@@ -68,12 +118,12 @@ fn clause_status_impl(
             .map(|level| was_assigned_before(assignment, l, level))
             .unwrap_or(assignment[l])
     };
-    for l in formula.clause(c) {
-        if is_assigned(l) {
+    for l in clause {
+        if is_assigned(*l) {
             return ClauseStatus::Satisfied;
         }
-        if !is_assigned(-l) {
-            unit = l;
+        if !is_assigned(-*l) {
+            unit = *l;
             unknown_count += 1;
         }
     }
@@ -84,46 +134,93 @@ fn clause_status_impl(
     }
 }
 
-fn propagate_temporarily(formula: &Formula, checker: &mut Checker, l: Literal) -> bool {
-    propagate_literal(formula, checker, l, None)
+macro_rules! propagate_literal {
+    ($literal:expr, $reason:expr, $state:expr, $constants:expr) => {
+        propagate_literal(
+            $literal,
+            $reason,
+            &mut $state.clause_to_unit,
+            &mut $state.assignment,
+            &$constants,
+            &$state.clause_active,
+            $state.proof_start,
+            &$state.db,
+        )
+    };
 }
 
 fn propagate_literal(
-    formula: &Formula,
-    checker: &mut Checker,
     l: Literal,
     reason: Option<Clause>,
+    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    assignment: &mut Assignment,
+    constants: &Constants,
+    clause_active: &TypedArray<Clause, bool>,
+    proof_start: Clause,
+    db: &TypedArray<usize, Literal>,
 ) -> bool {
     {
-        trace!(checker, "prop {}\n", l);
-        trace!(checker, "assignment[{}] :", checker.assignment.len());
-        for lit in &checker.assignment {
-            trace!(checker, " {}", lit);
+        trace!(constants, "prop {}\n", l);
+        trace!(constants, "assignment[{}] :", assignment.len());
+        for lit in assignment as &Assignment {
+            trace!(constants, " {}", lit);
         }
-        trace!(checker, "\n");
+        trace!(constants, "\n");
     }
-    checker.propcount += 1;
-    if checker.assignment[-l] {
+    if assignment[-l] {
         return true;
     }
-    if checker.assignment[l] {
+    if assignment[l] {
         return false;
     }
     reason.map(|unit_clause| {
-        ensure!(formula.clause_active[unit_clause]);
-        checker.clause_to_unit[unit_clause] = l;
+        ensure!(clause_active[unit_clause]);
+        clause_to_unit[unit_clause] = l;
     });
-    assign(&mut checker.assignment, l);
-    propagate(formula, checker, reason.is_some())
-}
-
-fn propagate(formula: &Formula, checker: &mut Checker, record_reasons: bool) -> bool {
-    for c in formula.clauses() {
-        match clause_status(&formula, &checker.assignment, c) {
+    assign(assignment, l);
+    for clause in clauses(proof_start, &clause_active, &db, &constants.clause_offset) {
+        match clause_status(clause.literals, &assignment) {
             ClauseStatus::Falsified => return true,
             ClauseStatus::Unit(literal) => {
-                let reason = if record_reasons { Some(c) } else { None };
-                if propagate_literal(formula, checker, literal, reason) {
+                if propagate_literal(
+                    literal,
+                    reason.and(Some(clause.id)),
+                    clause_to_unit,
+                    assignment,
+                    constants,
+                    clause_active,
+                    proof_start,
+                    db,
+                ) {
+                    return true;
+                }
+            }
+            ClauseStatus::Satisfied | ClauseStatus::Unknown => (),
+        }
+    }
+    false
+}
+
+fn propagate(state: &mut State, constants: &Constants, record_reasons: bool) -> bool {
+    for clause in clauses!(state, constants) {
+        match clause_status(clause.literals, &state.assignment) {
+            ClauseStatus::Falsified => return true,
+            ClauseStatus::Unit(literal) => {
+                let reason = if record_reasons {
+                    Some(clause.id)
+                } else {
+                    None
+                };
+                if propagate_literal(
+                    literal,
+                    reason,
+                    &mut state.clause_to_unit,
+                    &mut state.assignment,
+                    constants,
+                    &state.clause_active,
+                    state.proof_start,
+                    &state.db,
+                ) {
                     return true;
                 }
             }
@@ -142,113 +239,178 @@ macro_rules! preserve_assignment {
     }};
 }
 
-fn is_rat_on(
-    formula: &Formula,
-    checker: &mut Checker,
+fn is_resolvent_rup(
+    c: ClauseView,
+    d: ClauseView,
     pivot: Literal,
-    c: Clause,
-    d: Clause,
+    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    mut assignment: &mut Assignment,
+    constants: &Constants,
+    clause_active: &TypedArray<Clause, bool>,
+    proof_start: Clause,
+    db: &TypedArray<usize, Literal>,
 ) -> bool {
-    trace!(checker, "is_rat_on({}, {}) - {}\n", c, d, formula.clause(d));
+    trace!(constants, "is_resolvent_rup({}, {})\n", c, d);
     preserve_assignment!(
-        &mut checker.assignment,
-        formula
-            .clause(c)
-            .any(|literal| propagate_temporarily(formula, checker, -literal))
-            || formula
-                .clause(d)
-                .filter(|literal| *literal != -pivot)
-                .any(|literal| propagate_temporarily(formula, checker, -literal))
+        &mut assignment,
+        c.iter()
+            .chain(d.iter().filter(|&literal| *literal != -pivot))
+            .any(|&literal| propagate_literal(
+                -literal,
+                None,
+                clause_to_unit,
+                assignment,
+                constants,
+                clause_active,
+                proof_start,
+                db
+            ))
     )
 }
 
-pub fn rat(formula: &Formula, checker: &mut Checker, c: Clause) -> bool {
-    trace!(checker, "rat({}) - {}\n", c, formula.clause(c));
-    checker.ratcalls += 1;
-    let pivot = formula.clause(c).next().unwrap();
-    let ok = formula
-        .clauses()
-        .filter(|d| member(&formula, -pivot, *d))
-        .all(|d| is_rat_on(formula, checker, pivot, c, d));
-    if !ok {
-        trace!(checker, "RAT check failed for clause {}", formula.clause(c));
-    }
-    ok
+fn member(needle: Literal, clause: &[Literal]) -> bool {
+    clause.iter().position(|&lit| needle == lit).is_some()
 }
 
-pub fn rup(formula: &Formula, checker: &mut Checker, c: Clause) -> bool {
-    trace!(checker, "rup({}) - {}\n", c, formula.clause(c));
-    checker.rupcalls += 1;
-    trace!(checker, "propagating reverse clause\n");
+fn rat(
+    clause: ClauseView,
+    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    assignment: &mut Assignment,
+    constants: &Constants,
+    proof_start: Clause,
+    clause_active: &TypedArray<Clause, bool>,
+    db: &TypedArray<usize, Literal>,
+) -> bool {
+    trace!(constants, "rat({}) - {}\n", clause.id, clause);
+    let pivot = clause[0];
+    clauses(proof_start, &clause_active, &db, &constants.clause_offset)
+        .filter(|d| member(-pivot, d.literals))
+        .all(|d| {
+            is_resolvent_rup(
+                clause,
+                d,
+                pivot,
+                clause_to_unit,
+                assignment,
+                constants,
+                &clause_active,
+                proof_start,
+                &db,
+            )
+        })
+}
+
+fn rup(
+    clause: ClauseView,
+    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    mut assignment: &mut Assignment,
+    constants: &Constants,
+    proof_start: Clause,
+    clause_active: &TypedArray<Clause, bool>,
+    db: &TypedArray<usize, Literal>,
+) -> bool {
+    trace!(constants, "rup({}) - {}\n", clause.id, clause);
+    trace!(constants, "propagating reverse clause\n");
     preserve_assignment!(
-        &mut checker.assignment,
-        formula
-            .clause(c)
-            .any(|literal| propagate_temporarily(formula, checker, -literal))
+        &mut assignment,
+        clause.into_iter().any(|&literal| propagate_literal(
+            -literal,
+            None,
+            clause_to_unit,
+            assignment,
+            constants,
+            clause_active,
+            proof_start,
+            db,
+        ))
     )
 }
 
-fn forward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause) -> bool {
-    ensure!(lemma == formula.proof_start);
-    checker.lemma_to_level[lemma] = checker.assignment.len();
-    if let ClauseStatus::Unit(literal) = clause_status(formula, &checker.assignment, lemma) {
-        if propagate_literal(formula, checker, literal, Some(lemma)) {
+fn forward_addition(state: &mut State, constants: &Constants, clause: Clause) -> bool {
+    ensure!(clause == state.proof_start);
+    state.lemma_to_level[clause] = state.assignment.len();
+    let status = clause_status(
+        clause_view!(state, constants, clause).literals,
+        &state.assignment,
+    );
+    if let ClauseStatus::Unit(literal) = status {
+        if propagate_literal!(literal, Some(clause), state, constants) {
             return true;
         }
     }
-    formula.proof_start += 1;
+    state.proof_start += 1;
     false
 }
 
-fn backward_addition(formula: &mut Formula, checker: &mut Checker, lemma: Clause) -> bool {
-    ensure!(!formula.clause(lemma).empty());
-    ensure!(lemma == formula.proof_start);
-    let level = checker.lemma_to_level[lemma];
-    reset_assignment(&mut checker.assignment, level);
-    if checker.clause_to_unit[lemma] == Literal::new(0) {
+fn backward_addition(state: &mut State, constants: &Constants, c: Clause) -> bool {
+    let clause = clause_view!(state, constants, c);
+    ensure!(clause.len() != 0);
+    ensure!(clause.id == state.proof_start);
+    let level = state.lemma_to_level[clause.id];
+    reset_assignment(&mut state.assignment, level);
+    if state.clause_to_unit[clause.id] == Literal::new(0) {
         // No need to check clauses that were not used to derive a conflict.
         return true;
     }
-    rup(&formula, checker, lemma) || rat(&formula, checker, lemma)
+    rup(
+        clause,
+        &mut state.clause_to_unit,
+        &mut state.assignment,
+        &constants,
+        state.proof_start,
+        &state.clause_active,
+        &state.db,
+    ) || rat(
+        clause,
+        &mut state.clause_to_unit,
+        &mut state.assignment,
+        &constants,
+        state.proof_start,
+        &state.clause_active,
+        &state.db,
+    )
 }
 
-fn forward_deletion(formula: &mut Formula, checker: &mut Checker, c: Clause) -> bool {
+fn forward_deletion(state: &mut State, constants: &Constants, c: Clause) -> bool {
     ensure!(
-        formula.clause_active[c],
+        state.clause_active[c],
         "Clause {} deleted multiple times.",
         c
     );
-    let recorded_unit = checker.clause_to_unit[c];
-    let level = checker.assignment.level_prior_to_assigning(recorded_unit);
-    let handle_deletion = !checker.config.skip_deletions
+    let recorded_unit = state.clause_to_unit[c];
+    let level = state.assignment.level_prior_to_assigning(recorded_unit);
+    let handle_deletion = !constants.config.skip_deletions
         && recorded_unit != Literal::new(0)
-        && clause_status_before(formula, &checker.assignment, c, level)
-            == ClauseStatus::Unit(recorded_unit);
-    formula.clause_active[c] = false;
+        && clause_status_before(
+            clause_as_slice(&state.db, &constants.clause_offset, c),
+            &state.assignment,
+            level,
+        ) == ClauseStatus::Unit(recorded_unit);
+    state.clause_active[c] = false;
     if handle_deletion {
-        reset_assignment(&mut checker.assignment, level);
-        propagate(formula, checker, true);
+        reset_assignment(&mut state.assignment, level);
+        propagate(state, constants, true);
     }
     false
 }
 
-fn backward_deletion(formula: &mut Formula, c: Clause) -> bool {
-    ensure!(!formula.clause_active[c]);
-    formula.clause_active[c] = true;
+fn backward_deletion(state: &mut State, c: Clause) -> bool {
+    ensure!(!state.clause_active[c], "Clause must not be deleted twice.");
+    state.clause_active[c] = true;
     true
 }
 
-fn forward(formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> Option<usize> {
-    for (i, lemma) in proof.into_iter().enumerate() {
+fn forward(state: &mut State, constants: &Constants) -> Option<usize> {
+    for (i, lemma) in constants.proof.into_iter().enumerate() {
         let conflict_detected = match lemma {
-            Lemma::Deletion(clause) => forward_deletion(formula, checker, *clause),
-            Lemma::Addition(clause) => {
-                let conflict_claimed = formula.clause(*clause).empty();
+            &Lemma::Deletion(clause) => forward_deletion(state, constants, clause),
+            &Lemma::Addition(clause) => {
+                let conflict_claimed = clause_view!(state, constants, clause).len() == 0;
                 if conflict_claimed {
                     warn!("conflict claimed but not detected");
                     return None;
                 }
-                forward_addition(formula, checker, *clause)
+                forward_addition(state, constants, clause)
             }
         };
         if conflict_detected {
@@ -258,20 +420,14 @@ fn forward(formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> Optio
     None
 }
 
-fn backward(
-    formula: &mut Formula,
-    proof: &Proof,
-    checker: &mut Checker,
-    conflict_at: usize,
-) -> bool {
-    for i in (0..=conflict_at).rev() {
-        let lemma = proof[i];
-
+fn backward(state: &mut State, constants: &Constants, conflict_at: usize) -> bool {
+    let proof = constants.proof.as_slice();
+    for lemma in proof[0..=conflict_at].iter().rev() {
         let accepted = match lemma {
-            Lemma::Deletion(clause) => backward_deletion(formula, clause),
-            Lemma::Addition(clause) => {
-                let ok = backward_addition(formula, checker, clause);
-                formula.proof_start -= 1;
+            &Lemma::Deletion(clause) => backward_deletion(state, clause),
+            &Lemma::Addition(clause) => {
+                let ok = backward_addition(state, constants, clause);
+                state.proof_start -= 1;
                 ok
             }
         };
@@ -282,11 +438,10 @@ fn backward(
     true
 }
 
-pub fn check(formula: &mut Formula, proof: &Proof, checker: &mut Checker) -> bool {
-    if propagate(formula, checker, true) {
-        return true;
-    }
-    forward(formula, proof, checker).map_or(false, |conflict_at| {
-        backward(formula, proof, checker, conflict_at)
-    })
+pub fn check(checker: &mut Checker) -> bool {
+    let constants = &checker.constants;
+    let state = &mut checker.state;
+    propagate(state, constants, true)
+        || forward(state, constants)
+            .map_or(false, |conflict_at| backward(state, constants, conflict_at))
 }

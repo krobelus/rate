@@ -1,9 +1,9 @@
 //! Abstraction for a partial assignment
 
 use crate::{
-    formula::{Clause, Formula},
-    literal::Literal,
-    memory::{Stack, TypedArray},
+    clause::ClauseView,
+    literal::{literal_array_len, Literal, Variable},
+    memory::{Offset, Stack, TypedArray},
 };
 use ansi_term::Colour;
 use std::{
@@ -23,12 +23,11 @@ pub struct Assignment {
 }
 
 impl Assignment {
-    pub fn new(num_variables: usize) -> Assignment {
-        let array_size_literals = 2 * (num_variables + 1);
+    pub fn new(maxvar: Variable) -> Assignment {
         Assignment {
-            map: TypedArray::new(false, array_size_literals),
-            stack: Stack::new(Literal::new(0), num_variables),
-            position_in_stack: TypedArray::new(0, array_size_literals),
+            map: TypedArray::new(false, literal_array_len(maxvar)),
+            stack: Stack::new(Literal::new(0), maxvar.as_offset()),
+            position_in_stack: TypedArray::new(0, literal_array_len(maxvar)),
         }
     }
     pub fn len(&self) -> usize {
@@ -100,27 +99,19 @@ pub fn was_assigned_before(assignment: &Assignment, l: Literal, level: usize) ->
     assignment[l] && assignment.position_in_stack[l] < level
 }
 
-fn format_clause_under_assignment(formula: &Formula, assignment: &Assignment, c: Clause) -> String {
+#[allow(dead_code)]
+fn format_clause_under_assignment(clause: ClauseView, assignment: &Assignment) -> String {
     let mut result = String::new();
-    for l in formula.clause(c) {
-        let style = if assignment[l] {
+    for &literal in clause.literals {
+        let style = if assignment[literal] {
             Colour::Green.normal()
-        } else if assignment[-l] {
+        } else if assignment[-literal] {
             Colour::Red.normal()
         } else {
             Colour::Yellow.normal()
         };
-        result += &format!("{}", style.paint(&format!("{} ", l)));
+        result += &format!("{}", style.paint(&format!("{} ", literal)));
     }
     result += "\n";
-    result
-}
-
-#[allow(dead_code)]
-pub fn format_formula_under_assignment(formula: &Formula, assignment: &Assignment) -> String {
-    let mut result = String::new();
-    for c in formula.clauses() {
-        result += &format_clause_under_assignment(&formula, &assignment, c);
-    }
     result
 }

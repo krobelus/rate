@@ -1,9 +1,9 @@
 //! DIMACS and DRAT parser
 
 use crate::{
-    formula::{Clause, Formula, Lemma, Proof},
-    literal::Literal,
-    memory::{Offset, TypedArray},
+    clause::{Clause, ClauseView, Lemma},
+    literal::{Literal, Variable},
+    memory::Offset,
 };
 use memmap::MmapOptions;
 use std::{
@@ -14,11 +14,11 @@ use std::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
-struct Parser {
-    pub maxvar: u32,
+pub struct Parser {
+    pub maxvar: Variable,
     pub db: Vec<Literal>,
-    pub clause_to_offset: Vec<usize>,
-    pub clause_scheduled_for_deletion: Vec<bool>,
+    pub clause_offset: Vec<usize>,
+    clause_scheduled_for_deletion: Vec<bool>,
     pub proof_start: Clause,
     pub proof: Vec<Lemma>,
 }
@@ -30,23 +30,9 @@ struct ParseError {
     why: String,
 }
 
-pub fn parse_files<'a>(formula_file: &'a str, proof_file: &str) -> (Formula, Proof) {
+pub fn parse_files<'a>(formula_file: &'a str, proof_file: &str) -> Parser {
     let parser = try_parse(formula_file, parse_formula);
-    extract_formula_proof(try_parse(proof_file, |input| parse_proof(input, parser)))
-}
-
-fn extract_formula_proof(parser: Parser) -> (Formula, Proof) {
-    let num_clauses = parser.clause_to_offset.len();
-    (
-        Formula {
-            maxvar: parser.maxvar,
-            db: TypedArray::<usize, Literal>::from(parser.db),
-            clause_to_offset: TypedArray::from(parser.clause_to_offset),
-            clause_active: TypedArray::new(true, num_clauses),
-            proof_start: parser.proof_start,
-        },
-        TypedArray::from(parser.proof),
-    )
+    try_parse(proof_file, |input| parse_proof(input, parser))
 }
 
 fn try_parse<'a, T>(filename: &'a str, parser: impl FnOnce(&[u8]) -> Result<T, ParseError>) -> T {
@@ -73,20 +59,12 @@ where
         .unwrap()
 }
 
-fn show_slice_as_clause(clause: &[Literal]) -> String {
-    let mut result = String::new();
-    for literal in clause {
-        result += &format!("{} ", literal);
-    }
-    result + "0"
-}
-
 fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Vec<Literal>) -> Literal {
     if literal.zero() {
         match find_clause(&buffer[..], &parser) {
             None => warn!(
                 "Deleted clause is not present in the formula: {}",
-                show_slice_as_clause(&buffer[..])
+                ClauseView::new(Clause(0), &buffer)
             ),
             Some(clause) => {
                 parser.clause_scheduled_for_deletion[clause.as_offset()] = true;
@@ -105,24 +83,22 @@ fn add_deletion_ascii(parser: &mut Parser, input: &[u8], buffer: &mut Vec<Litera
 }
 
 fn start_clause(parser: &mut Parser) -> Clause {
-    let clause = parser.clause_to_offset.len();
-    parser.clause_to_offset.push(parser.db.len());
+    let clause = parser.clause_offset.len();
+    parser.clause_offset.push(parser.db.len());
     parser.clause_scheduled_for_deletion.push(false);
     Clause(clause)
 }
 
 fn add_literal(parser: &mut Parser, literal: Literal) {
-    parser.db.push(literal);
-}
-
-fn my_add_literal(parser: &mut Parser, literal: Literal) {
-    parser.maxvar = cmp::max(parser.maxvar, literal.var().0);
-    add_literal(parser, literal);
+    if literal != Literal::new(0) {
+        parser.maxvar = cmp::max(parser.maxvar, literal.var());
+        parser.db.push(literal);
+    }
 }
 
 fn add_literal_ascii(parser: &mut Parser, input: &[u8]) -> Literal {
     let literal = Literal::new(convert_ascii::<i32>(input));
-    my_add_literal(parser, literal);
+    add_literal(parser, literal);
     literal
 }
 
@@ -132,9 +108,9 @@ named!(formula_header<&[u8], Parser>,
            tag!("p cnf ") >>
                maxvar: unsigned >> tag!(" ")>>
                _num_clauses: unsigned >>
-               (Parser { maxvar: maxvar,
+               (Parser { maxvar: Variable::new(maxvar),
                           db: Vec::new(),
-                          clause_to_offset: Vec::new(),
+                          clause_offset: Vec::new(),
                           clause_scheduled_for_deletion: Vec::new(),
                           proof_start: Clause(0),
                           proof: Vec::new(),
@@ -158,26 +134,31 @@ named!(unsigned<&[u8], u32>,
 );
 
 // TODO this assumes that there are no duplicates
-fn clauses_equal(parser: &Parser, needle: &[Literal], clause: Clause) -> bool {
-    let mut offset = parser.clause_to_offset[clause.as_offset()];
-    loop {
-        let literal = parser.db[offset];
-        if literal == Literal::new(0) {
-            break;
-        }
-        if !(needle.iter().any(|l| *l == literal)) {
-            return false;
-        }
-        offset += 1
-    }
-    needle.len() == (offset - parser.clause_to_offset[clause.as_offset()])
+fn clauses_equal(needle: &[Literal], clause: ClauseView) -> bool {
+    clause
+        .iter()
+        .all(|literal| needle.iter().any(|l| l == literal))
+        && needle.len() == clause.len()
 }
 
 fn find_clause(needle: &[Literal], parser: &Parser) -> Option<Clause> {
-    (0..parser.clause_to_offset.len())
+    let offset = &parser.clause_offset;
+    (0..offset.len())
         .map(Clause)
         .filter(|c| !parser.clause_scheduled_for_deletion[c.as_offset()])
-        .filter(|c| clauses_equal(parser, needle, *c))
+        .filter(|&c| {
+            clauses_equal(
+                needle,
+                ClauseView::new(
+                    c,
+                    &parser.db[offset[c.0]..if c.0 == offset.len() - 1 {
+                        parser.db.len()
+                    } else {
+                        offset[c.0 + 1]
+                    }],
+                ),
+            )
+        })
         .next()
 }
 
@@ -280,7 +261,7 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
             }
             LemmaPositionBinary::Addition => match number_binary(input) {
                 (input, literal) => {
-                    my_add_literal(&mut parser, literal);
+                    add_literal(&mut parser, literal);
                     if literal == Literal::new(0) {
                         state = LemmaPositionBinary::Start;
                     }
@@ -311,7 +292,7 @@ enum LemmaPositionText {
 }
 
 fn parse_proof(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
-    parser.proof_start = Clause(parser.clause_to_offset.len());
+    parser.proof_start = Clause(parser.clause_offset.len());
 
     let mut binary = false;
 
@@ -323,12 +304,16 @@ fn parse_proof(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
             binary = true;
         }
     }
-    if binary {
+    let result = if binary {
         eprintln!("Turning on binary mode.");
         Ok(parse_proof_binary(input, parser))
     } else {
         parse_proof_text(input, parser)
-    }
+    };
+    result.map(|mut parser| {
+        parser.clause_offset.push(parser.db.len());
+        parser
+    })
 }
 
 fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
@@ -459,9 +444,9 @@ p cnf 2 2
         assert_eq!(
             sample_formula(),
             Parser {
-                maxvar: 2,
-                db: vec_of_literals!(1, 2, 0, -1, -2, 0),
-                clause_to_offset: vec!(0, 3),
+                maxvar: Variable::new(2),
+                db: vec_of_literals!(1, 2, -1, -2),
+                clause_offset: vec!(0, 2),
                 clause_scheduled_for_deletion: vec!(false, false),
                 proof_start: Clause(0),
                 proof: Vec::new(),
@@ -480,9 +465,9 @@ p cnf 2 2
         assert_eq!(
             parse_proof(b"1 2 3 0\nd 1 2 0", sample_formula()),
             Ok(Parser {
-                maxvar: 3,
-                db: vec_of_literals!(1, 2, 0, -1, -2, 0, 1, 2, 3, 0),
-                clause_to_offset: vec!(0, 3, 6),
+                maxvar: Variable::new(3),
+                db: vec_of_literals!(1, 2, -1, -2, 1, 2, 3),
+                clause_offset: vec!(0, 2, 4, 7),
                 clause_scheduled_for_deletion: vec!(true, false, false),
                 proof_start: Clause(2),
                 proof: vec![Lemma::Addition(Clause(2)), Lemma::Deletion(Clause(0))]
