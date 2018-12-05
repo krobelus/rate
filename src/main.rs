@@ -4,6 +4,8 @@ extern crate nom;
 extern crate derive_more;
 #[macro_use]
 extern crate clap;
+#[macro_use(defer)]
+extern crate scopeguard;
 
 #[macro_use]
 mod config;

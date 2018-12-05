@@ -1,7 +1,6 @@
 //! Abstraction for a partial assignment
 
 use crate::{
-    clause::ClauseView,
     literal::{literal_array_len, Literal, Variable},
     memory::{Offset, Stack, TypedArray},
 };
@@ -97,9 +96,9 @@ pub fn was_assigned_before(assignment: &Assignment, l: Literal, level: usize) ->
 }
 
 #[allow(dead_code)]
-fn format_clause_under_assignment(clause: ClauseView, assignment: &Assignment) -> String {
+fn format_clause_under_assignment(clause: &[Literal], assignment: &Assignment) -> String {
     let mut result = String::new();
-    for &literal in clause.literals {
+    for &literal in clause {
         let style = if assignment[literal] {
             Colour::Green.normal()
         } else if assignment[-literal] {

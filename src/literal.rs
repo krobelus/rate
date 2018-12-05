@@ -4,7 +4,7 @@ use crate::memory::Offset;
 use std::{fmt, fmt::Display, ops};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
-pub struct Variable(u32);
+pub struct Variable(pub u32);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Literal {

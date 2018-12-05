@@ -11,6 +11,7 @@ memmap = "*"
 ansi_term = "*"
 derive_more = "*"
 clap = "*"
+scopeguard = "*"
 
 [profile.release]
 panic = "abort"

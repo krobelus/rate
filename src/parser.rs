@@ -1,7 +1,7 @@
 //! DIMACS and DRAT parser
 
 use crate::{
-    clause::{Clause, ClauseView, Lemma},
+    clause::{Clause, ClauseCopy, Lemma},
     literal::{Literal, Variable},
     memory::Offset,
 };
@@ -64,7 +64,7 @@ fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Vec<Literal>
         match find_clause(&buffer[..], &parser) {
             None => warn!(
                 "Deleted clause is not present in the formula: {}",
-                ClauseView::new(Clause(0), &buffer)
+                ClauseCopy::new(Clause(0), &buffer)
             ),
             Some(clause) => {
                 parser.clause_scheduled_for_deletion[clause.as_offset()] = true;
@@ -134,7 +134,7 @@ named!(unsigned<&[u8], u32>,
 );
 
 // TODO this assumes that there are no duplicates
-fn clauses_equal(needle: &[Literal], clause: ClauseView) -> bool {
+fn clauses_equal(needle: &[Literal], clause: &[Literal]) -> bool {
     clause
         .iter()
         .all(|literal| needle.iter().any(|l| l == literal))
@@ -149,14 +149,11 @@ fn find_clause(needle: &[Literal], parser: &Parser) -> Option<Clause> {
         .filter(|&c| {
             clauses_equal(
                 needle,
-                ClauseView::new(
-                    c,
-                    &parser.db[offset[c.0]..if c.0 == offset.len() - 1 {
-                        parser.db.len()
-                    } else {
-                        offset[c.0 + 1]
-                    }],
-                ),
+                &parser.db[offset[c.0]..if c.0 == offset.len() - 1 {
+                    parser.db.len()
+                } else {
+                    offset[c.0 + 1]
+                }],
             )
         })
         .next()
