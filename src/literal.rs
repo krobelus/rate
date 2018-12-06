@@ -6,7 +6,7 @@ use std::{fmt, fmt::Display, ops};
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct Variable(pub u32);
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 pub struct Literal {
     encoding: u32,
 }

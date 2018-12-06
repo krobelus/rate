@@ -12,6 +12,7 @@ ansi_term = "*"
 derive_more = "*"
 clap = "*"
 scopeguard = "*"
+multimap = "*"
 
 [profile.release]
 panic = "abort"

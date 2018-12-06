@@ -6,12 +6,26 @@ use crate::{
     memory::Offset,
 };
 use memmap::MmapOptions;
+use multimap::MultiMap;
 use std::{
     cmp, fmt,
     fmt::{Display, Formatter},
     fs::File,
     io, str,
 };
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct HashableClause {
+    clause: Vec<Literal>,
+}
+
+impl<'a> HashableClause {
+    fn new(literals: &[Literal]) -> HashableClause {
+        let mut clause = literals.to_vec();
+        clause.sort();
+        HashableClause { clause: clause }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parser {
@@ -21,6 +35,7 @@ pub struct Parser {
     clause_scheduled_for_deletion: Vec<bool>,
     pub proof_start: Clause,
     pub proof: Vec<Lemma>,
+    clause_to_id: MultiMap<HashableClause, Clause>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -30,14 +45,31 @@ struct ParseError {
     why: String,
 }
 
-pub fn parse_files<'a>(formula_file: &'a str, proof_file: &str) -> Parser {
-    let parser = try_parse(formula_file, parse_formula);
-    try_parse(proof_file, |input| parse_proof(input, parser))
+impl Parser {
+    pub fn new() -> Parser {
+        Parser {
+            maxvar: Variable::new(0),
+            db: Vec::new(),
+            clause_offset: Vec::new(),
+            clause_scheduled_for_deletion: Vec::new(),
+            proof_start: Clause(0),
+            proof: Vec::new(),
+            clause_to_id: MultiMap::new(),
+        }
+    }
 }
 
-fn try_parse<'a, T>(filename: &'a str, parser: impl FnOnce(&[u8]) -> Result<T, ParseError>) -> T {
-    let data = read_file(filename).unwrap_or_else(|err| die!("{}", err));
-    parser(&data).unwrap_or_else(|err| die!("parse error at line {} col {}", err.line, err.col))
+pub fn parse_files<'a>(formula_file: &str, proof_file: &str) -> Parser {
+    let mut parser = Parser::new();
+    parse_formula(&mut parser, &read_or_die(formula_file))
+        .map(|err| die!("error parsing formula at line {} col {}", err.line, err.col));
+    parse_proof(&mut parser, &read_or_die(proof_file))
+        .map(|err| die!("error parsing proof at line {} col {}", err.line, err.col));
+    parser
+}
+
+fn read_or_die(filename: &str) -> Vec<u8> {
+    read_file(filename).unwrap_or_else(|err| die!("{}", err))
 }
 
 fn read_file(filename: &str) -> Result<Vec<u8>, io::Error> {
@@ -89,33 +121,35 @@ fn start_clause(parser: &mut Parser) -> Clause {
     Clause(clause)
 }
 
-fn add_literal(parser: &mut Parser, literal: Literal) {
-    if !literal.zero() {
+fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
+    if literal.zero() {
+        let begin = *parser.clause_offset.last().unwrap_or(&0);
+        let end = parser.db.len();
+        let clause = HashableClause::new(&parser.db.as_slice()[begin..end]);
+        parser
+            .clause_to_id
+            .insert(clause, Clause(parser.clause_offset.len() - 1));
+    } else {
         parser.maxvar = cmp::max(parser.maxvar, literal.var());
         parser.db.push(literal);
     }
 }
 
-fn add_literal_ascii(parser: &mut Parser, input: &[u8]) -> Literal {
+fn add_literal_ascii<'a, 'r>(parser: &'r mut Parser, input: &[u8]) -> Literal {
     let literal = Literal::new(convert_ascii::<i32>(input));
     add_literal(parser, literal);
     literal
 }
 
-named!(formula_header<&[u8], Parser>,
-       do_parse!(
-           many0!(comment) >>
-           tag!("p cnf ") >>
-               maxvar: unsigned >> tag!(" ")>>
-               _num_clauses: unsigned >>
-               (Parser { maxvar: Variable::new(maxvar),
-                          db: Vec::new(),
-                          clause_offset: Vec::new(),
-                          clause_scheduled_for_deletion: Vec::new(),
-                          proof_start: Clause(0),
-                          proof: Vec::new(),
-               })
-       ));
+named!(
+    formula_header<&[u8], ()>,
+    do_parse!(
+        many0!(comment)
+            >> tag!("p cnf ")
+            >> _maxvar: unsigned
+            >> tag!(" ")
+            >> _num_clauses: unsigned
+            >> ()));
 
 named!(comment<&[u8], ()>,
     do_parse!(
@@ -133,30 +167,14 @@ named!(unsigned<&[u8], u32>,
        )
 );
 
-// TODO this assumes that there are no duplicates
-fn clauses_equal(needle: &[Literal], clause: &[Literal]) -> bool {
-    clause
-        .iter()
-        .all(|literal| needle.iter().any(|l| l == literal))
-        && needle.len() == clause.len()
-}
-
-fn find_clause(needle: &[Literal], parser: &Parser) -> Option<Clause> {
-    let offset = &parser.clause_offset;
-    (0..offset.len())
-        .map(Clause)
-        .filter(|c| !parser.clause_scheduled_for_deletion[c.as_offset()])
-        .filter(|&c| {
-            clauses_equal(
-                needle,
-                &parser.db[offset[c.0]..if c.0 == offset.len() - 1 {
-                    parser.db.len()
-                } else {
-                    offset[c.0 + 1]
-                }],
-            )
-        })
-        .next()
+fn find_clause<'a>(needle: &[Literal], parser: &Parser) -> Option<Clause> {
+    let clause = HashableClause::new(needle);
+    parser.clause_to_id.get_vec(&clause).and_then(|clauses| {
+        clauses
+            .iter()
+            .map(|c| *c)
+            .find(|c| !parser.clause_scheduled_for_deletion[c.as_offset()])
+    })
 }
 
 enum ClauseState {
@@ -164,23 +182,28 @@ enum ClauseState {
     NotInLiteral,
 }
 
-fn parse_formula(input: &[u8]) -> Result<Parser, ParseError> {
+fn parse_formula<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError> {
     let mut line = 0;
     let mut col = 0;
 
-    let (rest, mut parser) = formula_header(input).map_err(|_| ParseError {
-        line: line,
-        col: col,
-        why: "Failed to parse DIMACS header".to_string(),
-    })?;
+    let result = formula_header(input);
+    if result.is_err() {
+        return Some(ParseError {
+            line: line,
+            col: col,
+            why: "Failed to parse DIMACS header".to_string(),
+        });
+    }
+    let input = result.ok().unwrap().0;
+
     let mut head = true;
     let mut state = ClauseState::NotInLiteral;
     let mut start = 0;
-    for i in 0..rest.len() {
-        let c = rest[i];
+    for i in 0..input.len() {
+        let c = input[i];
         line += if c == b'\n' { 1 } else { 0 };
         col = if c == b'\n' { 0 } else { col + 1 };
-        let error = || Err(ParseError::new(line, col, ""));
+        let error = || Some(ParseError::new(line, col, ""));
         match state {
             ClauseState::NotInLiteral => match c {
                 b' ' | b'\n' => (),
@@ -194,9 +217,9 @@ fn parse_formula(input: &[u8]) -> Result<Parser, ParseError> {
                 b'-' | b'0'..=b'9' => (),
                 b' ' | b'\n' => {
                     if head {
-                        start_clause(&mut parser);
+                        start_clause(&mut *parser);
                     }
-                    let literal = add_literal_ascii(&mut parser, &rest[start..i]);
+                    let literal = add_literal_ascii(&mut *parser, &input[start..i]);
                     head = literal.zero();
                     state = ClauseState::NotInLiteral;
                 }
@@ -207,11 +230,11 @@ fn parse_formula(input: &[u8]) -> Result<Parser, ParseError> {
     // handle missing newline at EOF
     match state {
         ClauseState::InLiteral => {
-            add_literal_ascii(&mut parser, &rest[start..]);
+            add_literal_ascii(parser, &input[start..]);
         }
         _ => (),
     }
-    Ok(parser)
+    None
 }
 
 fn lemma_binary(input: &[u8]) -> (&[u8], char) {
@@ -239,7 +262,7 @@ enum LemmaPositionBinary {
     Deletion,
 }
 
-fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
+fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
     let mut state = LemmaPositionBinary::Start;
     let mut buffer = Vec::new();
     while input.len() > 0 {
@@ -258,7 +281,7 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
             }
             LemmaPositionBinary::Addition => match number_binary(input) {
                 (input, literal) => {
-                    add_literal(&mut parser, literal);
+                    add_literal(parser, literal);
                     if literal.zero() {
                         state = LemmaPositionBinary::Start;
                     }
@@ -267,7 +290,7 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
             },
             LemmaPositionBinary::Deletion => match number_binary(input) {
                 (input, literal) => {
-                    add_deletion(&mut parser, literal, &mut buffer);
+                    add_deletion(parser, literal, &mut buffer);
                     if literal.zero() {
                         state = LemmaPositionBinary::Start;
                     }
@@ -276,7 +299,6 @@ fn parse_proof_binary(mut input: &[u8], mut parser: Parser) -> Parser {
             },
         }
     }
-    parser
 }
 
 #[derive(Debug)]
@@ -288,7 +310,7 @@ enum LemmaPositionText {
     DeletionLiteral,
 }
 
-fn parse_proof(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
+fn parse_proof<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError> {
     parser.proof_start = Clause(parser.clause_offset.len());
 
     let mut binary = false;
@@ -303,17 +325,16 @@ fn parse_proof(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
     }
     let result = if binary {
         eprintln!("Turning on binary mode.");
-        Ok(parse_proof_binary(input, parser))
+        parse_proof_binary(parser, input);
+        None
     } else {
-        parse_proof_text(input, parser)
+        parse_proof_text(parser, input)
     };
-    result.map(|mut parser| {
-        parser.clause_offset.push(parser.db.len());
-        parser
-    })
+    parser.clause_offset.push(parser.db.len());
+    result
 }
 
-fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseError> {
+fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: &[u8]) -> Option<ParseError> {
     let mut state = LemmaPositionText::Start;
     let mut head = true;
     let mut start = 0;
@@ -324,7 +345,7 @@ fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseErr
         let c = input[i];
         line += if c == b'\n' { 1 } else { 0 };
         col = if c == b'\n' { 0 } else { col + 1 };
-        let error = || Err(ParseError::new(line, col, ""));
+        let error = || Some(ParseError::new(line, col, ""));
         match state {
             LemmaPositionText::Start => match c {
                 b'\n' => head = true,
@@ -332,7 +353,7 @@ fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseErr
                 b'd' => state = LemmaPositionText::Deletion,
                 b'-' | b'0'..=b'9' => {
                     if head {
-                        let clause = start_clause(&mut parser);
+                        let clause = start_clause(parser);
                         parser.proof.push(Lemma::Addition(clause));
                     }
                     state = LemmaPositionText::LemmaLiteral;
@@ -342,7 +363,7 @@ fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseErr
             },
             LemmaPositionText::LemmaLiteral => match c {
                 b' ' | b'\n' => {
-                    let literal = add_literal_ascii(&mut parser, &input[start..i]);
+                    let literal = add_literal_ascii(&mut *parser, &input[start..i]);
                     head = literal.zero();
                     state = if head {
                         LemmaPositionText::Start
@@ -372,7 +393,7 @@ fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseErr
             },
             LemmaPositionText::DeletionLiteral => match c {
                 b' ' | b'\n' => {
-                    let literal = add_deletion_ascii(&mut parser, &input[start..i], &mut buffer);
+                    let literal = add_deletion_ascii(parser, &input[start..i], &mut buffer);
                     state = if literal.zero() {
                         LemmaPositionText::Start
                     } else {
@@ -386,14 +407,14 @@ fn parse_proof_text(input: &[u8], mut parser: Parser) -> Result<Parser, ParseErr
     }
     match state {
         LemmaPositionText::LemmaLiteral => {
-            add_literal_ascii(&mut parser, &input[start..]);
+            add_literal_ascii(parser, &input[start..]);
         }
         LemmaPositionText::DeletionLiteral => {
-            add_deletion_ascii(&mut parser, &input[start..], &mut buffer);
+            add_deletion_ascii(parser, &input[start..], &mut buffer);
         }
         _ => (),
     }
-    Ok(parser)
+    None
 }
 
 impl ParseError {
@@ -425,50 +446,66 @@ mod tests {
         ($($x:expr),*) => (vec!($(Literal::new($x)),*));
     }
 
+    #[allow(unused_macros)]
+    macro_rules! multimap(
+    { $($key:expr => $value:expr),+ } => {
+        {
+            let mut m = MultiMap::new();
+            $(
+                m.insert($key, $value);
+            )+
+            m
+        }
+     };
+);
+
     fn sample_formula() -> Parser {
-        parse_formula(
+        let mut parser = Parser::new();
+        assert!(parse_formula(
+            &mut parser,
             r#"c comment
 p cnf 2 2
 1 2 0
 -1 -2 0"#
                 .as_bytes(),
         )
-        .unwrap()
-    }
-
-    #[test]
-    fn valid_formula() {
-        assert_eq!(
-            sample_formula(),
-            Parser {
-                maxvar: Variable::new(2),
-                db: vec_of_literals!(1, 2, -1, -2),
-                clause_offset: vec!(0, 2),
-                clause_scheduled_for_deletion: vec!(false, false),
-                proof_start: Clause(0),
-                proof: Vec::new(),
-            }
-        );
+        .is_none());
+        parser
     }
 
     #[test]
     fn invalid_formulas() {
-        ensure!(parse_formula(b"p c").is_err());
-        ensure!(parse_formula(b"p cnf 1 1\na").is_err());
+        ensure!(parse_formula(&mut Parser::new(), b"p c").is_some());
+        ensure!(parse_formula(&mut Parser::new(), b"p cnf 1 1\na").is_some());
     }
 
     #[test]
-    fn valid_proof() {
+    fn valid_formula_and_proof() {
+        let mut parser = sample_formula();
+        parse_proof(&mut parser, b"1 2 3 0\nd 1 2 0");
         assert_eq!(
-            parse_proof(b"1 2 3 0\nd 1 2 0", sample_formula()),
-            Ok(Parser {
+            parser.clause_to_id,
+            multimap! {
+                HashableClause::new(&vec_of_literals!(1, 2)) => Clause(0),
+                HashableClause::new(&vec_of_literals!(-1, -2)) => Clause(1),
+                HashableClause::new(&vec_of_literals!(1, 2, 3)) => Clause(2)
+            }
+        );
+        assert_eq!(
+            parser,
+            Parser {
                 maxvar: Variable::new(3),
                 db: vec_of_literals!(1, 2, -1, -2, 1, 2, 3),
                 clause_offset: vec!(0, 2, 4, 7),
                 clause_scheduled_for_deletion: vec!(true, false, false),
                 proof_start: Clause(2),
-                proof: vec![Lemma::Addition(Clause(2)), Lemma::Deletion(Clause(0))]
-            })
+                proof: vec![Lemma::Addition(Clause(2)), Lemma::Deletion(Clause(0))],
+                clause_to_id: multimap! {
+                    HashableClause::new(&vec_of_literals!(1, 2)) => Clause(0),
+                    HashableClause::new(&vec_of_literals!(-1, -2)) => Clause(1),
+                    HashableClause::new(&vec_of_literals!(1, 2, 3)) => Clause(2)
+                }
+            }
         );
     }
 }
