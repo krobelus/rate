@@ -2,7 +2,7 @@
 
 use crate::{
     literal::Literal,
-    memory::{Offset, TypedArray},
+    memory::{Array, Offset, Slice, SliceMut},
 };
 use std::{
     fmt, ops,
@@ -52,24 +52,25 @@ impl fmt::Display for Clause {
 }
 
 pub fn clause_as_slice<'a>(
-    db: &'a TypedArray<usize, Literal>,
-    clause_offset: &TypedArray<Clause, usize>,
+    db: &'a Array<usize, Literal>,
+    clause_offset: &Array<Clause, usize>,
     c: Clause,
-) -> &'a [Literal] {
-    &db.as_slice()[clause_offset[c]..clause_offset[c + 1]]
+) -> Slice<'a, Literal> {
+    db.as_slice().range(clause_offset[c], clause_offset[c + 1])
 }
 
 pub fn clause_as_mut_slice<'a>(
-    db: &'a mut TypedArray<usize, Literal>,
-    clause_offset: &TypedArray<Clause, usize>,
+    db: &'a mut Array<usize, Literal>,
+    clause_offset: &Array<Clause, usize>,
     c: Clause,
-) -> &'a mut [Literal] {
-    &mut db.as_mut_slice()[clause_offset[c]..clause_offset[c + 1]]
+) -> SliceMut<'a, Literal> {
+    db.as_mut_slice()
+        .range(clause_offset[c], clause_offset[c + 1])
 }
 
 pub fn clause_as_copy(
-    db: &TypedArray<usize, Literal>,
-    clause_offset: &TypedArray<Clause, usize>,
+    db: &Array<usize, Literal>,
+    clause_offset: &Array<Clause, usize>,
     c: Clause,
 ) -> Vec<Literal> {
     clause_as_slice(db, clause_offset, c).to_vec()
@@ -94,6 +95,9 @@ impl ClauseCopy {
             id: id,
             literals: literals.to_vec(),
         }
+    }
+    pub fn slice(&self) -> Slice<Literal> {
+        Slice::new(&self.literals[..])
     }
 }
 

@@ -1,11 +1,11 @@
 //! Proof checking
 
 use crate::{
-    assignment::{assign, reset_assignment, was_assigned_before, Assignment},
+    assignment::Assignment,
     clause::{clause_as_copy, clause_as_mut_slice, clause_as_slice, Clause, ClauseCopy, Lemma},
     config::Config,
     literal::{literal_array_len, Literal, Variable},
-    memory::{Offset, TypedArray},
+    memory::{Array, Offset, Slice, SliceMut},
     parser::Parser,
 };
 
@@ -17,8 +17,8 @@ pub struct Checker {
 struct Constants {
     config: Config,
     maxvar: Variable,
-    clause_offset: TypedArray<Clause, usize>,
-    proof: TypedArray<usize, Lemma>,
+    clause_offset: Array<Clause, usize>,
+    proof: Array<usize, Lemma>,
 }
 
 type Watchlist = Vec<Option<Clause>>;
@@ -26,12 +26,12 @@ type Watchlist = Vec<Option<Clause>>;
 struct State {
     assignment: Assignment,
     // The last unit that was propagated because of this clause, or Literal::new(0).
-    clause_to_unit: TypedArray<Clause, Literal>,
-    lemma_to_level: TypedArray<Clause, usize>,
+    clause_to_unit: Array<Clause, Literal>,
+    lemma_to_level: Array<Clause, usize>,
     proof_start: Clause,
-    clause_active: TypedArray<Clause, bool>,
-    db: TypedArray<usize, Literal>,
-    watchlist: TypedArray<Literal, Watchlist>,
+    clause_active: Array<Clause, bool>,
+    db: Array<usize, Literal>,
+    watchlist: Array<Literal, Watchlist>,
 }
 
 impl Checker {
@@ -42,19 +42,19 @@ impl Checker {
             constants: Constants {
                 config: config,
                 maxvar: maxvar,
-                clause_offset: TypedArray::from(parser.clause_offset),
-                proof: TypedArray::from(parser.proof),
+                clause_offset: Array::from(parser.clause_offset),
+                proof: Array::from(parser.proof),
             },
             state: State {
-                clause_active: TypedArray::new(true, num_clauses),
+                clause_active: Array::new(true, num_clauses),
                 proof_start: parser.proof_start,
 
-                db: TypedArray::from(parser.db),
-                watchlist: TypedArray::new(Vec::new(), literal_array_len(maxvar)),
+                db: Array::from(parser.db),
+                watchlist: Array::new(Vec::new(), literal_array_len(maxvar)),
 
                 assignment: Assignment::new(maxvar),
-                clause_to_unit: TypedArray::new(Literal::new(0), num_clauses),
-                lemma_to_level: TypedArray::new(0, num_clauses),
+                clause_to_unit: Array::new(Literal::new(0), num_clauses),
+                lemma_to_level: Array::new(0, num_clauses),
             },
         };
         let state = &mut checker.state;
@@ -77,19 +77,19 @@ enum ClauseStatus {
 }
 
 fn initialize_watches(
-    watchlist: &mut TypedArray<Literal, Watchlist>,
-    db: &mut TypedArray<usize, Literal>,
+    watchlist: &mut Array<Literal, Watchlist>,
+    db: &mut Array<usize, Literal>,
     proof_start: Clause,
-    clause_offset: &TypedArray<Clause, usize>,
+    clause_offset: &Array<Clause, usize>,
 ) {
     let initial_clauses = (0..proof_start.as_offset()).map(Clause);
     for c in initial_clauses {
-        let literals = clause_as_mut_slice(db, &clause_offset, c);
-        initialize_watchlist_clause(c, literals, watchlist, None);
+        let mut literals = clause_as_mut_slice(db, &clause_offset, c);
+        initialize_watchlist_clause(c, &mut literals, watchlist, None);
     }
 }
 
-fn next_unassigned(clause: &[Literal], assignment: &Assignment, forbidden: usize) -> usize {
+fn next_unassigned(clause: Slice<Literal>, assignment: &Assignment, forbidden: usize) -> usize {
     for (i, &literal) in clause.iter().enumerate() {
         ensure!(!assignment[literal]);
         if i != forbidden && !assignment[-literal] {
@@ -100,18 +100,20 @@ fn next_unassigned(clause: &[Literal], assignment: &Assignment, forbidden: usize
 }
 fn initialize_watchlist_clause(
     c: Clause,
-    literals: &mut [Literal],
-    watchlist: &mut TypedArray<Literal, Watchlist>,
+    literals: &mut SliceMut<Literal>,
+    watchlist: &mut Array<Literal, Watchlist>,
     assignment: Option<&Assignment>,
 ) {
     if literals.len() >= 1 {
         let i0 = assignment.map_or(0, |assignment| {
-            next_unassigned(literals, &assignment, literals.len())
+            next_unassigned(literals.as_const(), &assignment, literals.len())
         });
         literals.swap(0, i0);
         watchlist[literals[0]].push(Some(c));
         if literals.len() >= 2 {
-            let i1 = assignment.map_or(1, |assignment| next_unassigned(literals, &assignment, i0));
+            let i1 = assignment.map_or(1, |assignment| {
+                next_unassigned(literals.as_const(), &assignment, i0)
+            });
             literals.swap(1, i1);
             watchlist[literals[1]].push(Some(c));
         }
@@ -120,12 +122,12 @@ fn initialize_watchlist_clause(
 
 fn update_watchlist_clause(
     c: Clause,
-    watchlist: &mut TypedArray<Literal, Watchlist>,
+    watchlist: &mut Array<Literal, Watchlist>,
     assignment: &Assignment,
-    db: &mut TypedArray<usize, Literal>,
-    clause_offset: &TypedArray<Clause, usize>,
+    db: &mut Array<usize, Literal>,
+    clause_offset: &Array<Clause, usize>,
 ) {
-    let literals = clause_as_mut_slice(db, clause_offset, c);
+    let mut literals = clause_as_mut_slice(db, clause_offset, c);
     let falsified = if assignment[-literals[0]] {
         0
     } else {
@@ -133,7 +135,7 @@ fn update_watchlist_clause(
         1
     };
     let keep = 1 - falsified;
-    let new = next_unassigned(literals, &assignment, keep);
+    let new = next_unassigned(literals.as_const(), &assignment, keep);
     watchlist[literals[new]].push(Some(c));
     let stale = &mut watchlist[literals[falsified]];
     let index = stale.iter().position(|&clause| clause == Some(c)).unwrap();
@@ -143,11 +145,7 @@ fn update_watchlist_clause(
     // remove clause from watchlist of falsified
 }
 
-fn trace_watches(
-    constants: &Constants,
-    watchlist: &TypedArray<Literal, Watchlist>,
-    maxvar: Variable,
-) {
+fn trace_watches(constants: &Constants, watchlist: &Array<Literal, Watchlist>, maxvar: Variable) {
     (1..=maxvar.0 as i32)
         .flat_map(|l| vec![l, -l])
         .for_each(|l| trace!(constants, "w[{}]: {:?}\n", l, watchlist[Literal::new(l)]));
@@ -164,19 +162,19 @@ macro_rules! clause_copy {
 
 fn clauses<'a>(
     proof_start: Clause,
-    clause_active: &'a TypedArray<Clause, bool>,
+    clause_active: &'a Array<Clause, bool>,
 ) -> impl Iterator<Item = Clause> + 'a {
     (0..proof_start.as_offset())
         .map(Clause)
         .filter(move |&c| clause_active[c])
 }
 
-fn clause_status(clause: &[Literal], assignment: &Assignment) -> ClauseStatus {
+fn clause_status(clause: Slice<Literal>, assignment: &Assignment) -> ClauseStatus {
     clause_status_impl(clause, assignment, None)
 }
 
 fn clause_status_before(
-    clause: &[Literal],
+    clause: Slice<Literal>,
     assignment: &Assignment,
     before_level: usize,
 ) -> ClauseStatus {
@@ -184,16 +182,16 @@ fn clause_status_before(
 }
 
 fn clause_status_impl(
-    clause: &[Literal],
+    clause: Slice<Literal>,
     assignment: &Assignment,
     before_level: Option<usize>,
 ) -> ClauseStatus {
     let mut unknown_count = 0;
     let mut unit = Literal::new(0);
-    let is_assigned = |l| {
+    let is_assigned = |literal| {
         before_level
-            .map(|level| was_assigned_before(assignment, l, level))
-            .unwrap_or(assignment[l])
+            .map(|level| assignment.was_assigned_before(literal, level))
+            .unwrap_or(assignment[literal])
     };
     for l in clause {
         if is_assigned(*l) {
@@ -230,13 +228,13 @@ macro_rules! propagate_literal {
 fn propagate_literal(
     l: Literal,
     reason: Option<Clause>,
-    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    clause_to_unit: &mut Array<Clause, Literal>,
     assignment: &mut Assignment,
     constants: &Constants,
     proof_start: Clause,
-    clause_active: &TypedArray<Clause, bool>,
-    db: &mut TypedArray<usize, Literal>,
-    watchlist: &mut TypedArray<Literal, Watchlist>,
+    clause_active: &Array<Clause, bool>,
+    db: &mut Array<usize, Literal>,
+    watchlist: &mut Array<Literal, Watchlist>,
 ) -> bool {
     {
         trace!(constants, "prop {}\n", l);
@@ -256,7 +254,7 @@ fn propagate_literal(
         ensure!(clause_active[unit_clause]);
         clause_to_unit[unit_clause] = l;
     });
-    assign(assignment, l);
+    assignment.assign(l);
     for i in 0..watchlist[-l].len() {
         if watchlist[-l][i].is_none() {
             continue;
@@ -294,7 +292,7 @@ fn propagate_literal(
 
 fn propagate(state: &mut State, constants: &Constants, record_reasons: bool) -> bool {
     for c in clauses(state.proof_start, &state.clause_active) {
-        let literals = clause_as_mut_slice(&mut state.db, &constants.clause_offset, c);
+        let literals = clause_as_slice(&mut state.db, &constants.clause_offset, c);
         match clause_status(literals, &state.assignment) {
             ClauseStatus::Falsified => return true,
             ClauseStatus::Unit(literal) => {
@@ -313,24 +311,24 @@ macro_rules! preserve_assignment {
     ($assignment:expr, $computation:expr) => {{
         let level = $assignment.len();
         let result = $computation;
-        reset_assignment($assignment, level);
+        $assignment.reset(level);
         result
     }};
 }
 
-fn member(needle: Literal, clause: &[Literal]) -> bool {
+fn member(needle: Literal, clause: Slice<Literal>) -> bool {
     clause.iter().position(|&lit| needle == lit).is_some()
 }
 
 fn rat(
     clause: ClauseCopy,
-    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    clause_to_unit: &mut Array<Clause, Literal>,
     mut assignment: &mut Assignment,
     constants: &Constants,
     proof_start: Clause,
-    clause_active: &TypedArray<Clause, bool>,
-    db: &mut TypedArray<usize, Literal>,
-    watchlist: &mut TypedArray<Literal, Watchlist>,
+    clause_active: &Array<Clause, bool>,
+    db: &mut Array<usize, Literal>,
+    watchlist: &mut Array<Literal, Watchlist>,
 ) -> bool {
     trace!(constants, "rat({}) - {}\n", clause.id, clause);
     let pivot = clause[0];
@@ -367,13 +365,13 @@ fn rat(
 
 fn rup<'a>(
     mut clause: impl Iterator<Item = Literal>,
-    clause_to_unit: &mut TypedArray<Clause, Literal>,
+    clause_to_unit: &mut Array<Clause, Literal>,
     assignment: &mut Assignment,
     constants: &Constants,
     proof_start: Clause,
-    clause_active: &TypedArray<Clause, bool>,
-    db: &mut TypedArray<usize, Literal>,
-    watchlist: &mut TypedArray<Literal, Watchlist>,
+    clause_active: &Array<Clause, bool>,
+    db: &mut Array<usize, Literal>,
+    watchlist: &mut Array<Literal, Watchlist>,
 ) -> bool {
     clause.any(|literal| {
         propagate_literal(
@@ -394,15 +392,20 @@ fn forward_addition(state: &mut State, constants: &Constants, c: Clause) -> bool
     let clause = clause_copy!(state, constants, c);
     ensure!(c == state.proof_start);
     state.lemma_to_level[c] = state.assignment.len();
-    let status = clause_status(&clause.literals, &state.assignment);
+    let status = clause_status(clause.slice(), &state.assignment);
     state.proof_start += 1;
     if let ClauseStatus::Unit(literal) = status {
         if propagate_literal!(literal, Some(c), state, constants) {
             return true;
         }
     } else if status == ClauseStatus::Unknown {
-        let literals = clause_as_mut_slice(&mut state.db, &constants.clause_offset, c);
-        initialize_watchlist_clause(c, literals, &mut state.watchlist, Some(&state.assignment));
+        let mut literals = clause_as_mut_slice(&mut state.db, &constants.clause_offset, c);
+        initialize_watchlist_clause(
+            c,
+            &mut literals,
+            &mut state.watchlist,
+            Some(&state.assignment),
+        );
     }
     false
 }
@@ -413,7 +416,7 @@ fn backward_addition(state: &mut State, constants: &Constants, c: Clause) -> boo
     ensure!(clause.len() != 0);
     ensure!(clause.id == state.proof_start);
     let level = state.lemma_to_level[clause.id];
-    reset_assignment(&mut state.assignment, level);
+    state.assignment.reset(level);
     if state.clause_to_unit[clause.id].zero() {
         // No need to check clauses that were not used to derive a conflict.
         return true;
@@ -448,7 +451,7 @@ fn forward_deletion(state: &mut State, constants: &Constants, c: Clause) -> bool
         ) == ClauseStatus::Unit(recorded_unit);
     state.clause_active[c] = false;
     if handle_deletion {
-        reset_assignment(&mut state.assignment, level);
+        state.assignment.reset(level);
         propagate(state, constants, true);
     }
     false
@@ -498,7 +501,8 @@ fn backward(state: &mut State, constants: &Constants, conflict_at: usize) -> boo
     trace!(constants, "[backward]\n");
     defer!(trace!(constants, "[backward] done\n"));
     let proof = constants.proof.as_slice();
-    for lemma in proof[0..=conflict_at].iter().rev() {
+    for lemma in proof.range(0, conflict_at + 1).iter().rev() {
+        // for lemma in proof[0..=conflict_at].iter().rev()
         let accepted = match lemma {
             &Lemma::Deletion(clause) => {
                 trace!(

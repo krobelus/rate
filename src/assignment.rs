@@ -2,53 +2,68 @@
 
 use crate::{
     literal::{literal_array_len, Literal, Variable},
-    memory::{Offset, Stack, TypedArray},
+    memory::{Array, Offset, StackMapping},
 };
 use ansi_term::Colour;
 use std::{
     fmt,
     fmt::Display,
     ops::{Index, IndexMut},
-    slice,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Assignment {
-    map: TypedArray<Literal, bool>,
     // We use Literal::new(0) to replace literals in the assignment stack that
     // have been unassigned as a result of deleting a unit clause.
-    stack: Stack<Literal>,
-    position_in_stack: TypedArray<Literal, usize>,
+    mapping: StackMapping<Literal, bool>,
+    position_in_stack: Array<Literal, usize>,
 }
 
 impl Assignment {
     pub fn new(maxvar: Variable) -> Assignment {
+        let array_size = literal_array_len(maxvar);
+        let stack_capacity = maxvar.as_offset();
         Assignment {
-            map: TypedArray::new(false, literal_array_len(maxvar)),
-            stack: Stack::new(Literal::new(0), maxvar.as_offset()),
-            position_in_stack: TypedArray::new(0, literal_array_len(maxvar)),
+            mapping: StackMapping::new(false, array_size, stack_capacity),
+            position_in_stack: Array::new(0, literal_array_len(maxvar)),
         }
     }
     pub fn len(&self) -> usize {
-        self.stack.len()
+        self.mapping.len()
     }
     pub fn level_prior_to_assigning(&self, l: Literal) -> usize {
         self.position_in_stack[l]
+    }
+    pub fn assign(&mut self, l: Literal) {
+        ensure!(!self[-l] && !self[l]);
+        self.position_in_stack[l] = self.mapping.len();
+        self.mapping.insert(l, true);
+    }
+    pub fn reset(&mut self, level: usize) {
+        while self.mapping.len() > level {
+            self.mapping.pop()
+            // It is not necessary to reset position_in_stack here, as it
+            // will be written before the next use.
+        }
+        ensure!(self.mapping.len() <= level);
+    }
+    pub fn was_assigned_before(&self, l: Literal, level: usize) -> bool {
+        self[l] && self.position_in_stack[l] < level
     }
 }
 
 impl<'a> IntoIterator for &'a Assignment {
     type Item = &'a Literal;
-    type IntoIter = slice::Iter<'a, Literal>;
-    fn into_iter(self) -> slice::Iter<'a, Literal> {
-        self.stack.into_iter()
+    type IntoIter = std::slice::Iter<'a, Literal>;
+    fn into_iter(self) -> std::slice::Iter<'a, Literal> {
+        self.mapping.into_iter()
     }
 }
 
 impl Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Assignment: {{ ")?;
-        for literal in &self.stack {
+        for literal in self {
             write!(f, "{} ", literal)?;
         }
         write!(f, "}}")
@@ -59,40 +74,13 @@ impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
         ensure!(!literal.zero(), "Illegal read of assignment to literal 0.");
-        &self.map[literal]
+        &self.mapping[literal]
     }
 }
 impl IndexMut<Literal> for Assignment {
     fn index_mut(&mut self, literal: Literal) -> &mut bool {
-        &mut self.map[literal]
+        &mut self.mapping[literal]
     }
-}
-
-pub fn assign(assignment: &mut Assignment, l: Literal) {
-    ensure!(!assignment[-l] && !assignment[l]);
-    assignment.position_in_stack[l] = assignment.stack.len();
-    assignment.stack.push(l);
-    assignment[l] = true;
-}
-
-pub fn unassign(assignment: &mut Assignment, l: Literal) {
-    assignment[l] = false;
-    // It is not necessary to reset assignment.position_in_stack here, as it
-    // will be written before the next use.
-}
-
-pub fn reset_assignment(assignment: &mut Assignment, level: usize) {
-    while assignment.stack.len() > level {
-        let literal = *assignment.stack.pop();
-        // literal can be 0 here but we don't need to introduce a branch since the assignment for
-        // Literal::new(0) will never be read.
-        unassign(assignment, literal);
-    }
-    ensure!(assignment.stack.len() <= level);
-}
-
-pub fn was_assigned_before(assignment: &Assignment, l: Literal, level: usize) -> bool {
-    assignment[l] && assignment.position_in_stack[l] < level
 }
 
 #[allow(dead_code)]
