@@ -2,8 +2,16 @@
 
 use clap::ArgMatches;
 
-pub const BOUNDS_CHECKING: bool = true;
-pub const ASSERTIONS: bool = true;
+pub const DISABLE_CHECKS_AND_TRACING: bool = false;
+
+macro_rules! enabled {
+    ($ok:expr) => {
+        $ok && !DISABLE_CHECKS_AND_TRACING
+    };
+}
+pub const BOUNDS_CHECKING: bool = enabled!(true);
+pub const ASSERTIONS: bool = enabled!(true);
+pub const TRACE: bool = enabled!(true);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Config {
@@ -27,10 +35,9 @@ macro_rules! echo {
     })
 }
 
-// trace of the algorithm, for comparison against crate
 macro_rules! trace {
     ($constants:expr, $($arg:tt)*) => {{
-        if $constants.config.trace
+        if crate::config::TRACE && $constants.config.trace
         {
             print!($($arg)*);
         }
