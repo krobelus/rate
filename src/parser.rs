@@ -14,6 +14,9 @@ use std::{
     io, str,
 };
 
+/// Sorted copy of a clause. We perform the copy to make it possible to reuse an existing
+/// implementation of a hash map. Generally collections should own the data the contain, otherwise
+/// it gets tricky. If this causes as problem, we might implement the hashing ourselves.
 #[derive(Debug, PartialEq, Eq, Hash)]
 struct HashableClause {
     clause: Vec<Literal>,

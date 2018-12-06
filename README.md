@@ -28,7 +28,7 @@ previous versions of itself and to other checkers, in particular
 [rupee](https://github.com/arpj-rebola/rupee). Install `python3` (version 3.6 or
 above) and `pytest` and run `pytest test.py`.
 
-# Crate
+## Crate
 
 Currently we provide a reimplementation of Rate in C (see [crate.c](crate.c)).
 Note that it may be lagging behind in terms of features. Anyway, it is useful to
@@ -39,6 +39,25 @@ features. Build `./crate` by typing `make`.
 
 We appreciate contributions, please let us know if Rate behaves in a way that
 is unexpected to you.
+
+# Caveats
+
+Please note that, when Rate accepts a proof, it does not necessarily mean that
+the proof is correct as is. We perform some transformations on the proof before
+actually checking it, mainly to improve performance, as do other checkers.  So
+this might result in proof that contains some invalid instructions being
+accepted, but should is only be possible for unsatisfiable formulas.
+
+Here are the transformations we do:
+- We discard any lemma or deletion after the first time the empty clause
+- (conflict) is inferred.
+- Lemmas that are not part of the reason for the above conflict are not
+  checked, thus they are effectively removed from the proof.
+- Clauses and lemmas that are not part of the reason for the conflict are not
+  considered as resolution candidates for the RAT check. The reason why this
+  is sound is a bit tricky.
+- If `--skip-deletions` is specified, then deletions of clauses that are unit
+  with respect to the current assignment are ignored, as in drat-trim.
 
 # Roadmap
 These features are planned to be implemented:
