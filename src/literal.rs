@@ -52,6 +52,11 @@ impl Literal {
     pub fn zero(self) -> bool {
         self.encoding == 0
     }
+    pub fn all(maxvar: Variable) -> impl Iterator<Item = Literal> {
+        (1..=maxvar.0 as i32)
+            .flat_map(|l| vec![l, -l])
+            .map(Literal::new)
+    }
 }
 
 impl Offset for Literal {

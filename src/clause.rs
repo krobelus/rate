@@ -2,7 +2,7 @@
 
 use crate::{
     literal::Literal,
-    memory::{Array, Offset, Slice, SliceMut},
+    memory::{Offset, Stack},
 };
 use std::{
     fmt, ops,
@@ -12,6 +12,14 @@ use std::{
 /// The index of a clause or lemma, immutable during the lifetime of the program.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add)]
 pub struct Clause(pub usize);
+
+pub const CLAUSE_SENTINEL: Clause = Clause(usize::max_value());
+
+impl Clause {
+    pub fn range(start: impl Offset, end: impl Offset) -> impl Iterator<Item = Clause> {
+        (start.as_offset()..end.as_offset()).map(Clause)
+    }
+}
 
 impl Offset for Clause {
     fn as_offset(self) -> usize {
@@ -51,70 +59,35 @@ impl fmt::Display for Clause {
     }
 }
 
-pub fn clause_as_slice<'a>(
-    db: &'a Array<usize, Literal>,
-    clause_offset: &Array<Clause, usize>,
-    c: Clause,
-) -> Slice<'a, Literal> {
-    db.as_slice().range(clause_offset[c], clause_offset[c + 1])
-}
-
-pub fn clause_as_mut_slice<'a>(
-    db: &'a mut Array<usize, Literal>,
-    clause_offset: &Array<Clause, usize>,
-    c: Clause,
-) -> SliceMut<'a, Literal> {
-    db.as_mut_slice()
-        .range(clause_offset[c], clause_offset[c + 1])
-}
-
-pub fn clause_as_copy(
-    db: &Array<usize, Literal>,
-    clause_offset: &Array<Clause, usize>,
-    c: Clause,
-) -> Vec<Literal> {
-    clause_as_slice(db, clause_offset, c).to_vec()
-}
-
-/// A lemma in a DRAT proof.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Lemma {
-    Addition(Clause),
+pub enum ProofStep {
+    Lemma(Clause),
     Deletion(Clause),
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug)]
 pub struct ClauseCopy {
     pub id: Clause,
-    pub literals: Vec<Literal>,
+    pub literals: Stack<Literal>,
 }
 
-impl ClauseCopy {
+impl<'a> ClauseCopy {
     pub fn new(id: Clause, literals: &[Literal]) -> ClauseCopy {
         ClauseCopy {
             id: id,
-            literals: literals.to_vec(),
+            literals: Stack::from_vec(literals.to_vec()),
         }
     }
-    pub fn slice(&self) -> Slice<Literal> {
-        Slice::new(&self.literals[..])
+    pub fn iter(&'a self) -> std::slice::Iter<'a, Literal> {
+        self.into_iter()
     }
 }
 
-impl ClauseCopy {
-    pub fn len(&self) -> usize {
-        self.literals.len()
-    }
-    pub fn iter(self) -> std::vec::IntoIter<Literal> {
-        self.literals.into_iter()
-    }
-}
-
-impl IntoIterator for ClauseCopy {
-    type Item = Literal;
-    type IntoIter = std::vec::IntoIter<Literal>;
+impl<'a> IntoIterator for &'a ClauseCopy {
+    type Item = &'a Literal;
+    type IntoIter = std::slice::Iter<'a, Literal>;
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.literals.into_iter()
     }
 }
 

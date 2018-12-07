@@ -2,6 +2,24 @@
 
 use clap::ArgMatches;
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Config {
+    pub skip_deletions: bool,
+    pub unmarked_rat_candidates: bool,
+    pub trace: bool,
+}
+
+impl Config {
+    pub fn new(matches: ArgMatches) -> Config {
+        let drat_trim = matches.is_present("DRAT_TRIM");
+        Config {
+            skip_deletions: drat_trim || matches.is_present("SKIP_DELETIONS"),
+            unmarked_rat_candidates: drat_trim || matches.is_present("UNMARKED_RAT_CANDIDATES"),
+            trace: matches.is_present("TRACE"),
+        }
+    }
+}
+
 pub const DISABLE_CHECKS_AND_TRACING: bool = false;
 
 macro_rules! enabled {
@@ -9,24 +27,10 @@ macro_rules! enabled {
         $ok && !DISABLE_CHECKS_AND_TRACING
     };
 }
+
 pub const BOUNDS_CHECKING: bool = enabled!(true);
 pub const ASSERTIONS: bool = enabled!(true);
 pub const TRACE: bool = enabled!(true);
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Config {
-    pub trace: bool,
-    pub skip_deletions: bool,
-}
-
-impl Config {
-    pub fn new(matches: ArgMatches) -> Config {
-        Config {
-            trace: matches.is_present("TRACE"),
-            skip_deletions: matches.is_present("SKIP_DELETIONS"),
-        }
-    }
-}
 
 // print to stdout
 macro_rules! echo {
@@ -35,13 +39,28 @@ macro_rules! echo {
     })
 }
 
-macro_rules! trace {
-    ($constants:expr, $($arg:tt)*) => {{
-        if crate::config::TRACE && $constants.config.trace
+macro_rules! _trace {
+    ($enabled:expr, $($arg:tt)*) => {{
+        if crate::config::TRACE && $enabled
         {
             print!($($arg)*);
         }
     }};
+}
+macro_rules! trace {
+    ($checker:expr, $($arg:tt)*) => {
+        _trace!($checker.config.trace, $($arg)*)
+    };
+}
+
+// Trace upon scope exit without borrowing
+macro_rules! defer_trace {
+    ($checker:expr, $($arg:tt)*) => {
+        let trace = $checker.config.trace;
+        defer!(
+            _trace!(trace, $($arg)*)
+            );
+    }
 }
 
 // print a warning to stderr

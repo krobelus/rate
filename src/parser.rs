@@ -1,7 +1,7 @@
 //! DIMACS and DRAT parser
 
 use crate::{
-    clause::{Clause, ClauseCopy, Lemma},
+    clause::{Clause, ClauseCopy, ProofStep},
     literal::{Literal, Variable},
     memory::Offset,
 };
@@ -37,7 +37,7 @@ pub struct Parser {
     pub clause_offset: Vec<usize>,
     clause_scheduled_for_deletion: Vec<bool>,
     pub proof_start: Clause,
-    pub proof: Vec<Lemma>,
+    pub proof: Vec<ProofStep>,
     clause_to_id: MultiMap<HashableClause, Clause>,
 }
 
@@ -103,7 +103,7 @@ fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Vec<Literal>
             ),
             Some(clause) => {
                 parser.clause_scheduled_for_deletion[clause.as_offset()] = true;
-                parser.proof.push(Lemma::Deletion(clause))
+                parser.proof.push(ProofStep::Deletion(clause))
             }
         }
         buffer.clear();
@@ -261,7 +261,7 @@ fn number_binary(input: &[u8]) -> (&[u8], Literal) {
 
 enum LemmaPositionBinary {
     Start,
-    Addition,
+    Lemma,
     Deletion,
 }
 
@@ -276,13 +276,13 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
                     state = LemmaPositionBinary::Deletion;
                 } else {
                     ensure!(addition_or_deletion == 'a');
-                    state = LemmaPositionBinary::Addition;
+                    state = LemmaPositionBinary::Lemma;
                     let clause = start_clause(&mut parser);
-                    parser.proof.push(Lemma::Addition(clause));
+                    parser.proof.push(ProofStep::Lemma(clause));
                 }
                 input
             }
-            LemmaPositionBinary::Addition => match number_binary(input) {
+            LemmaPositionBinary::Lemma => match number_binary(input) {
                 (input, literal) => {
                     add_literal(parser, literal);
                     if literal.zero() {
@@ -357,7 +357,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: &[u8]) -> Option<Pars
                 b'-' | b'0'..=b'9' => {
                     if head {
                         let clause = start_clause(parser);
-                        parser.proof.push(Lemma::Addition(clause));
+                        parser.proof.push(ProofStep::Lemma(clause));
                     }
                     state = LemmaPositionText::LemmaLiteral;
                     start = i;
@@ -502,7 +502,7 @@ p cnf 2 2
                 clause_offset: vec!(0, 2, 4, 7),
                 clause_scheduled_for_deletion: vec!(true, false, false),
                 proof_start: Clause(2),
-                proof: vec![Lemma::Addition(Clause(2)), Lemma::Deletion(Clause(0))],
+                proof: vec![ProofStep::Lemma(Clause(2)), ProofStep::Deletion(Clause(0))],
                 clause_to_id: multimap! {
                     HashableClause::new(&vec_of_literals!(1, 2)) => Clause(0),
                     HashableClause::new(&vec_of_literals!(-1, -2)) => Clause(1),

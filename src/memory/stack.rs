@@ -15,6 +15,9 @@ impl<T> Stack<T> {
             vec: Vec::with_capacity(capacity),
         }
     }
+    pub fn from_vec(vec: Vec<T>) -> Stack<T> {
+        Stack { vec: vec }
+    }
     pub fn len(&self) -> usize {
         self.vec.len()
     }

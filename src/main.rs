@@ -30,8 +30,10 @@ fn main() {
     (about: env!("CARGO_PKG_DESCRIPTION"))
     (@arg INPUT: +required "input file in DIMACS format")
     (@arg PROOF: +required "proof file in DRAT format")
-    (@arg SKIP_DELETIONS: -d long("skip-deletions") "Ignore deletion of unit clauses, as does drat-trim")
-    (@arg TRACE: -t --trace "Outputs a trace of the execution")
+    (@arg SKIP_DELETIONS: -d long("skip-deletions") "Ignore deletion of unit clauses.")
+    (@arg UNMARKED_RAT_CANDIDATES: -r long("unmarked-rat-candidates")  "Do not ignore RAT candidates that are not marked.")
+    (@arg DRAT_TRIM: long("drat-trim")  "Try to be compatible with drat-trim.\nThis implies --skip-deletions and --unmarked-rat-candidates.")
+    (@arg TRACE: -t --trace "Output a trace of the execution")
     )
     .get_matches();
 

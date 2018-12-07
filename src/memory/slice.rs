@@ -28,6 +28,9 @@ impl<'a, T> Slice<'a, T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.slice.iter()
     }
+    pub fn slice(&self) -> &'a [T] {
+        self.slice
+    }
 }
 impl<'a, T: Clone> Slice<'a, T> {
     pub fn to_vec(&self) -> Vec<T> {

@@ -30,7 +30,7 @@ impl<I: Offset, T: Clone> Array<I, T> {
             phantom: PhantomData,
         }
     }
-    pub fn capacity(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.vec.len()
     }
     // TODO avoid bounds checking
