@@ -18,6 +18,7 @@ pub struct Checker {
     clause_unit: Array<Clause, Literal>, // The last unit that was propagated because of this clause, or Literal::new(0).
     config: Config,
     db: Array<usize, Literal>,
+    direction: Direction,
     lemma_to_level: Array<Clause, usize>,
     literal_reason: Array<Literal, Clause>,
     maxvar: Variable,
@@ -40,6 +41,7 @@ impl Checker {
             clause_unit: Array::new(Literal::TOP, num_clauses),
             config: config,
             db: Array::from(parser.db),
+            direction: Direction::Forward,
             lemma_to_level: Array::new(0, num_clauses),
             literal_reason: Array::new(Clause::INVALID, literal_array_len(maxvar)),
             maxvar: maxvar,
@@ -392,8 +394,8 @@ enum Direction {
     Backward,
 }
 
-fn apply_step(checker: &mut Checker, step: ProofStep, direction: Direction) {
-    match direction {
+fn apply_step(checker: &mut Checker, step: ProofStep) {
+    match checker.direction {
         Direction::Forward => match step {
             ProofStep::Lemma(_) => {
                 initialize_watchlist_clause(checker, checker.proof_start);
@@ -425,11 +427,7 @@ fn forward_lemma(checker: &mut Checker) -> bool {
     } else {
         false
     };
-    apply_step(
-        checker,
-        ProofStep::Lemma(checker.proof_start),
-        Direction::Forward,
-    );
+    apply_step(checker, ProofStep::Lemma(checker.proof_start));
     conflict_detected
 }
 
@@ -445,7 +443,7 @@ fn forward_deletion(checker: &mut Checker, c: Clause) -> bool {
         && recorded_unit != Literal::TOP
         && clause_status_before(checker.clause(c), &checker.assignment, level)
             == ClauseStatus::Unit(recorded_unit);
-    apply_step(checker, ProofStep::Deletion(c), Direction::Forward);
+    apply_step(checker, ProofStep::Deletion(c));
     if handle_unit_deletion {
         checker.assignment.reset(level);
         let conflict = propagate(checker, true);
@@ -485,6 +483,7 @@ fn forward(checker: &mut Checker) -> Option<usize> {
 fn backward(checker: &mut Checker, conflict_at_step: usize) -> bool {
     trace!(checker, "[backward]\n");
     defer_trace!(checker, "[backward] done\n");
+    checker.direction = Direction::Backward;
     for i in (0..conflict_at_step + 1).rev() {
         let accepted = match checker.proof[i] {
             ProofStep::Deletion(c) => {
@@ -493,13 +492,13 @@ fn backward(checker: &mut Checker, conflict_at_step: usize) -> bool {
                     !checker.clause_active[c],
                     "Clause must not be deleted twice."
                 );
-                apply_step(checker, ProofStep::Deletion(c), Direction::Backward);
+                apply_step(checker, ProofStep::Deletion(c));
                 true
             }
             ProofStep::Lemma(c) => {
                 trace!(checker, "[backward] add {}\n", checker.clause_copy(c));
                 ensure!(c + 1 == checker.proof_start);
-                apply_step(checker, ProofStep::Lemma(c), Direction::Backward);
+                apply_step(checker, ProofStep::Lemma(c));
                 !checker.clause_marked[c] || {
                     let level = checker.lemma_to_level[c];
                     checker.assignment.reset(level);
