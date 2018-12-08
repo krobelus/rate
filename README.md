@@ -52,9 +52,9 @@ is unexpected to you.
 
 Please note that, when Rate accepts a proof, it does not necessarily mean that
 the proof is correct as is. We perform some transformations on the proof before
-actually checking it, mainly to improve performance, as do other checkers.  So
-this might result in proof that contains some invalid instructions being
-accepted, but should is only be possible for unsatisfiable formulas.
+actually checking it, mainly to improve performance, as do other checkers. So
+this might result in a proof that contains some invalid instructions being
+accepted, but this should only be possible for unsatisfiable formulas.
 
 Here are the transformations we do:
 - We discard any lemma or deletion after the first time the empty clause
@@ -73,7 +73,7 @@ These features are planned to be implemented:
 - [x] Specified DRAT
 - [x] Operational DRAT
 - [x] Double-sweep DRAT checking
-- [ ] Two watched literals
+- [x] Two watched literals
 - [x] Incremental prepropagation
 - [ ] Core-first propagation
 - [ ] Resolution candidate caching
