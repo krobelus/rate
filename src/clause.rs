@@ -1,5 +1,7 @@
 //! Data structures for the checker.
 
+use derive_more::Add;
+
 use crate::{
     literal::Literal,
     memory::{Offset, Stack},

@@ -1,9 +1,3 @@
-#[macro_use]
-extern crate nom;
-#[macro_use]
-extern crate derive_more;
-#[macro_use]
-extern crate clap;
 #[macro_use(defer)]
 extern crate scopeguard;
 
@@ -16,6 +10,7 @@ mod literal;
 mod memory;
 mod parser;
 
+use clap::clap_app;
 use std::process;
 
 use crate::{

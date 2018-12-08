@@ -1,5 +1,7 @@
 //! DIMACS and DRAT parser
 
+use nom::{call, do_parse, error_position, many0, named, tag, take_while};
+
 use crate::{
     clause::{Clause, ClauseCopy, ProofStep},
     literal::{Literal, Variable},
