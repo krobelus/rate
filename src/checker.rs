@@ -126,6 +126,7 @@ fn update_watchlist_clause(checker: &mut Checker, l: Literal, c: Clause) {
         .swap(falsified_watch, new_index);
 }
 
+#[allow(dead_code)]
 fn trace_watches(checker: &Checker) {
     (1..=checker.maxvar.0 as i32)
         .flat_map(|l| vec![l, -l])
@@ -209,9 +210,7 @@ fn propagate_literal(checker: &mut Checker, l: Literal, reason: Option<Clause>) 
             ClauseStatus::Falsified => reached_conflict_in(checker, c),
             ClauseStatus::Unit(literal) => propagate_literal(checker, literal, reason.and(Some(c))),
             ClauseStatus::Unknown => {
-                trace_watches(checker);
                 update_watchlist_clause(checker, -l, c);
-                trace_watches(checker);
                 checker.watchlist[-l][i] = None;
                 false
             }
