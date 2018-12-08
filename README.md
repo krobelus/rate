@@ -21,12 +21,20 @@ $ cargo run --release formula.cnf proof.drat
 Refer to the [cargo documentation](https://doc.rust-lang.org/cargo/) for other use cases.
 
 # Tests
-There are some unit tests that can be run with `cargo test`.
+There are some minor unit tests that can be run with `cargo test`.
 
 Additionally, there is a system test suite, that compares the output of Rate to
-previous versions of itself and to other checkers, in particular
-[rupee](https://github.com/arpj-rebola/rupee). Install `python3` (version 3.6 or
-above) and `pytest` and run `pytest test.py`.
+previous versions of itself, and to other checkers, in particular
+[rupee](https://github.com/arpj-rebola/rupee).
+This can be run with `pytest test.py`. The requirements are:
+
+- `python3` (version 3.6 or above)
+- `pytest`
+- `drat-trim` and `rupee` need to be executable on your system.
+
+There is also `scripts/test-random-instances.sh` that creates random CNF
+formulas until there is a discrepant result. This assumes that
+[`cadical`](https://github.com/arminbiere/cadical) is executable.
 
 ## Crate
 

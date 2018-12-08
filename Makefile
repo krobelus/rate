@@ -8,7 +8,7 @@ crate: crate.c crate-stacks.h
 format:
 	cargo fmt
 	clang-format -i *.[ch]
-	autopep8 --in-place --aggressive --aggressive *.py
+	autopep8 --in-place --aggressive --aggressive *.py scripts/*.py
 
 lint:
 	checkbashisms scripts/*.sh
