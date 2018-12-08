@@ -39,6 +39,7 @@ fn main() {
 
     let mut checker = Checker::new(parser, Config::new(matches));
     let ok = check(&mut checker);
+    echo!("c propcount {}", checker.propcount);
     echo!("s {}", if ok { "ACCEPTED" } else { "REJECTED" });
     process::exit(if ok { 0 } else { 1 });
 }

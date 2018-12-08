@@ -24,6 +24,7 @@ pub struct Checker {
     maxvar: Variable,
     proof: Array<usize, ProofStep>,
     proof_start: Clause,
+    pub propcount: usize,
     watchlist: Array<Literal, Watchlist>,
 }
 
@@ -47,6 +48,7 @@ impl Checker {
             maxvar: maxvar,
             proof: Array::from(parser.proof),
             proof_start: parser.proof_start,
+            propcount: 0,
             watchlist: Array::new(Vec::new(), literal_array_len(maxvar)),
         }
     }
@@ -237,6 +239,7 @@ fn clause_status_impl(
 }
 
 fn propagate_literal(checker: &mut Checker, l: Literal, reason: Option<Clause>) -> bool {
+    checker.propcount += 1;
     trace!(checker, "propagate_literal {}, {}\n", l, checker.assignment);
     if checker.assignment[l] {
         return false;
