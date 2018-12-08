@@ -15,6 +15,9 @@ impl Variable {
     pub fn new(value: u32) -> Variable {
         Variable(value)
     }
+    pub fn literal(self) -> Literal {
+        Literal::new(self.0 as i32)
+    }
 }
 
 impl Offset for Variable {
@@ -34,9 +37,12 @@ impl Literal {
             encoding: (value.abs() as u32) * 2 + ((value < 0) as u32),
         }
     }
-    pub fn from_raw(encoding: u32) -> Literal {
+    pub const fn from_raw(encoding: u32) -> Literal {
         Literal { encoding: encoding }
     }
+
+    pub const TOP: Literal = Literal { encoding: 0 };
+    pub const BOTTOM: Literal = Literal { encoding: 1 };
 
     pub fn decode(self) -> i32 {
         let magnitude = self.var().0 as i32;
@@ -46,16 +52,18 @@ impl Literal {
             magnitude
         }
     }
-    pub fn var(self) -> Variable {
+    pub const fn var(self) -> Variable {
         Variable(self.encoding / 2)
     }
-    pub fn zero(self) -> bool {
-        self.encoding == 0
+    pub fn is_constant(self) -> bool {
+        self.encoding <= 1
     }
     pub fn all(maxvar: Variable) -> impl Iterator<Item = Literal> {
-        (1..=maxvar.0 as i32)
-            .flat_map(|l| vec![l, -l])
-            .map(Literal::new)
+        let end = maxvar.literal().encoding + 1;
+        (1..end).map(Literal::from_raw)
+    }
+    pub const fn is_zero(self) -> bool {
+        self.encoding == 0
     }
 }
 
@@ -67,7 +75,18 @@ impl Offset for Literal {
 
 impl Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.decode())
+        write!(
+            f,
+            "{}{}",
+            if self == &Literal::TOP {
+                "+"
+            } else if self == &Literal::BOTTOM {
+                "-"
+            } else {
+                ""
+            },
+            self.decode()
+        )
     }
 }
 

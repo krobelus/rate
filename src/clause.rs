@@ -15,12 +15,11 @@ use std::{
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add)]
 pub struct Clause(pub usize);
 
-pub const CLAUSE_SENTINEL: Clause = Clause(usize::max_value());
-
 impl Clause {
     pub fn range(start: impl Offset, end: impl Offset) -> impl Iterator<Item = Clause> {
         (start.as_offset()..end.as_offset()).map(Clause)
     }
+    pub const INVALID: Clause = Clause(usize::max_value());
 }
 
 impl Offset for Clause {

@@ -97,7 +97,10 @@ where
 }
 
 fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Vec<Literal>) -> Literal {
-    if literal.zero() {
+    if literal.is_zero() {
+        if buffer.len() == 1 {
+            buffer.push(Literal::BOTTOM);
+        }
         match find_clause(&buffer[..], &parser) {
             None => warn!(
                 "Deleted clause is not present in the formula: {}",
@@ -127,9 +130,13 @@ fn start_clause(parser: &mut Parser) -> Clause {
 }
 
 fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
-    if literal.zero() {
+    if literal.is_zero() {
         let begin = *parser.clause_offset.last().unwrap_or(&0);
-        let end = parser.db.len();
+        let mut end = parser.db.len();
+        if end - begin == 1 {
+            add_literal(parser, Literal::BOTTOM);
+            end += 1;
+        }
         let clause = HashableClause::new(&parser.db.as_slice()[begin..end]);
         parser
             .clause_to_id
@@ -225,7 +232,7 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError>
                         start_clause(&mut *parser);
                     }
                     let literal = add_literal_ascii(&mut *parser, &input[start..i]);
-                    head = literal.zero();
+                    head = literal.is_zero();
                     state = ClauseState::NotInLiteral;
                 }
                 _ => return error(),
@@ -287,7 +294,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
             LemmaPositionBinary::Lemma => match number_binary(input) {
                 (input, literal) => {
                     add_literal(parser, literal);
-                    if literal.zero() {
+                    if literal.is_zero() {
                         state = LemmaPositionBinary::Start;
                     }
                     input
@@ -296,7 +303,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
             LemmaPositionBinary::Deletion => match number_binary(input) {
                 (input, literal) => {
                     add_deletion(parser, literal, &mut buffer);
-                    if literal.zero() {
+                    if literal.is_zero() {
                         state = LemmaPositionBinary::Start;
                     }
                     input
@@ -369,7 +376,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: &[u8]) -> Option<Pars
             LemmaPositionText::LemmaLiteral => match c {
                 b' ' | b'\n' => {
                     let literal = add_literal_ascii(&mut *parser, &input[start..i]);
-                    head = literal.zero();
+                    head = literal.is_zero();
                     state = if head {
                         LemmaPositionText::Start
                     } else {
@@ -399,7 +406,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: &[u8]) -> Option<Pars
             LemmaPositionText::DeletionLiteral => match c {
                 b' ' | b'\n' => {
                     let literal = add_deletion_ascii(parser, &input[start..i], &mut buffer);
-                    state = if literal.zero() {
+                    state = if literal.is_zero() {
                         LemmaPositionText::Start
                     } else {
                         LemmaPositionText::Deletion

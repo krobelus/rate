@@ -5,16 +5,10 @@ use crate::{
     memory::{Array, Offset, StackMapping},
 };
 use ansi_term::Colour;
-use std::{
-    fmt,
-    fmt::Display,
-    ops::{Index, IndexMut},
-};
+use std::{fmt, fmt::Display, ops::Index};
 
 #[derive(Debug)]
 pub struct Assignment {
-    // We use Literal::new(0) to replace literals in the assignment stack that
-    // have been unassigned as a result of deleting a unit clause.
     mapping: StackMapping<Literal, bool>,
     position_in_stack: Array<Literal, usize>,
 }
@@ -23,10 +17,13 @@ impl Assignment {
     pub fn new(maxvar: Variable) -> Assignment {
         let array_size = literal_array_len(maxvar);
         let stack_capacity = maxvar.as_offset();
-        Assignment {
+        let mut assignment = Assignment {
             mapping: StackMapping::new(false, array_size, stack_capacity),
             position_in_stack: Array::new(0, literal_array_len(maxvar)),
-        }
+        };
+        assignment.mapping[Literal::TOP] = true;
+        assignment.mapping[Literal::BOTTOM] = false;
+        assignment
     }
     pub fn len(&self) -> usize {
         self.mapping.len()
@@ -35,6 +32,7 @@ impl Assignment {
         self.position_in_stack[l]
     }
     pub fn assign(&mut self, l: Literal) {
+        ensure!(!l.is_constant());
         ensure!(!self[-l] && !self[l]);
         self.position_in_stack[l] = self.mapping.len();
         self.mapping.insert(l, true);
@@ -73,13 +71,8 @@ impl Display for Assignment {
 impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
-        ensure!(!literal.zero(), "Illegal read of assignment to literal 0.");
+        ensure!(self.mapping[Literal::new(0)] && !self.mapping[Literal::BOTTOM]);
         &self.mapping[literal]
-    }
-}
-impl IndexMut<Literal> for Assignment {
-    fn index_mut(&mut self, literal: Literal) -> &mut bool {
-        &mut self.mapping[literal]
     }
 }
 

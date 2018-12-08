@@ -2,7 +2,7 @@
 
 use crate::{
     assignment::Assignment,
-    clause::{Clause, ClauseCopy, ProofStep, CLAUSE_SENTINEL},
+    clause::{Clause, ClauseCopy, ProofStep},
     config::Config,
     literal::{literal_array_len, Literal, Variable},
     memory::{Array, Slice, SliceMut},
@@ -32,23 +32,21 @@ impl Checker {
     pub fn new(parser: Parser, config: Config) -> Checker {
         let num_clauses = parser.clause_offset.len();
         let maxvar = parser.maxvar;
-        let mut checker = Checker {
+        Checker {
             assignment: Assignment::new(maxvar),
             clause_active: Array::new(true, num_clauses),
             clause_marked: Array::new(false, num_clauses),
             clause_offset: Array::from(parser.clause_offset),
-            clause_unit: Array::new(Literal::new(0), num_clauses),
+            clause_unit: Array::new(Literal::TOP, num_clauses),
             config: config,
             db: Array::from(parser.db),
             lemma_to_level: Array::new(0, num_clauses),
-            literal_reason: Array::new(CLAUSE_SENTINEL, literal_array_len(maxvar)),
+            literal_reason: Array::new(Clause::INVALID, literal_array_len(maxvar)),
             maxvar: maxvar,
             proof: Array::from(parser.proof),
             proof_start: parser.proof_start,
             watchlist: Array::new(Vec::new(), literal_array_len(maxvar)),
-        };
-        initialize_watches(&mut checker);
-        checker
+        }
     }
     fn clause(&self, c: Clause) -> Slice<Literal> {
         let range = self.clause_range(c);
@@ -64,6 +62,9 @@ impl Checker {
     fn watches(&self, c: Clause) -> (Literal, Literal) {
         (self.clause(c)[0], self.clause(c)[1])
     }
+    fn is_syntactical_unit(&self, c: Clause) -> bool {
+        self.watches(c).1 == Literal::BOTTOM
+    }
     fn clause_range(&self, c: Clause) -> ops::Range<usize> {
         self.clause_offset[c]..self.clause_offset[c + 1]
     }
@@ -77,26 +78,93 @@ enum ClauseStatus {
     Unit(Literal),
 }
 
-fn initialize_watches(checker: &mut Checker) {
+fn initialize_watches(checker: &mut Checker) -> bool {
     for c in Clause::range(0, checker.proof_start) {
+        if checker.clause(c).len() == 0 {
+            return true;
+        }
         initialize_watchlist_clause(checker, c);
     }
+    false
 }
 
 fn initialize_watchlist_clause(checker: &mut Checker, c: Clause) {
+    trace!(
+        checker,
+        "initializing watches for {}\n",
+        checker.clause_copy(c)
+    );
     let size = checker.clause(c).len();
-    // TODO make sure that clauses of size 1 are propagated
-    if size <= 1 {
-        return;
-    }
-    let (i0, l0) = next_unassigned(&checker, c, size);
+    ensure!(size >= 2);
+    let (i0, l0) = next_unassigned_or_none(&checker, c, size).unwrap_or((0, checker.clause(c)[0]));
     checker.clause_as_mut_slice(c).swap(0, i0);
     checker.watchlist[l0].push(Some(c));
-    if size >= 2 {
-        let (i1, l1) = next_unassigned(&checker, c, i0);
+    if !checker.is_syntactical_unit(c) {
+        let (i1, l1) = next_unassigned_or_none(&checker, c, 0).unwrap_or((1, checker.clause(c)[1]));
         checker.clause_as_mut_slice(c).swap(1, i1);
         checker.watchlist[l1].push(Some(c));
     }
+    trace_watches(checker);
+}
+
+fn remove_watchlist_clause(checker: &mut Checker, c: Clause) {
+    trace!(checker, "removing watches for {}\n", checker.clause_copy(c));
+    let (l0, l1) = checker.watches(c);
+    let index = checker.watchlist[l0]
+        .iter()
+        .position(|watched| watched == &Some(c))
+        .unwrap();
+    checker.watchlist[l0][index] = None;
+    if l1 != Literal::BOTTOM {
+        let index = checker.watchlist[l1]
+            .iter()
+            .position(|watched| watched == &Some(c))
+            .unwrap();
+        checker.watchlist[l1][index] = None;
+    }
+    trace_watches(checker);
+}
+
+fn update_watchlist_clause(checker: &mut Checker, l: Literal, c: Clause) {
+    trace!(
+        checker,
+        "updating watches of literal {} clause {}\n",
+        l,
+        checker.clause_copy(c)
+    );
+    let (l0, l1) = checker.watches(c);
+    ensure!(
+        !l1.is_constant(),
+        "Watches of true unit clauses must not be updated."
+    );
+    // we could always put falsified watch at position 0 here
+    let falsified_watch = if l == l0 {
+        0
+    } else {
+        ensure!(l == l1);
+        1
+    };
+    let keep = 1 - falsified_watch;
+    let (new_index, new_literal) = next_unassigned(&checker, c, keep);
+    ensure!(!new_literal.is_constant());
+    checker.watchlist[new_literal].push(Some(c));
+    checker
+        .clause_as_mut_slice(c)
+        .swap(falsified_watch, new_index);
+    trace_watches(checker);
+}
+
+fn next_unassigned_or_none(
+    checker: &Checker,
+    c: Clause,
+    forbidden: usize,
+) -> Option<(usize, Literal)> {
+    for (i, &literal) in checker.clause(c).iter().enumerate() {
+        if i != forbidden && !checker.assignment[-literal] {
+            return Some((i, literal));
+        }
+    }
+    None
 }
 
 fn next_unassigned(checker: &Checker, c: Clause, forbidden: usize) -> (usize, Literal) {
@@ -109,39 +177,21 @@ fn next_unassigned(checker: &Checker, c: Clause, forbidden: usize) -> (usize, Li
     unsafe { unreachable_unchecked() }
 }
 
-fn update_watchlist_clause(checker: &mut Checker, l: Literal, c: Clause) {
-    let (l0, l1) = checker.watches(c);
-    // we could always put falsified watch at position 0 here
-    let falsified_watch = if l == l0 {
-        0
-    } else {
-        ensure!(l == l1);
-        1
-    };
-    let keep = 1 - falsified_watch;
-    let (new_index, new_literal) = next_unassigned(&checker, c, keep);
-    checker.watchlist[new_literal].push(Some(c));
-    checker
-        .clause_as_mut_slice(c)
-        .swap(falsified_watch, new_index);
-}
-
-#[allow(dead_code)]
 fn trace_watches(checker: &Checker) {
-    (1..=checker.maxvar.0 as i32)
-        .flat_map(|l| vec![l, -l])
-        .for_each(|l| {
+    if cfg!(debug_assertions) {
+        Literal::all(checker.maxvar).for_each(|l| {
             trace!(
                 checker,
                 "w[{}]: {}\n",
                 l,
-                checker.watchlist[Literal::new(l)]
+                checker.watchlist[l]
                     .iter()
-                    .map(|c| format!("{}", c.unwrap()))
+                    .map(|watch| watch.map_or("x".to_string(), |c| format!("{}", c)))
                     .collect::<Vec<String>>()
                     .join(", ")
             )
         });
+    }
 }
 
 fn clause_status(literals: Slice<Literal>, assignment: &Assignment) -> ClauseStatus {
@@ -185,6 +235,7 @@ fn clause_status_impl(
 }
 
 fn propagate_literal(checker: &mut Checker, l: Literal, reason: Option<Clause>) -> bool {
+    trace!(checker, "propagate_literal {}, {}\n", l, checker.assignment);
     if checker.assignment[l] {
         return false;
     }
@@ -201,7 +252,9 @@ fn propagate_literal(checker: &mut Checker, l: Literal, reason: Option<Clause>) 
     checker.assignment.assign(l);
     let mut conflict = false;
     for i in 0..checker.watchlist[-l].len() {
-        assert!(checker.watchlist[-l][i].is_some());
+        if !checker.watchlist[-l][i].is_some() {
+            continue;
+        }
         let c = checker.watchlist[-l][i].unwrap();
         if !checker.clause_active[c] {
             continue;
@@ -240,20 +293,32 @@ fn reached_conflict_in(checker: &mut Checker, c: Clause) -> bool {
     true
 }
 
+fn formula_contains_empty_clause(checker: &mut Checker) -> bool {
+    initialize_watches(checker)
+}
+
 fn propagate(checker: &mut Checker, record_reasons: bool) -> bool {
-    for c in Clause::range(0, checker.proof_start) {
-        if !checker.clause_active[c] {
-            continue;
-        }
-        match clause_status(checker.clause(c), &checker.assignment) {
-            ClauseStatus::Falsified => return reached_conflict_in(checker, c),
-            ClauseStatus::Unit(literal) => {
-                let reason = if record_reasons { Some(c) } else { None };
-                if propagate_literal(checker, literal, reason) {
-                    return true;
+    for l in Literal::all(checker.maxvar) {
+        let mut i = 0;
+        loop {
+            if i >= checker.watchlist[l].len() {
+                break;
+            }
+            if let Some(c) = checker.watchlist[l][i] {
+                if checker.clause(c)[0] == l && checker.clause_active[c] {
+                    match clause_status(checker.clause(c), &checker.assignment) {
+                        ClauseStatus::Falsified => return reached_conflict_in(checker, c),
+                        ClauseStatus::Unit(literal) => {
+                            let reason = if record_reasons { Some(c) } else { None };
+                            if propagate_literal(checker, literal, reason) {
+                                return true;
+                            }
+                        }
+                        ClauseStatus::Satisfied | ClauseStatus::Unknown => (),
+                    }
                 }
             }
-            ClauseStatus::Satisfied | ClauseStatus::Unknown => (),
+            i += 1;
         }
     }
     false
@@ -274,54 +339,98 @@ fn member(needle: Literal, literals: Slice<Literal>) -> bool {
 
 fn rat(checker: &mut Checker, literals: ClauseCopy) -> bool {
     let pivot = literals[0];
-    preserve_assignment!(
-        checker.assignment,
+    preserve_assignment!(checker.assignment, {
+        trace!(checker, "RUP check on {}\n", literals);
         rup(checker, literals.iter())
             || Clause::range(0, checker.proof_start) //
-                .all(|d| preserve_assignment!(
-                    checker.assignment,
-                    !checker.clause_active[d]
-                        || (!checker.config.unmarked_rat_candidates && !checker.clause_marked[d])
-                        || !member(-pivot, checker.clause(d))
-                        || rup(
-                            checker,
-                            checker
-                                .clause_copy(d)
-                                .iter()
-                                .filter(|literal| **literal != -pivot),
-                        )
-                ))
-    )
+                .all(|d| {
+                    preserve_assignment!(
+                        checker.assignment,
+                        !checker.clause_active[d]
+                            || (!checker.config.unmarked_rat_candidates
+                                && !checker.clause_marked[d])
+                            || !member(-pivot, checker.clause(d))
+                            || {
+                                trace!(checker, "RAT check on {}\n", literals);
+                                rup(
+                                    checker,
+                                    checker
+                                        .clause_copy(d)
+                                        .iter()
+                                        .filter(|literal| **literal != -pivot),
+                                )
+                            }
+                    )
+                })
+    })
 }
 
 fn rup<'a>(checker: &mut Checker, mut literals: impl Iterator<Item = &'a Literal>) -> bool {
     literals.any(|literal| propagate_literal(checker, -*literal, None))
 }
 
-fn forward_addition(checker: &mut Checker, c: Clause) -> bool {
-    ensure!(c == checker.proof_start);
-    checker.lemma_to_level[c] = checker.assignment.len();
-    let status = clause_status(checker.clause(c), &checker.assignment);
-    checker.proof_start += 1;
-    if let ClauseStatus::Unit(literal) = status {
-        if propagate_literal(checker, literal, Some(c)) {
-            return true;
+fn mark_reasons_for_conflict(checker: &mut Checker) -> bool {
+    let literal_reason = &checker.literal_reason;
+    let conflict_reason = literal_reason[Literal::new(0)];
+    let mut stack = vec![conflict_reason];
+    while stack.len() != 0 {
+        let c = stack.pop().unwrap();
+        for i in checker.clause_range(c) {
+            let l = checker.db[i];
+            let reason = literal_reason[-l];
+            if reason != Clause::INVALID && !checker.clause_marked[reason] {
+                checker.clause_marked[reason] = true;
+                stack.push(reason);
+            }
         }
-    } else if status == ClauseStatus::Unknown {
-        initialize_watchlist_clause(checker, c);
     }
-    false
+    true
 }
 
-fn backward_addition(checker: &mut Checker, c: Clause) -> bool {
-    checker.proof_start -= 1;
-    if !checker.clause_marked[c] {
-        return true;
+enum Direction {
+    Forward,
+    Backward,
+}
+
+fn apply_step(checker: &mut Checker, step: ProofStep, direction: Direction) {
+    match direction {
+        Direction::Forward => match step {
+            ProofStep::Lemma(_) => {
+                initialize_watchlist_clause(checker, checker.proof_start);
+                checker.proof_start += 1;
+            }
+            ProofStep::Deletion(c) => {
+                checker.clause_active[c] = false;
+                remove_watchlist_clause(checker, c);
+            }
+        },
+        Direction::Backward => match step {
+            ProofStep::Lemma(_) => {
+                checker.proof_start -= 1;
+                remove_watchlist_clause(checker, checker.proof_start);
+            }
+            ProofStep::Deletion(c) => {
+                checker.clause_active[c] = true;
+                initialize_watchlist_clause(checker, c);
+            }
+        },
     }
-    let level = checker.lemma_to_level[c];
-    checker.assignment.reset(level);
-    ensure!(c == checker.proof_start);
-    rat(checker, checker.clause_copy(c))
+}
+
+fn forward_lemma(checker: &mut Checker) -> bool {
+    checker.lemma_to_level[checker.proof_start] = checker.assignment.len();
+    let status = clause_status(checker.clause(checker.proof_start), &checker.assignment);
+    let conflict_detected = if let ClauseStatus::Unit(literal) = status {
+        propagate_literal(checker, literal, Some(checker.proof_start))
+    } else {
+        false
+    };
+    apply_step(
+        checker,
+        ProofStep::Lemma(checker.proof_start),
+        Direction::Forward,
+    );
+    conflict_detected
 }
 
 fn forward_deletion(checker: &mut Checker, c: Clause) -> bool {
@@ -332,26 +441,17 @@ fn forward_deletion(checker: &mut Checker, c: Clause) -> bool {
     );
     let recorded_unit = checker.clause_unit[c];
     let level = checker.assignment.level_prior_to_assigning(recorded_unit);
-    let handle_deletion = !checker.config.skip_deletions
-        && !recorded_unit.zero()
+    let handle_unit_deletion = !checker.config.skip_deletions
+        && recorded_unit != Literal::TOP
         && clause_status_before(checker.clause(c), &checker.assignment, level)
             == ClauseStatus::Unit(recorded_unit);
-    checker.clause_active[c] = false;
-    if handle_deletion {
+    apply_step(checker, ProofStep::Deletion(c), Direction::Forward);
+    if handle_unit_deletion {
         checker.assignment.reset(level);
         let conflict = propagate(checker, true);
         ensure!(!conflict);
     }
     false
-}
-
-fn backward_deletion(checker: &mut Checker, c: Clause) -> bool {
-    ensure!(
-        !checker.clause_active[c],
-        "Clause must not be deleted twice."
-    );
-    checker.clause_active[c] = true;
-    true
 }
 
 fn forward(checker: &mut Checker) -> Option<usize> {
@@ -364,38 +464,22 @@ fn forward(checker: &mut Checker) -> Option<usize> {
                 forward_deletion(checker, c)
             }
             ProofStep::Lemma(c) => {
+                ensure!(c == checker.proof_start);
                 trace!(checker, "[forward] add {}\n", checker.clause_copy(c));
                 let conflict_claimed = checker.clause(c).len() == 0;
                 if conflict_claimed {
                     warn!("conflict claimed but not detected");
                     return None;
                 }
-                forward_addition(checker, c)
+                forward_lemma(checker)
             }
         };
+        trace!(checker, "[forward] {}\n", checker.assignment);
         if conflict_detected {
             return Some(i);
         }
     }
     None
-}
-
-fn mark_reasons_for_conflict(checker: &mut Checker) -> bool {
-    let literal_reason = &checker.literal_reason;
-    let conflict_reason = literal_reason[Literal::new(0)];
-    let mut stack = vec![conflict_reason];
-    while stack.len() != 0 {
-        let c = stack.pop().unwrap();
-        for i in checker.clause_range(c) {
-            let l = checker.db[i];
-            let reason = literal_reason[-l];
-            if reason != CLAUSE_SENTINEL && !checker.clause_marked[reason] {
-                checker.clause_marked[reason] = true;
-                stack.push(reason);
-            }
-        }
-    }
-    true
 }
 
 fn backward(checker: &mut Checker, conflict_at_step: usize) -> bool {
@@ -405,11 +489,22 @@ fn backward(checker: &mut Checker, conflict_at_step: usize) -> bool {
         let accepted = match checker.proof[i] {
             ProofStep::Deletion(c) => {
                 trace!(checker, "[backward] del {}\n", checker.clause_copy(c));
-                backward_deletion(checker, c)
+                ensure!(
+                    !checker.clause_active[c],
+                    "Clause must not be deleted twice."
+                );
+                apply_step(checker, ProofStep::Deletion(c), Direction::Backward);
+                true
             }
             ProofStep::Lemma(c) => {
                 trace!(checker, "[backward] add {}\n", checker.clause_copy(c));
-                backward_addition(checker, c)
+                ensure!(c + 1 == checker.proof_start);
+                apply_step(checker, ProofStep::Lemma(c), Direction::Backward);
+                !checker.clause_marked[c] || {
+                    let level = checker.lemma_to_level[c];
+                    checker.assignment.reset(level);
+                    rat(checker, checker.clause_copy(c))
+                }
             }
         };
         if !accepted {
@@ -420,7 +515,7 @@ fn backward(checker: &mut Checker, conflict_at_step: usize) -> bool {
 }
 
 pub fn check(checker: &mut Checker) -> bool {
-    propagate(checker, true) || {
+    formula_contains_empty_clause(checker) || propagate(checker, true) || {
         if let Some(conflict_at_step) = forward(checker) {
             mark_reasons_for_conflict(checker);
             backward(checker, conflict_at_step)
