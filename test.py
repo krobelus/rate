@@ -34,7 +34,8 @@ def benchmark_cnfs():
     return (f'{dirpath}/{file}'
             for dirpath, _, files in os.walk(benchmark_location)
             for file in files
-            if file.endswith('.cnf'))
+            if file.endswith('.cnf')
+            and '/excluded' not in dirpath)
 
 
 def all_inputs():
@@ -60,6 +61,10 @@ def compare_acceptance(a, b):
     for name in small_inputs():
         print(f'##### Comparing result of {a} and {b} for {name}')
         args = [f'{name}.cnf', f'{name}.drat']
+
+        if name == 'benchmarks/crafted/bottom' and b == ['rupee']:
+            print(f'skipping {name} when comparing to rupee')
+            continue
 
         # we take name here to see the benchmark name immediately when a test
         # fails
