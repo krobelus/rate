@@ -35,6 +35,7 @@ impl<'a> HashableClause {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parser {
     pub maxvar: Variable,
+    pub num_clauses: usize,
     pub db: Vec<Literal>,
     pub clause_offset: Vec<usize>,
     clause_scheduled_for_deletion: Vec<bool>,
@@ -54,6 +55,7 @@ impl Parser {
     pub fn new() -> Parser {
         Parser {
             maxvar: Variable::new(0),
+            num_clauses: usize::max_value(),
             db: Vec::new(),
             clause_offset: Vec::new(),
             clause_scheduled_for_deletion: Vec::new(),
@@ -189,12 +191,11 @@ fn find_clause<'a>(needle: &[Literal], parser: &Parser) -> Option<Clause> {
     })
 }
 
-enum ClauseState {
-    InLiteral,
-    NotInLiteral,
-}
-
 fn parse_formula<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError> {
+    enum ClauseState {
+        InLiteral,
+        NotInLiteral,
+    }
     let mut line = 0;
     let mut col = 0;
 
@@ -268,13 +269,13 @@ fn number_binary(input: &[u8]) -> (&[u8], Literal) {
     (&input[i..], Literal::from_raw(result))
 }
 
-enum LemmaPositionBinary {
-    Start,
-    Lemma,
-    Deletion,
-}
-
 fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
+    enum LemmaPositionBinary {
+        Start,
+        Lemma,
+        Deletion,
+    }
+
     let mut state = LemmaPositionBinary::Start;
     let mut buffer = Vec::new();
     while input.len() > 0 {
@@ -313,15 +314,6 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
     }
 }
 
-#[derive(Debug)]
-enum LemmaPositionText {
-    Start,
-    LemmaLiteral,
-    PostLemmaLiteral,
-    Deletion,
-    DeletionLiteral,
-}
-
 fn parse_proof<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError> {
     parser.proof_start = Clause(parser.clause_offset.len());
 
@@ -342,11 +334,29 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError> {
     } else {
         parse_proof_text(parser, input)
     };
-    parser.clause_offset.push(parser.db.len());
+    // Add empty clauses to the end of the proof and make sure that the
+    // computation of the length of clause `c` can be safely computed as
+    // `clause_offset[c + 1] - clause_offset[c]`.
+    parser.num_clauses = parser.clause_offset.len() + 1;
+    parser
+        .proof
+        .push(ProofStep::Lemma(Clause(parser.num_clauses - 1)));
+    let end_of_empty_clause = parser.db.len();
+    parser.clause_offset.push(end_of_empty_clause);
+    parser.clause_offset.push(end_of_empty_clause);
     result
 }
 
 fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: &[u8]) -> Option<ParseError> {
+    #[derive(Debug)]
+    enum LemmaPositionText {
+        Start,
+        LemmaLiteral,
+        PostLemmaLiteral,
+        Deletion,
+        DeletionLiteral,
+    }
+
     let mut state = LemmaPositionText::Start;
     let mut head = true;
     let mut start = 0;
@@ -507,11 +517,16 @@ p cnf 2 2
             parser,
             Parser {
                 maxvar: Variable::new(3),
+                num_clauses: 4,
                 db: vec_of_literals!(1, 2, -1, -2, 1, 2, 3),
-                clause_offset: vec!(0, 2, 4, 7),
+                clause_offset: vec!(0, 2, 4, 7, 7),
                 clause_scheduled_for_deletion: vec!(true, false, false),
                 proof_start: Clause(2),
-                proof: vec![ProofStep::Lemma(Clause(2)), ProofStep::Deletion(Clause(0))],
+                proof: vec![
+                    ProofStep::Lemma(Clause(2)),
+                    ProofStep::Deletion(Clause(0)),
+                    ProofStep::Lemma(Clause(3))
+                ],
                 clause_to_id: multimap! {
                     HashableClause::new(&vec_of_literals!(1, 2)) => Clause(0),
                     HashableClause::new(&vec_of_literals!(-1, -2)) => Clause(1),

@@ -1,7 +1,7 @@
 use crate::memory::{index_vec, index_vec_mut};
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Stack<T> {
     vec: Vec<T>,
 }
@@ -35,6 +35,12 @@ impl<T> Stack<T> {
     }
     pub fn clear(&mut self) {
         self.vec.clear()
+    }
+}
+
+impl<T: Ord> Stack<T> {
+    pub fn sort_unstable(&mut self) {
+        self.vec.sort_unstable()
     }
 }
 

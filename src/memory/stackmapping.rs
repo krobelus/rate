@@ -1,11 +1,7 @@
 //! Stack with fast lookup.
 
 use crate::memory::{Array, BoundedStack, Offset};
-use std::{
-    fmt::Debug,
-    iter::IntoIterator,
-    ops::{Index, IndexMut},
-};
+use std::{fmt::Debug, iter::IntoIterator, ops::Index};
 
 #[derive(Debug)]
 pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {

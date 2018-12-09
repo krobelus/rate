@@ -1,23 +1,15 @@
 //! Compile-time and runtime configuration, plus macros
 
 use clap::ArgMatches;
+use std::fs::File;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Config {
     pub skip_deletions: bool,
     pub unmarked_rat_candidates: bool,
     pub trace: bool,
-}
-
-impl Config {
-    pub fn new(matches: ArgMatches) -> Config {
-        let drat_trim = matches.is_present("DRAT_TRIM");
-        Config {
-            skip_deletions: drat_trim || matches.is_present("SKIP_DELETIONS"),
-            unmarked_rat_candidates: drat_trim || matches.is_present("UNMARKED_RAT_CANDIDATES"),
-            trace: matches.is_present("TRACE"),
-        }
-    }
+    pub lrat: bool,
+    pub lrat_file: File,
 }
 
 pub const DISABLE_CHECKS_AND_TRACING: bool = false;
@@ -47,10 +39,11 @@ macro_rules! _trace {
         }
     }};
 }
-macro_rules! trace {
-    ($checker:expr, $($arg:tt)*) => {
-        _trace!($checker.config.trace, $($arg)*)
-    };
+macro_rules! traceln {
+    ($checker:expr, $($arg:tt)*) => {{
+        _trace!($checker.config.trace, $($arg)*);
+        _trace!($checker.config.trace, "\n")
+    }};
 }
 
 // Trace upon scope exit without borrowing
@@ -86,4 +79,24 @@ macro_rules! ensure {
             assert!($($arg)*);
         }
     })
+}
+
+impl Config {
+    pub fn new(matches: ArgMatches) -> Config {
+        let drat_trim = matches.is_present("DRAT_TRIM");
+        let mut config = Config {
+            skip_deletions: drat_trim || matches.is_present("SKIP_DELETIONS"),
+            unmarked_rat_candidates: drat_trim || matches.is_present("UNMARKED_RAT_CANDIDATES"),
+            trace: matches.is_present("TRACE"),
+            lrat: matches.is_present("LRAT_FILE"),
+            lrat_file: File::open("/dev/null").unwrap(),
+        };
+        if config.lrat {
+            let filename = matches.value_of("LRAT_FILE").unwrap();
+            config.lrat_file = File::create(filename)
+                .map_err(|err| die!("failed to open LRAT file {}: {}", filename, err))
+                .unwrap();
+        }
+        config
+    }
 }

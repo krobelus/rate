@@ -50,15 +50,16 @@ is unexpected to you.
 
 # Caveats
 
-Please note that, when Rate accepts a proof, it does not necessarily mean that
-the proof is correct as is. We perform some transformations on the proof before
-actually checking it, mainly to improve performance, as do other checkers. So
-this might result in a proof that contains some invalid instructions being
-accepted, but this should only be possible for unsatisfiable formulas.
+Please note that, Rate accepts proof that are technically not fully correct,
+We perform some transformations on the proof before actually checking its
+steps, mainly to improve performance, as do other checkers. So this might
+result in a proof that contains some invalid instructions being accepted, but
+this should only be possible for unsatisfiable formulas.
 
 Here are the transformations we do:
 - We discard any lemma or deletion after the first time the empty clause
-- (conflict) is inferred.
+  (conflict) is inferred. In particular this means that an explicit empty
+  clause at the end of the proof is not required.
 - Lemmas that are not part of the reason for the above conflict are not
   checked, thus they are effectively removed from the proof.
 - Clauses and lemmas that are not part of the reason for the conflict are not

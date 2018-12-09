@@ -7,12 +7,14 @@ use crate::{
     memory::{Offset, Stack},
 };
 use std::{
-    fmt, ops,
+    fmt, io,
+    io::Write,
+    ops,
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
 /// The index of a clause or lemma, immutable during the lifetime of the program.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash)]
 pub struct Clause(pub usize);
 
 impl Clause {
@@ -82,6 +84,14 @@ impl<'a> ClauseCopy {
     pub fn iter(&'a self) -> std::slice::Iter<'a, Literal> {
         self.into_iter()
     }
+    pub fn dimacs(&self, f: &mut impl Write) -> io::Result<()> {
+        for literal in &self.literals {
+            if !literal.is_constant() {
+                write!(f, "{} ", literal)?;
+            }
+        }
+        write!(f, "0")
+    }
 }
 
 impl<'a> IntoIterator for &'a ClauseCopy {
@@ -94,8 +104,11 @@ impl<'a> IntoIterator for &'a ClauseCopy {
 
 impl fmt::Display for ClauseCopy {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{}] ", self.id)?;
         for literal in &self.literals {
-            write!(f, "{} ", literal)?;
+            if !literal.is_constant() {
+                write!(f, "{} ", literal)?;
+            }
         }
         write!(f, "0")
     }

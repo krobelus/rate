@@ -25,6 +25,7 @@ fn main() {
     (about: env!("CARGO_PKG_DESCRIPTION"))
     (@arg INPUT: +required "input file in DIMACS format")
     (@arg PROOF: +required "proof file in DRAT format")
+    (@arg LRAT_FILE: +takes_value -L "Given a correct proof, write the LRAT certificate to this file.")
     (@arg SKIP_DELETIONS: -d long("skip-deletions") "Ignore deletion of unit clauses.")
     (@arg UNMARKED_RAT_CANDIDATES: -r long("unmarked-rat-candidates")  "Do not ignore RAT candidates that are not marked.")
     (@arg DRAT_TRIM: long("drat-trim")  "Try to be compatible with drat-trim.\nThis implies --skip-deletions and --unmarked-rat-candidates.")

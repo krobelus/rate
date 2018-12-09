@@ -52,57 +52,87 @@ def small_inputs():
             ]
 
 
+def ensure_executable(command):
+    assert Popen(('which', command[0])).wait(
+    ) == 0, f'{command[0]} not found in PATH'
+
+
+def process_expansion(command):
+    return Popen(command, stdout=PIPE).communicate()
+
+
+def accepts(checker, name):
+    'we take name here to see the benchmark name instantly when a test fails'
+    stdout, _ = process_expansion(checker)
+    accepted = b's ACCEPTED\n' in stdout or (
+        'drat-trim' in checker[0] and b's VERIFIED' in stdout)
+    rejected = b's REJECTED\n' in stdout or (
+        'drat-trim' in checker[0] and b's NOT VERIFIED' in stdout)
+    assert accepted ^ rejected
+    return accepted
+
+
+def lrat_checker_accepts(checker, name):
+    stdout, _ = process_expansion(checker)
+    ok = b's ACCEPTED\n' in stdout or (
+        'lrat-checker' in checker[0] and b'c VERIFIED' in stdout)
+    if not ok:
+        print(str(stdout, 'utf8'))
+    return ok
+
+
 def compare_acceptance(a, b):
     build_release()
-    for command in a, b:
-        checker = command[0]
-        assert Popen(('which', checker)).wait(
-        ) == 0, f'{checker} not found in PATH'
+    [ensure_executable(command) for command in (a, b)]
     for name in small_inputs():
-        print(f'##### Comparing result of {a} and {b} for {name}')
         args = [f'{name}.cnf', f'{name}.drat']
 
-        if name == 'benchmarks/crafted/bottom' and b == ['rupee']:
-            print(f'skipping {name} when comparing to rupee')
+        if name == 'benchmarks/crafted/bottom' and 'rupee' in b[0]:
+            continue  # different result
+        if (('/rate' in b[0] or 'crate' in b[0])
+                and name in [
+                'benchmarks/crafted/marked-environment',
+        ]):
+            print(
+                f'skipping {name} as {b[0]} checks all RAT candidates (not just core)')
             continue
 
-        # we take name here to see the benchmark name immediately when a test
-        # fails
-        def accepts(checker, name):
-            stdout = Popen(checker + args, stdout=PIPE).communicate()[0]
-            print(stdout)
-            return b's ACCEPTED\n' in stdout or (
-                'drat-trim' in checker[0] and b's VERIFIED' in stdout)
-        assert accepts(a, name) == accepts(b, name)
+        assert accepts(a + args, name) == accepts(b + args, name)
 
 
-def test_compare_trace_crate():
-    return
+def certify_with_lrat_checker(drat_checker, lrat_checker):
     build_release()
+    [ensure_executable(command) for command in (drat_checker, lrat_checker)]
     for name in small_inputs():
-        print(
-            f'##### Comparing output trace of rate and crate for {name}')
-        command = (
-            './scripts/diff-rate-crate.sh',
-            f'{name}.cnf',
-            f'{name}.drat')
-        print(' '.join(command))
-        assert Popen(command).wait() == 0
+        args = [f'{name}.cnf', f'{name}.drat', '-L', f'{name}.lrat']
+        if accepts(drat_checker + args, name):
+            if name == 'benchmarks/crafted/bottom' and 'lrat-check' in lrat_checker[0]:
+                continue  # infinite loop
+            assert lrat_checker_accepts(
+                lrat_checker + [args[0], args[3]], name)
 
 
-def test_acceptance_drat_trim():
-    compare_acceptance(rate(flags=['--skip-deletions']), ['drat-trim'])
+# def test_acceptance_drat_trim():
+#     compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'])
 
 
-def test_acceptance_rupee():
-    compare_acceptance(rate(), ['rupee'])
+# def test_acceptance_rupee():
+#     compare_acceptance(rate(), ['rupee'])
 
 
-def test_acceptance_crate():
-    compare_acceptance(rate(), ['./crate'])
+# def test_acceptance_crate():
+#     compare_acceptance(rate(), ['./crate'])
 
 
-def test_acceptance_initial_commit():
-    initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
-    build_release(initial_commit)
-    compare_acceptance(rate(), rate(initial_commit))
+# def test_acceptance_initial_commit():
+#     initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
+#     build_release(initial_commit)
+#     compare_acceptance(rate(), rate(initial_commit))
+
+
+def test_using_lrat_check():
+    certify_with_lrat_checker(rate(), ['lrat-check'])
+
+
+def test_using_lratcheck():
+    certify_with_lrat_checker(rate(), ['lratcheck'])

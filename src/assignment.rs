@@ -21,8 +21,10 @@ impl Assignment {
             mapping: StackMapping::new(false, array_size, stack_capacity),
             position_in_stack: Array::new(0, literal_array_len(maxvar)),
         };
-        assignment.mapping[Literal::TOP] = true;
-        assignment.mapping[Literal::BOTTOM] = false;
+        assignment.mapping.set_but_do_not_push(Literal::TOP, true);
+        assignment
+            .mapping
+            .set_but_do_not_push(Literal::BOTTOM, false);
         assignment
     }
     pub fn len(&self) -> usize {
@@ -35,11 +37,11 @@ impl Assignment {
         ensure!(!l.is_constant());
         ensure!(!self[-l] && !self[l]);
         self.position_in_stack[l] = self.mapping.len();
-        self.mapping.insert(l, true);
+        self.mapping.push(l, true);
     }
     pub fn reset(&mut self, level: usize) {
         while self.mapping.len() > level {
-            self.mapping.pop()
+            self.mapping.pop();
             // It is not necessary to reset position_in_stack here, as it
             // will be written before the next use.
         }
@@ -71,7 +73,7 @@ impl Display for Assignment {
 impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
-        ensure!(self.mapping[Literal::new(0)] && !self.mapping[Literal::BOTTOM]);
+        ensure!(self.mapping[Literal::TOP] && !self.mapping[Literal::BOTTOM]);
         &self.mapping[literal]
     }
 }
