@@ -6,8 +6,7 @@
 //! - Custom type for indexing as first template argument in `Array<I, T>`.
 //! - Bounds checking can be disabled to some extent (work in progress).
 //! - If we know a good upper bound for a stack we prefer to use
-//! `BoundedStack<T>` or `StackMapping<T>` as they never allocate after being
-//! constructed.
+//! `BoundedStack<T>` or `StackMapping<Key, T>` as they never allocate after being constructed.
 
 use crate::config::BOUNDS_CHECKING;
 
@@ -34,9 +33,6 @@ impl Offset for usize {
     fn as_offset(self) -> usize {
         self
     }
-    // pub fn range(start: impl Offset, end:impl Offset) {
-    //     (start.as_offset()..end.as_offset())
-    // }
 }
 
 fn index_vec<T>(vec: &Vec<T>, index: impl Offset) -> &T {

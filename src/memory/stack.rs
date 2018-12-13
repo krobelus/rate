@@ -21,6 +21,9 @@ impl<T> Stack<T> {
     pub fn len(&self) -> usize {
         self.vec.len()
     }
+    pub fn empty(&self) -> bool {
+        self.len() == 0
+    }
     pub fn capacity(&self) -> usize {
         self.vec.capacity()
     }

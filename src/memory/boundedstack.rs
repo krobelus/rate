@@ -19,6 +19,9 @@ impl<T> BoundedStack<T> {
     pub fn len(&self) -> usize {
         self.stack.len()
     }
+    pub fn empty(&self) -> bool {
+        self.stack.empty()
+    }
     pub fn capacity(&self) -> usize {
         self.stack.capacity()
     }

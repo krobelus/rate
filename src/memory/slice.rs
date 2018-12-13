@@ -19,6 +19,9 @@ impl<'a, T> Slice<'a, T> {
     pub fn len(&self) -> usize {
         self.slice.len()
     }
+    pub fn empty(&self) -> bool {
+        self.len() == 0
+    }
     pub fn range(&self, start: usize, end: usize) -> Slice<'a, T> {
         let slice =
             unsafe { std::slice::from_raw_parts(self.slice.as_ptr().add(start), end - start) };
