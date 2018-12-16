@@ -7,22 +7,24 @@ use std::fs::File;
 pub struct Config {
     pub skip_deletions: bool,
     pub unmarked_rat_candidates: bool,
-    pub trace: bool,
+    pub verbosity: u64,
     pub lrat: bool,
     pub lrat_file: File,
 }
 
-pub const DISABLE_CHECKS_AND_TRACING: bool = false;
+pub const NO_WATCHES: bool = true;
+
+pub const DISABLE_CHECKS_AND_LOGGING: bool = false;
 
 macro_rules! enabled {
     ($ok:expr) => {
-        $ok && !DISABLE_CHECKS_AND_TRACING
+        $ok && !DISABLE_CHECKS_AND_LOGGING
     };
 }
 
 pub const BOUNDS_CHECKING: bool = enabled!(true);
 pub const ASSERTIONS: bool = enabled!(true);
-pub const TRACE: bool = enabled!(true);
+pub const LOGGING: bool = enabled!(true);
 
 // print to stdout
 macro_rules! echo {
@@ -31,27 +33,28 @@ macro_rules! echo {
     })
 }
 
-macro_rules! _trace {
-    ($enabled:expr, $($arg:tt)*) => {{
-        if crate::config::TRACE && $enabled
+// print based on verbosity level
+macro_rules! _log {
+    ($verbosity:expr, $level:expr, $($arg:tt)*) => {
+        if crate::config::LOGGING && $level <= $verbosity
         {
             print!($($arg)*);
+            print!("\n");
         }
-    }};
+    };
 }
-macro_rules! traceln {
-    ($checker:expr, $($arg:tt)*) => {{
-        _trace!($checker.config.trace, $($arg)*);
-        _trace!($checker.config.trace, "\n")
-    }};
+macro_rules! log {
+    ($checker:expr, $level:expr, $($arg:tt)*) => {
+        _log!($checker.config.verbosity, $level, $($arg)*)
+    };
 }
 
 // Trace upon scope exit without borrowing
-macro_rules! defer_trace {
-    ($checker:expr, $($arg:tt)*) => {
-        let trace = $checker.config.trace;
+macro_rules! defer_log {
+    ($checker:expr, $level:expr, $($arg:tt)*) => {
+        let verbosity = $checker.config.verbosity;
         defer!(
-            _trace!(trace, $($arg)*)
+            _log!(verbosity, $level, $($arg)*)
             );
     }
 }
@@ -87,8 +90,15 @@ impl Config {
         let mut config = Config {
             skip_deletions: drat_trim || matches.is_present("SKIP_DELETIONS"),
             unmarked_rat_candidates: drat_trim || matches.is_present("UNMARKED_RAT_CANDIDATES"),
-            trace: matches.is_present("TRACE"),
+            verbosity: match matches.occurrences_of("v") {
+                i if i > 3 => {
+                    warn!("verbosity can be at most 3");
+                    3
+                }
+                i => i,
+            },
             lrat: matches.is_present("LRAT_FILE"),
+            // TODO
             lrat_file: File::open("/dev/null").unwrap(),
         };
         if config.lrat {

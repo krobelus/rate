@@ -59,8 +59,9 @@ impl Literal {
         self.encoding <= 1
     }
     pub fn all(maxvar: Variable) -> impl Iterator<Item = Literal> {
-        let end = maxvar.literal().encoding;
-        (1..end + 2).map(Literal::from_raw)
+        let first = Variable(1).literal().encoding;
+        let last = maxvar.literal().encoding;
+        (first..last + 2).map(Literal::from_raw)
     }
     pub const fn is_zero(self) -> bool {
         self.encoding == 0

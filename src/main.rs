@@ -10,7 +10,7 @@ mod literal;
 mod memory;
 mod parser;
 
-use clap::clap_app;
+use clap::Arg;
 use std::process;
 
 use crate::{
@@ -20,17 +20,16 @@ use crate::{
 };
 
 fn main() {
-    let matches = clap_app!(rate =>
-    (version: env!("CARGO_PKG_VERSION"))
-    (about: env!("CARGO_PKG_DESCRIPTION"))
-    (@arg INPUT: +required "input file in DIMACS format")
-    (@arg PROOF: +required "proof file in DRAT format")
-    (@arg LRAT_FILE: +takes_value -L "Given a correct proof, write the LRAT certificate to this file.")
-    (@arg SKIP_DELETIONS: -d long("skip-deletions") "Ignore deletion of unit clauses.")
-    (@arg UNMARKED_RAT_CANDIDATES: -r long("unmarked-rat-candidates")  "Do not ignore RAT candidates that are not marked.")
-    (@arg DRAT_TRIM: long("drat-trim")  "Try to be compatible with drat-trim.\nThis implies --skip-deletions and --unmarked-rat-candidates.")
-    (@arg TRACE: -t --trace "Output a trace of the execution")
-    )
+    let matches = clap::App::new("rate")
+    .version(env!("CARGO_PKG_VERSION"))
+    .about(env!("CARGO_PKG_DESCRIPTION"))
+    .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
+    .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT format"))
+    .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat").help("Given a correct proof, write the LRAT certificate to this file."))
+    .arg(Arg::with_name("SKIP_DELETIONS").short("d").long("skip-deletions").help("Ignore deletion of unit clauses."))
+    .arg(Arg::with_name("UNMARKED_RAT_CANDIDATES").short("r").long("unmarked-rat-candidates").help("Do not ignore RAT candidates that are not marked."))
+    .arg(Arg::with_name("DRAT_TRIM").long("drat-trim").help("Try to be compatible with drat-trim.\nThis implies --skip-deletions and --unmarked-rat-candidates."))
+    .arg(Arg::with_name("v").short("v").multiple(true).help("Set the verbosity level (use up to three times)"))
     .get_matches();
 
     let parser = parse_files(

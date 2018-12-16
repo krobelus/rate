@@ -89,6 +89,8 @@ def compare_acceptance(a, b):
 
         if name == 'benchmarks/crafted/bottom' and 'rupee' in b[0]:
             continue  # different result
+        if name == 'benchmarks/crafted/faux-conflict' and 'drat-trim' in b[0]:
+            continue  # drat-trim uses binary mode here
         if (('/rate' in b[0] or 'crate' in b[0])
                 and name in [
                 'benchmarks/crafted/marked-environment',
@@ -112,22 +114,22 @@ def certify_with_lrat_checker(drat_checker, lrat_checker):
                 lrat_checker + [args[0], args[3]], name)
 
 
-# def test_acceptance_drat_trim():
-#     compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'])
+def test_acceptance_drat_trim():
+    compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'])
 
 
-# def test_acceptance_rupee():
-#     compare_acceptance(rate(), ['rupee'])
+def test_acceptance_rupee():
+    compare_acceptance(rate(), ['rupee'])
 
 
-# def test_acceptance_crate():
-#     compare_acceptance(rate(), ['./crate'])
+def test_acceptance_crate():
+    compare_acceptance(rate(), ['./crate'])
 
 
-# def test_acceptance_initial_commit():
-#     initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
-#     build_release(initial_commit)
-#     compare_acceptance(rate(), rate(initial_commit))
+def test_acceptance_initial_commit():
+    initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
+    build_release(initial_commit)
+    compare_acceptance(rate(), rate(initial_commit))
 
 
 def test_using_lrat_check():
