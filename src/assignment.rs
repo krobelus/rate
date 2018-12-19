@@ -9,6 +9,7 @@ use std::{fmt, fmt::Display, ops::Index};
 
 #[derive(Debug)]
 pub struct Assignment {
+    first_unprocessed: usize,
     mapping: StackMapping<Literal, bool>,
     position_in_stack: Array<Literal, usize>,
 }
@@ -18,6 +19,7 @@ impl Assignment {
         let array_size = literal_array_len(maxvar);
         let stack_capacity = maxvar.as_offset();
         let mut assignment = Assignment {
+            first_unprocessed: 0,
             mapping: StackMapping::new(false, array_size, stack_capacity),
             position_in_stack: Array::new(0, literal_array_len(maxvar)),
         };
@@ -27,24 +29,51 @@ impl Assignment {
             .set_but_do_not_push(Literal::BOTTOM, false);
         assignment
     }
-    pub fn len(&self) -> usize {
-        self.mapping.len()
+    pub fn level(&self) -> usize {
+        self.first_unprocessed
     }
     pub fn level_prior_to_assigning(&self, l: Literal) -> usize {
         self.position_in_stack[l]
     }
+    pub fn literal_at_level(&self, offset: usize) -> Literal {
+        self.mapping.stack_at(offset)
+    }
+    pub fn literal_at_level_mut(&mut self, offset: usize) -> &mut Literal {
+        self.mapping.stack_at_mut(offset)
+    }
     pub fn assign(&mut self, l: Literal) {
+        ensure!(!self.any_scheduled());
+        self.schedule(l);
+        self.advance();
+    }
+    pub fn unassign(&mut self, l: Literal) {
+        ensure!(!self[l], format!("Literal {} is not assigned.", l));
+        // TODO remove reason flag
+        self.mapping.set_but_do_not_push(l, false);
+    }
+    pub fn advance(&mut self) {
+        ensure!(self.any_scheduled());
+        let l = self.mapping.stack_at(self.first_unprocessed);
+        self.first_unprocessed += 1;
+        self.mapping.set_but_do_not_push(l, true);
+    }
+    pub fn schedule(&mut self, l: Literal) {
         ensure!(!l.is_constant());
         ensure!(!self[-l] && !self[l]);
-        self.position_in_stack[l] = self.mapping.len();
-        self.mapping.push(l, true);
+        self.position_in_stack[l] = self.first_unprocessed;
+        self.mapping.push_but_do_not_set(l);
+    }
+    fn any_scheduled(&self) -> bool {
+        self.level() == self.mapping.len()
     }
     pub fn reset(&mut self, level: usize) {
+        ensure!(!self.any_scheduled());
         while self.mapping.len() > level {
             self.mapping.pop();
             // It is not necessary to reset position_in_stack here, as it
             // will be written before the next use.
         }
+        self.first_unprocessed = level;
         ensure!(self.mapping.len() <= level);
     }
     pub fn was_assigned_before(&self, l: Literal, level: usize) -> bool {

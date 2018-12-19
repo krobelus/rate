@@ -6,7 +6,7 @@ use crate::{
     config::Config,
     config::NO_WATCHES,
     literal::{literal_array_len, Literal, Variable},
-    memory::{Array, Slice, Stack, StackMapping},
+    memory::{Array, Offset, Slice, Stack, StackMapping},
     parser::Parser,
 };
 use std::{io, io::Write, ops};
@@ -27,7 +27,7 @@ pub struct Checker {
     implication_graph: StackMapping<Clause, bool>,
     lemma_lratlemma: Array<Clause, Stack<LRATLiteral>>,
     lemma_to_level: Array<Clause, usize>,
-    literal_cause: Array<Literal, Clause>,
+    literal_cause: Array<Literal, Clause>, // reason
     lrat_id: Clause,
     maxvar: Variable,
     proof: Array<usize, ProofStep>,
@@ -213,6 +213,17 @@ fn watches_update(checker: &mut Checker, l: Literal, c: Clause) {
         checker.watchlist[new_literal].push(Some(c));
         checker.db.as_mut_slice().swap(falsified_watch, new_index);
         trace_watches(checker);
+    }
+}
+
+fn watches_revise(checker: &mut Checker, l: Literal, c: Clause) {
+    ensure!(!NO_WATCHES);
+    let (l0, l1) = checker.watches(c);
+}
+
+fn revise_list(checker: &mut Checker, l: Literal) {
+    for oc in checker.watchlist[l] {
+        oc.map(|c| watches_revise(checker, l, c));
     }
 }
 
@@ -464,7 +475,7 @@ fn propagate_all(checker: &mut Checker) -> MaybeConflict {
 
 macro_rules! preserve_assignment {
     ($checker:expr, $computation:expr) => {{
-        let level = $checker.assignment.len();
+        let level = $checker.assignment.level();
         let mut result = $computation;
         $checker.assignment.reset(level);
         // TODO
@@ -652,6 +663,7 @@ fn forward(checker: &mut Checker) -> MaybeConflict {
                         // && clause_status_before(checker.clause(c), &checker.assignment, level)
                         //     == ClauseStatus::Unit(recorded_unit)
                             ;
+                    // TODO is it really recorded unit? better just take any
                     let was_unit =
                         clause_status_before(checker.clause(c), &checker.assignment, level)
                             == ClauseStatus::Unit(recorded_unit);
@@ -661,9 +673,65 @@ fn forward(checker: &mut Checker) -> MaybeConflict {
                     }
                     if was_unit && handle_unit_deletion {
                         checker.assignment.reset(level);
-                        propagate_all(checker);
-                        let conflict = propagate_all_watched(checker);
-                        ensure!(conflict == NO_CONFLICT);
+                        struct Rev {
+                            offset_in_trace: usize,
+                            literal: Literal,
+                            reason: Clause,
+                        }
+                        type Revision = Vec<Rev>;
+                        // getCone
+                        let cone: StackMapping<Literal, bool> = StackMapping::new(
+                            false,
+                            literal_array_len(checker.maxvar),
+                            checker.maxvar.as_offset(),
+                        );
+                        // add unit to revision
+                        fn add_to_revision(
+                            checker: &mut Checker,
+                            revision: &mut Revision,
+                            l: Literal,
+                        ) {
+                            checker.assignment.unassign(l);
+                            revision.push(Rev {
+                                offset_in_trace: checker.assignment.level_prior_to_assigning(l),
+                                literal: l,
+                                reason: checker.literal_cause[l],
+                            })
+                        }
+                        fn is_in_cone(
+                            checker: &Checker,
+                            c: Clause,
+                            literal: Literal,
+                            cone: &StackMapping<Literal, bool>,
+                        ) -> bool {
+                            checker.clause(c).iter().any(|&l| l != literal && cone[-l])
+                        }
+                        let mut revision = Revision::new();
+                        add_to_revision(checker, &mut revision, recorded_unit);
+                        let mut leftoffset = level;
+                        for curlevel in level + 1..checker.assignment.level() {
+                            let lit = checker.assignment.literal_at_level(curlevel);
+                            if is_in_cone(checker, checker.literal_cause[lit], lit, &cone) {
+                                add_to_revision(checker, &mut revision, lit);
+                            } else {
+                                // compact the stack
+                                *checker.assignment.literal_at_level_mut(leftoffset) =
+                                    checker.assignment.literal_at_level(curlevel);
+                                leftoffset += 1;
+                            }
+                        }
+                        // reviseCone
+                        for &rev in &revision {
+                            revise_list(checker, rev.literal);
+                            // TODO
+                            cone[rev.literal] = false;
+                        }
+                        // propagateModel
+                        // resetCone
+
+                        // propagate_all(checker);
+                        // let conflict = propagate_all_watched(checker);
+                        // ensure!(conflict == NO_CONFLICT);
                         check_watches!(checker);
                     }
                     NO_CONFLICT
@@ -677,7 +745,7 @@ fn forward(checker: &mut Checker) -> MaybeConflict {
                         return NO_CONFLICT;
                     }
                     let reason = PropagationReason::UnitInFormula;
-                    checker.lemma_to_level[checker.proof_start] = checker.assignment.len();
+                    checker.lemma_to_level[checker.proof_start] = checker.assignment.level();
                     checker.proof_start += 1;
                     match clause_status(checker.clause(c), &checker.assignment) {
                         ClauseStatus::Falsified => {

@@ -38,8 +38,17 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
             self.pop();
         }
     }
+    pub fn stack_at(&self, offset: usize) -> Key {
+        self.stack[offset]
+    }
+    pub fn stack_at_mut(&mut self, offset: usize) -> &mut Key {
+        &mut self.stack[offset]
+    }
     pub fn set_but_do_not_push(&mut self, key: Key, value: T) {
         self.array[key] = value;
+    }
+    pub fn push_but_do_not_set(&mut self, key: Key) {
+        self.stack.push(key);
     }
 }
 
