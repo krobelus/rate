@@ -1,20 +1,17 @@
 //! Compile-time and runtime configuration, plus macros
 
 use clap::ArgMatches;
-use std::fs::File;
 
 #[derive(Debug)]
 pub struct Config {
     pub skip_deletions: bool,
     pub unmarked_rat_candidates: bool,
+    pub pivot_is_first_literal: bool,
     pub verbosity: u64,
-    pub lrat: bool,
-    pub lrat_file: File,
+    pub lrat_filename: String, // empty if none
 }
 
-pub const NO_WATCHES: bool = true;
-
-pub const DISABLE_CHECKS_AND_LOGGING: bool = false;
+pub const DISABLE_CHECKS_AND_LOGGING: bool = cfg!(feature = "fast");
 
 macro_rules! enabled {
     ($ok:expr) => {
@@ -43,6 +40,7 @@ macro_rules! _log {
         }
     };
 }
+
 macro_rules! log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
         _log!($checker.config.verbosity, $level, $($arg)*)
@@ -76,7 +74,7 @@ macro_rules! die {
     })
 }
 
-macro_rules! ensure {
+macro_rules! invariant {
     ($($arg:tt)*) => ({
         if crate::config::ASSERTIONS {
             assert!($($arg)*);
@@ -84,29 +82,35 @@ macro_rules! ensure {
     })
 }
 
+macro_rules! requires {
+    ($($arg:tt)*) => ({
+        if crate::config::ASSERTIONS {
+            assert!($($arg)*);
+        }
+    })
+}
+
+pub fn unreachable() -> ! {
+    invariant!(false, "unreachable");
+    unsafe { std::hint::unreachable_unchecked() }
+}
+
 impl Config {
     pub fn new(matches: ArgMatches) -> Config {
         let drat_trim = matches.is_present("DRAT_TRIM");
-        let mut config = Config {
+        let rupee = matches.is_present("RUPEE");
+        Config {
             skip_deletions: drat_trim || matches.is_present("SKIP_DELETIONS"),
-            unmarked_rat_candidates: drat_trim || matches.is_present("UNMARKED_RAT_CANDIDATES"),
+            unmarked_rat_candidates: !drat_trim && matches.is_present("UNMARKED_RAT_CANDIDATES"),
+            pivot_is_first_literal: rupee || matches.is_present("ASSUME_PIVOT_IS_HEAD"),
             verbosity: match matches.occurrences_of("v") {
-                i if i > 3 => {
+                i if i > 4 => {
                     warn!("verbosity can be at most 3");
-                    3
+                    4
                 }
                 i => i,
             },
-            lrat: matches.is_present("LRAT_FILE"),
-            // TODO
-            lrat_file: File::open("/dev/null").unwrap(),
-        };
-        if config.lrat {
-            let filename = matches.value_of("LRAT_FILE").unwrap();
-            config.lrat_file = File::create(filename)
-                .map_err(|err| die!("failed to open LRAT file {}: {}", filename, err))
-                .unwrap();
+            lrat_filename: String::from(matches.value_of("LRAT_FILE").unwrap_or("")),
         }
-        config
     }
 }

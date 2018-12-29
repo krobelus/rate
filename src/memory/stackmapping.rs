@@ -11,7 +11,11 @@ pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {
 }
 
 impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
-    pub fn new(default_value: T, array_size: usize, stack_capacity: usize) -> StackMapping<Key, T> {
+    pub fn with_initial_value_array_size_stack_size(
+        default_value: T,
+        array_size: usize,
+        stack_capacity: usize,
+    ) -> StackMapping<Key, T> {
         StackMapping {
             default_value: default_value,
             array: Array::new(default_value, array_size),
@@ -33,6 +37,9 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
         self.array[key] = self.default_value;
         key
     }
+    pub fn peek(&self) -> Key {
+        self.stack[self.stack.len() - 1]
+    }
     pub fn clear(&mut self) {
         while self.len() != 0 {
             self.pop();
@@ -49,6 +56,9 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
     }
     pub fn push_but_do_not_set(&mut self, key: Key) {
         self.stack.push(key);
+    }
+    pub fn iter(&self) -> std::slice::Iter<Key> {
+        self.into_iter()
     }
 }
 

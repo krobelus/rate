@@ -18,16 +18,18 @@ impl Variable {
     pub fn literal(self) -> Literal {
         Literal::new(self.0 as i32)
     }
+    pub fn array_size_for_variables(self) -> usize {
+        self.as_offset() + 1
+    }
+    pub fn array_size_for_literals(self) -> usize {
+        2 * (self.as_offset() + 1)
+    }
 }
 
 impl Offset for Variable {
     fn as_offset(self) -> usize {
         self.0 as usize
     }
-}
-
-pub fn literal_array_len(maxvar: Variable) -> usize {
-    2 * (maxvar.as_offset() + 1)
 }
 
 impl Literal {
@@ -43,6 +45,9 @@ impl Literal {
 
     pub const TOP: Literal = Literal { encoding: 0 };
     pub const BOTTOM: Literal = Literal { encoding: 1 };
+    pub const INVALID: Literal = Literal {
+        encoding: u32::max_value(),
+    };
 
     pub fn decode(self) -> i32 {
         let magnitude = self.var().0 as i32;

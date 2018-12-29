@@ -67,6 +67,7 @@ Here are the transformations we do:
   is sound is a bit tricky.
 - If `--skip-deletions` is specified, then deletions of clauses that are unit
   with respect to the current assignment are ignored, as in drat-trim.
+- RAT checks are done upon every possible pivot and not just the first literal.
 
 # Roadmap
 These features are planned to be implemented:
@@ -79,9 +80,9 @@ These features are planned to be implemented:
 - [ ] Core-first propagation
 - [ ] Resolution candidate caching
 - [ ] Comprehensive input validation
-- [ ] Linearly computing propagation cones
-- [ ] Storing deleted traces as permutations
-- [ ] On-demand watch relocation
+- [x] Linearly computing propagation cones
+- [x] Storing deleted traces as permutations
+- [x] On-demand watch relocation
 - [ ] On-the-fly decompression
 
 <a name="1">1</a>: "Rate ain't trustworthy either" or "Recursive acronyms tire everyone"

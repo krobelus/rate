@@ -26,15 +26,42 @@ impl<T> BoundedStack<T> {
         self.stack.capacity()
     }
     pub fn push(&mut self, value: T) {
-        ensure!(self.len() < self.capacity());
+        invariant!(self.len() < self.capacity());
         self.stack.push(value)
     }
     pub fn pop(&mut self) -> T {
-        ensure!(self.len() != 0);
+        invariant!(self.len() != 0);
         self.stack.pop()
     }
     pub fn clear(&mut self) {
         self.stack.clear()
+    }
+}
+
+impl<T: Clone> BoundedStack<T> {
+    pub fn fill(size: usize, default_value: T) -> BoundedStack<T> {
+        BoundedStack {
+            stack: Stack::fill(size, default_value),
+        }
+    }
+    pub fn resize(&mut self, new_len: usize, value: T) {
+        self.stack.resize(new_len, value)
+    }
+}
+
+impl<T: Ord> BoundedStack<T> {
+    pub fn sort_unstable(&mut self) {
+        self.stack.sort_unstable()
+    }
+}
+
+impl<T> BoundedStack<T> {
+    pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
+    where
+        F: FnMut(&T) -> K,
+        K: Ord,
+    {
+        self.stack.sort_unstable_by_key(f)
     }
 }
 

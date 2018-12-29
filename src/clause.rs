@@ -105,8 +105,9 @@ impl<'a> IntoIterator for &'a ClauseCopy {
 impl fmt::Display for ClauseCopy {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}] ", self.id)?;
-        for literal in &self.literals {
-            if !literal.is_constant() {
+        for &literal in &self.literals {
+            // unit clauses are padded with Literal::BOTTOM
+            if literal != Literal::BOTTOM {
                 write!(f, "{} ", literal)?;
             }
         }

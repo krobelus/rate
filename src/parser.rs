@@ -7,6 +7,8 @@ use crate::{
     literal::{Literal, Variable},
     memory::Offset,
 };
+#[cfg(feature = "flame_it")]
+use flamer::flame;
 use memmap::MmapOptions;
 use multimap::MultiMap;
 use std::{
@@ -66,6 +68,7 @@ impl Parser {
     }
 }
 
+#[cfg_attr(feature = "flame_it", flame)]
 pub fn parse_files<'a>(formula_file: &str, proof_file: &str) -> Parser {
     let mut parser = Parser::new();
     parse_formula(&mut parser, &read_or_die(formula_file))
@@ -251,7 +254,7 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: &[u8]) -> Option<ParseError>
 }
 
 fn lemma_binary(input: &[u8]) -> (&[u8], char) {
-    ensure!(input.len() > 0);
+    invariant!(input.len() > 0);
     (&input[1..], input[0] as char)
 }
 
@@ -285,7 +288,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: &[u8]) {
                 if addition_or_deletion == 'd' {
                     state = LemmaPositionBinary::Deletion;
                 } else {
-                    ensure!(addition_or_deletion == 'a');
+                    invariant!(addition_or_deletion == 'a');
                     state = LemmaPositionBinary::Lemma;
                     let clause = start_clause(&mut parser);
                     parser.proof.push(ProofStep::Lemma(clause));
@@ -497,8 +500,8 @@ p cnf 2 2
 
     #[test]
     fn invalid_formulas() {
-        ensure!(parse_formula(&mut Parser::new(), b"p c").is_some());
-        ensure!(parse_formula(&mut Parser::new(), b"p cnf 1 1\na").is_some());
+        invariant!(parse_formula(&mut Parser::new(), b"p c").is_some());
+        invariant!(parse_formula(&mut Parser::new(), b"p cnf 1 1\na").is_some());
     }
 
     #[test]

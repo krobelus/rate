@@ -6,6 +6,10 @@ from subprocess import Popen, PIPE
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+benchmark_location = 'benchmarks'
+
+INITIAL_COMMIT = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
+
 
 def run(command):
     assert Popen(command).wait() == 0
@@ -27,15 +31,15 @@ def rate(commit_sha=None, *, flags=[]):
     return [executable] + flags
 
 
-benchmark_location = 'benchmarks'
-
-
 def benchmark_cnfs():
     return (f'{dirpath}/{file}'
             for dirpath, _, files in os.walk(benchmark_location)
             for file in files
             if file.endswith('.cnf')
-            and '/excluded' not in dirpath)
+            and '/performance' not in dirpath
+            and '/random' not in dirpath
+            and '/excluded' not in dirpath
+            )
 
 
 def all_inputs():
@@ -68,14 +72,14 @@ def accepts(checker, name):
         'drat-trim' in checker[0] and b's VERIFIED' in stdout)
     rejected = b's REJECTED\n' in stdout or (
         'drat-trim' in checker[0] and b's NOT VERIFIED' in stdout)
-    assert accepted ^ rejected
+    assert accepted != rejected
     return accepted
 
 
 def lrat_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
     ok = b's ACCEPTED\n' in stdout or (
-        'lrat-checker' in checker[0] and b'c VERIFIED' in stdout)
+        'lrat-check' in checker[0] and b'c VERIFIED' in stdout)
     if not ok:
         print(str(stdout, 'utf8'))
     return ok
@@ -91,6 +95,12 @@ def compare_acceptance(a, b):
             continue  # different result
         if name == 'benchmarks/crafted/faux-conflict' and 'drat-trim' in b[0]:
             continue  # drat-trim uses binary mode here
+        if name == 'benchmarks/crafted/falsified' and 'rupee' in b[0]:
+            continue  # rupee crashes
+        if name == 'benchmarks/crafted/falsified' and INITIAL_COMMIT in b[0]:
+            continue  # does not skip unused lemmas
+        if name == 'benchmarks/crafted/falsified' and 'drat-trim' in b[0]:
+            continue  # rejected..
         if (('/rate' in b[0] or 'crate' in b[0])
                 and name in [
                 'benchmarks/crafted/marked-environment',
@@ -119,17 +129,16 @@ def test_acceptance_drat_trim():
 
 
 def test_acceptance_rupee():
-    compare_acceptance(rate(), ['rupee'])
-
-
-def test_acceptance_crate():
-    compare_acceptance(rate(), ['./crate'])
+    compare_acceptance(rate(flags=['--rupee']), ['rupee'])
 
 
 def test_acceptance_initial_commit():
-    initial_commit = '39d6db9faa1b1c3c252fcd1a41b5156ffb0a97b2'
-    build_release(initial_commit)
-    compare_acceptance(rate(), rate(initial_commit))
+    build_release(INITIAL_COMMIT)
+    compare_acceptance(rate(), rate(INITIAL_COMMIT))
+
+
+# def test_acceptance_crate():
+#     compare_acceptance(rate(), ['./crate'])
 
 
 def test_using_lrat_check():

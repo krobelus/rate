@@ -1,97 +1,101 @@
 //! Abstraction for a partial assignment
 
 use crate::{
-    literal::{literal_array_len, Literal, Variable},
-    memory::{Array, Offset, StackMapping},
+    literal::{Literal, Variable},
+    memory::{Array, BoundedStack},
 };
-use ansi_term::Colour;
 use std::{fmt, fmt::Display, ops::Index};
 
 #[derive(Debug)]
 pub struct Assignment {
-    first_unprocessed: usize,
-    mapping: StackMapping<Literal, bool>,
-    position_in_stack: Array<Literal, usize>,
+    mapping: Array<Literal, bool>,
+    trace: BoundedStack<Literal>,
+    position_in_trace: Array<Literal, usize>,
+    pub first_unprocessed: usize,
 }
 
 impl Assignment {
     pub fn new(maxvar: Variable) -> Assignment {
-        let array_size = literal_array_len(maxvar);
-        let stack_capacity = maxvar.as_offset();
         let mut assignment = Assignment {
+            mapping: Array::new(false, maxvar.array_size_for_literals()),
+            // 2 extra for Literal::TOP and one conflicting assignment
+            trace: BoundedStack::with_capacity(maxvar.array_size_for_variables() + 2),
+            position_in_trace: Array::new(usize::max_value(), maxvar.array_size_for_literals()),
             first_unprocessed: 0,
-            mapping: StackMapping::new(false, array_size, stack_capacity),
-            position_in_stack: Array::new(0, literal_array_len(maxvar)),
         };
-        assignment.mapping.set_but_do_not_push(Literal::TOP, true);
+        // NOTE copied from self.push
+        // equivalent to assignment.push(Literal::TOP); but does not check invariants
+        assignment.mapping[Literal::TOP] = true;
+        assignment.position_in_trace[Literal::TOP] = assignment.len();
+        assignment.trace.push(Literal::TOP);
+        assignment.first_unprocessed += 1;
         assignment
-            .mapping
-            .set_but_do_not_push(Literal::BOTTOM, false);
-        assignment
     }
-    pub fn level(&self) -> usize {
-        self.first_unprocessed
+    pub fn len(&self) -> usize {
+        self.trace.len()
     }
-    pub fn level_prior_to_assigning(&self, l: Literal) -> usize {
-        self.position_in_stack[l]
+    pub fn position_in_trace(&self, lit: Literal) -> usize {
+        self.position_in_trace[lit]
     }
-    pub fn literal_at_level(&self, offset: usize) -> Literal {
-        self.mapping.stack_at(offset)
+    pub fn trace_at(&self, offset: usize) -> Literal {
+        self.trace[offset]
     }
-    pub fn literal_at_level_mut(&mut self, offset: usize) -> &mut Literal {
-        self.mapping.stack_at_mut(offset)
+    pub fn push(&mut self, lit: Literal) {
+        requires!(!lit.is_constant());
+        requires!(!self[lit]);
+        self.mapping[lit] = true;
+        self.position_in_trace[lit] = self.len();
+        self.trace.push(lit);
     }
-    pub fn assign(&mut self, l: Literal) {
-        ensure!(!self.any_scheduled());
-        self.schedule(l);
-        self.advance();
-    }
-    pub fn unassign(&mut self, l: Literal) {
-        ensure!(!self[l], format!("Literal {} is not assigned.", l));
-        // TODO remove reason flag
-        self.mapping.set_but_do_not_push(l, false);
-    }
-    pub fn advance(&mut self) {
-        ensure!(self.any_scheduled());
-        let l = self.mapping.stack_at(self.first_unprocessed);
-        self.first_unprocessed += 1;
-        self.mapping.set_but_do_not_push(l, true);
-    }
-    pub fn schedule(&mut self, l: Literal) {
-        ensure!(!l.is_constant());
-        ensure!(!self[-l] && !self[l]);
-        self.position_in_stack[l] = self.first_unprocessed;
-        self.mapping.push_but_do_not_set(l);
-    }
-    fn any_scheduled(&self) -> bool {
-        self.level() == self.mapping.len()
-    }
-    pub fn reset(&mut self, level: usize) {
-        ensure!(!self.any_scheduled());
-        while self.mapping.len() > level {
-            self.mapping.pop();
-            // It is not necessary to reset position_in_stack here, as it
-            // will be written before the next use.
+    pub fn pop(&mut self) -> Literal {
+        let lit = self.trace.pop();
+        if !lit.is_constant() {
+            self.mapping[lit] = false;
         }
-        self.first_unprocessed = level;
-        ensure!(self.mapping.len() <= level);
+        lit
     }
-    pub fn was_assigned_before(&self, l: Literal, level: usize) -> bool {
-        self[l] && self.position_in_stack[l] < level
+    pub fn peek(&mut self) -> Literal {
+        self.trace[self.len() - 1]
+    }
+    pub fn next_unprocessed(&mut self) -> Option<Literal> {
+        if self.first_unprocessed >= self.len() {
+            return None;
+        }
+        let lit = self.trace[self.first_unprocessed];
+        self.first_unprocessed += 1;
+        Some(lit)
+    }
+    pub fn move_to(&mut self, src: usize, dst: usize) {
+        let literal = self.trace[src];
+        self.trace[dst] = literal;
+        self.position_in_trace[literal] = dst;
+    }
+    pub fn resize_trace(&mut self, level: usize) {
+        self.trace.resize(level, Literal::INVALID);
+        self.first_unprocessed = level;
+    }
+    pub fn unassign(&mut self, lit: Literal) {
+        requires!(self[lit], "Literal {} is not assigned.", lit);
+        self.mapping[lit] = false;
+    }
+    pub fn set_literal_at_level(&mut self, literal: Literal, offset: usize) {
+        self.mapping[literal] = true;
+        self.trace[offset] = literal;
+        self.position_in_trace[literal] = offset;
     }
 }
 
 impl<'a> IntoIterator for &'a Assignment {
     type Item = &'a Literal;
     type IntoIter = std::slice::Iter<'a, Literal>;
-    fn into_iter(self) -> std::slice::Iter<'a, Literal> {
-        self.mapping.into_iter()
+    fn into_iter(self) -> Self::IntoIter {
+        self.trace.into_iter()
     }
 }
 
 impl Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Assignment: {{ ")?;
+        write!(f, "Assignment: {} {{ ", self.len())?;
         for literal in self {
             write!(f, "{} ", literal)?;
         }
@@ -102,24 +106,7 @@ impl Display for Assignment {
 impl Index<Literal> for Assignment {
     type Output = bool;
     fn index(&self, literal: Literal) -> &bool {
-        ensure!(self.mapping[Literal::TOP] && !self.mapping[Literal::BOTTOM]);
+        requires!(self.mapping[Literal::TOP] && !self.mapping[Literal::BOTTOM]);
         &self.mapping[literal]
     }
-}
-
-#[allow(dead_code)]
-fn format_clause_under_assignment(clause: &[Literal], assignment: &Assignment) -> String {
-    let mut result = String::new();
-    for &literal in clause {
-        let style = if assignment[literal] {
-            Colour::Green.normal()
-        } else if assignment[-literal] {
-            Colour::Red.normal()
-        } else {
-            Colour::Yellow.normal()
-        };
-        result += &format!("{}", style.paint(&format!("{} ", literal)));
-    }
-    result += "\n";
-    result
 }

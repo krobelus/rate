@@ -37,10 +37,30 @@ impl<T> Stack<T> {
         self.vec.clear()
     }
 }
+impl<T: Clone> Stack<T> {
+    pub fn fill(size: usize, default_value: T) -> Stack<T> {
+        Stack {
+            vec: vec![default_value; size],
+        }
+    }
+    pub fn resize(&mut self, new_len: usize, value: T) {
+        self.vec.resize(new_len, value)
+    }
+}
 
 impl<T: Ord> Stack<T> {
     pub fn sort_unstable(&mut self) {
         self.vec.sort_unstable()
+    }
+}
+
+impl<T> Stack<T> {
+    pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
+    where
+        F: FnMut(&T) -> K,
+        K: Ord,
+    {
+        self.vec.sort_unstable_by_key(f)
     }
 }
 

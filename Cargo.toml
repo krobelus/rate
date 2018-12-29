@@ -14,6 +14,13 @@ derive_more = "*"
 clap = "*"
 scopeguard = "*"
 multimap = "*"
+flame = { version = "0.2.2", optional = true }
+flamer = { version = "0.3", optional = true }
+
+[features]
+default = []
+flame_it = ["flame", "flamer"]
+fast = []
 
 [profile.release]
 panic = "abort"
