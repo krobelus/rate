@@ -4,7 +4,7 @@ use derive_more::Add;
 
 use crate::{
     literal::Literal,
-    memory::{Offset, Stack},
+    memory::{Offset, Slice, Stack},
 };
 use std::{
     fmt, io,
@@ -75,10 +75,10 @@ pub struct ClauseCopy {
 }
 
 impl<'a> ClauseCopy {
-    pub fn new(id: Clause, literals: &[Literal]) -> ClauseCopy {
+    pub fn new(id: Clause, literals: Slice<Literal>) -> ClauseCopy {
         ClauseCopy {
             id: id,
-            literals: Stack::from_vec(literals.to_vec()),
+            literals: literals.to_stack(),
         }
     }
     pub fn iter(&'a self) -> std::slice::Iter<'a, Literal> {

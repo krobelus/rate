@@ -1,7 +1,7 @@
-use crate::memory::{index_vec, index_vec_mut};
+use crate::memory::{index_vec, index_vec_mut, Slice, SliceMut};
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Stack<T> {
     vec: Vec<T>,
 }
@@ -36,7 +36,23 @@ impl<T> Stack<T> {
     pub fn clear(&mut self) {
         self.vec.clear()
     }
+    pub fn last(&self) -> &T {
+        requires!(!self.empty());
+        &self[self.len() - 1]
+    }
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.into_iter()
+    }
+    // TODO
+    pub fn as_slice(&self) -> Slice<T> {
+        Slice::new(&self.vec)
+    }
+    // TODO
+    pub fn as_mut_slice(&mut self) -> SliceMut<T> {
+        SliceMut::new(&mut self.vec)
+    }
 }
+
 impl<T: Clone> Stack<T> {
     pub fn fill(size: usize, default_value: T) -> Stack<T> {
         Stack {
@@ -45,6 +61,9 @@ impl<T: Clone> Stack<T> {
     }
     pub fn resize(&mut self, new_len: usize, value: T) {
         self.vec.resize(new_len, value)
+    }
+    pub fn swap_remove(&mut self, offset: usize) -> T {
+        self.vec.swap_remove(offset)
     }
 }
 

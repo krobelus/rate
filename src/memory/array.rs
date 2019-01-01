@@ -1,6 +1,5 @@
-use crate::memory::{index_vec, index_vec_mut, Offset, Slice, SliceMut};
+use crate::memory::{Offset, Slice, SliceMut, Stack};
 use std::{
-    iter::IntoIterator,
     marker::PhantomData,
     ops::{Index, IndexMut},
 };
@@ -13,18 +12,19 @@ use std::{
 /// already.
 #[derive(Debug)]
 pub struct Array<I: Offset, T: Clone> {
-    pub vec: Vec<T>,
+    // TODO replace by ptr
+    vec: Stack<T>,
     phantom: PhantomData<I>,
 }
 
 impl<I: Offset, T: Clone> Array<I, T> {
     pub fn new(value: T, size: usize) -> Array<I, T> {
         Array {
-            vec: vec![value; size],
+            vec: Stack::from_vec(vec![value; size]),
             phantom: PhantomData,
         }
     }
-    pub fn from(vector: Vec<T>) -> Array<I, T> {
+    pub fn from(vector: Stack<T>) -> Array<I, T> {
         Array {
             vec: vector,
             phantom: PhantomData,
@@ -35,31 +35,22 @@ impl<I: Offset, T: Clone> Array<I, T> {
     }
     // TODO avoid bounds checking
     pub fn as_slice(&self) -> Slice<T> {
-        Slice::new(&self.vec[..])
+        self.vec.as_slice()
     }
     pub fn as_mut_slice(&mut self) -> SliceMut<T> {
-        SliceMut::new(&mut self.vec[..])
+        self.vec.as_mut_slice()
     }
 }
 
 impl<I: Offset, T: Clone> Index<I> for Array<I, T> {
     type Output = T;
     fn index(&self, key: I) -> &T {
-        index_vec(&self.vec, key)
+        &self.vec[key.as_offset()]
     }
 }
 
 impl<I: Offset, T: Clone> IndexMut<I> for Array<I, T> {
     fn index_mut(&mut self, key: I) -> &mut T {
-        index_vec_mut(&mut self.vec, key)
-    }
-}
-
-impl<'a, I: Offset, T: Clone> IntoIterator for &'a Array<I, T> {
-    type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
-
-    fn into_iter(self) -> std::slice::Iter<'a, T> {
-        self.vec.iter()
+        &mut self.vec[key.as_offset()]
     }
 }

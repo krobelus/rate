@@ -54,7 +54,7 @@ enum LRATLiteral {
     Unit(Clause),
 }
 
-type Watchlist = Vec<Option<Clause>>;
+type Watchlist = Stack<Option<Clause>>;
 
 impl Checker {
     pub fn new(parser: Parser, config: Config) -> Checker {
@@ -92,7 +92,7 @@ impl Checker {
             resolvent: Array::new(false, maxvar.array_size_for_literals()),
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             stage: Stage::Preprocessing,
-            watchlist: Array::new(Vec::new(), maxvar.array_size_for_literals()),
+            watchlist: Array::new(Stack::new(), maxvar.array_size_for_literals()),
         };
         checker.literal_reason[Literal::TOP] = Reason::Assumed;
         for clause in Clause::range(0, checker.lemma) {
@@ -115,7 +115,7 @@ impl Checker {
         self.db.as_slice().range(range.start, range.end)
     }
     fn clause_copy(&self, clause: Clause) -> ClauseCopy {
-        ClauseCopy::new(clause, &self.clause(clause).to_vec())
+        ClauseCopy::new(clause, self.clause(clause))
     }
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
         self.clause_offset[clause]..self.clause_offset[clause + 1]
@@ -221,8 +221,8 @@ macro_rules! preserve_assignment {
     }};
 }
 
-fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Vec<Clause> {
-    let mut candidates = Vec::new();
+fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Clause> {
+    let mut candidates = Stack::new();
     for lit in Literal::all(checker.maxvar) {
         for i in 0..checker.watchlist[lit].len() {
             if let Some(clause) = checker.watchlist[lit][i] {
@@ -959,8 +959,8 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
             checker.maxvar.array_size_for_literals(),
             checker.maxvar.as_offset(),
         ),
-        position_in_trace: Vec::new(),
-        reason_clause: Vec::new(),
+        position_in_trace: Stack::new(),
+        reason_clause: Stack::new(),
     };
     add_to_revision(checker, &mut revision, unit);
     let mut next_position_to_overwrite = unit_position;
@@ -1007,8 +1007,8 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
 #[derive(Debug)]
 struct Revision {
     cone: StackMapping<Literal, bool>,
-    position_in_trace: Vec<usize>,
-    reason_clause: Vec<Clause>,
+    position_in_trace: Stack<usize>,
+    reason_clause: Stack<Clause>,
 }
 
 impl fmt::Display for Revision {

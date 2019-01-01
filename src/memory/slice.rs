@@ -1,8 +1,8 @@
-use crate::config::BOUNDS_CHECKING;
+use crate::{config::BOUNDS_CHECKING, memory::Stack};
 
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Slice<'a, T> {
     slice: &'a [T],
 }
@@ -22,6 +22,7 @@ impl<'a, T> Slice<'a, T> {
     pub fn empty(&self) -> bool {
         self.len() == 0
     }
+    // TODO rename to slice
     pub fn range(&self, start: usize, end: usize) -> Slice<'a, T> {
         let slice =
             unsafe { std::slice::from_raw_parts(self.slice.as_ptr().add(start), end - start) };
@@ -31,16 +32,22 @@ impl<'a, T> Slice<'a, T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.slice.iter()
     }
+    // TODO
     pub fn slice(&self) -> &'a [T] {
         self.slice
     }
 }
+
 impl<'a, T: Clone> Slice<'a, T> {
     pub fn to_vec(&self) -> Vec<T> {
         self.slice.to_vec()
     }
+    pub fn to_stack(&self) -> Stack<T> {
+        Stack::from_vec(self.to_vec())
+    }
 }
 
+#[allow(dead_code)]
 impl<'a, T> SliceMut<'a, T> {
     pub fn new(slice: &'a mut [T]) -> SliceMut<'a, T> {
         SliceMut { slice: slice }
@@ -61,8 +68,13 @@ impl<'a, T> SliceMut<'a, T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.slice.iter()
     }
+}
+
+impl<'a, T: Copy> SliceMut<'a, T> {
     pub fn swap(&mut self, a: usize, b: usize) {
-        self.slice.swap(a, b)
+        let tmp = self[a];
+        self[a] = self[b];
+        self[b] = tmp;
     }
 }
 
