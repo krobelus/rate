@@ -34,16 +34,20 @@ fn main() {
          .help("Ignore deletion of unit clauses."))
     .arg(Arg::with_name("UNMARKED_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
          .help("Do not ignore RAT candidates that are not part of the core."))
-    .arg(Arg::with_name("ASSUME_PIVOT_IS_HEAD").long("assume-pivot-is-head")
+    .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").long("assume-pivot-is-first")
          .help("When checking for RAT, only try the first literal as pivot."))
+    .arg(Arg::with_name("NO_CORE_FIRST").short("u").long("no-core-first")
+         .help("Disable core first unit propagation."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
          .help("Try to be compatible with drat-trim.\nThis implies --skip-deletions and --noncore-rat-candidates"))
     .arg(Arg::with_name("RUPEE").long("--rupee")
-         .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-head"))
+         .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
 
     .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat")
          .help("Write the core lemmas as LRAT certificate to this file."))
+        .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
+             .help("Write the recheck incorrectness witness."))
 
     ;
     if !config::DISABLE_CHECKS_AND_LOGGING {

@@ -6,12 +6,11 @@ use crate::{
 };
 use std::{fmt, fmt::Display, ops::Index};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Assignment {
     mapping: Array<Literal, bool>,
     trace: BoundedStack<Literal>,
     position_in_trace: Array<Literal, usize>,
-    pub first_unprocessed: usize,
 }
 
 impl Assignment {
@@ -21,14 +20,12 @@ impl Assignment {
             // 2 extra for Literal::TOP and one conflicting assignment
             trace: BoundedStack::with_capacity(maxvar.array_size_for_variables() + 2),
             position_in_trace: Array::new(usize::max_value(), maxvar.array_size_for_literals()),
-            first_unprocessed: 0,
         };
         // NOTE copied from self.push
         // equivalent to assignment.push(Literal::TOP); but does not check invariants
         assignment.mapping[Literal::TOP] = true;
         assignment.position_in_trace[Literal::TOP] = assignment.len();
         assignment.trace.push(Literal::TOP);
-        assignment.first_unprocessed += 1;
         assignment
     }
     pub fn len(&self) -> usize {
@@ -57,22 +54,13 @@ impl Assignment {
     pub fn peek(&mut self) -> Literal {
         self.trace[self.len() - 1]
     }
-    pub fn next_unprocessed(&mut self) -> Option<Literal> {
-        if self.first_unprocessed >= self.len() {
-            return None;
-        }
-        let lit = self.trace[self.first_unprocessed];
-        self.first_unprocessed += 1;
-        Some(lit)
-    }
     pub fn move_to(&mut self, src: usize, dst: usize) {
         let literal = self.trace[src];
         self.trace[dst] = literal;
         self.position_in_trace[literal] = dst;
     }
     pub fn resize_trace(&mut self, level: usize) {
-        self.trace.resize(level, Literal::INVALID);
-        self.first_unprocessed = level;
+        self.trace.resize(level, Literal::NEVER_READ);
     }
     pub fn unassign(&mut self, lit: Literal) {
         requires!(self[lit], "Literal {} is not assigned.", lit);

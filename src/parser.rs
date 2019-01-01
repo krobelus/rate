@@ -105,10 +105,16 @@ fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Stack<Litera
             buffer.push(Literal::BOTTOM);
         }
         match find_clause(&buffer, &parser) {
-            None => warn!(
-                "Deleted clause is not present in the formula: {}",
-                ClauseCopy::new(Clause(0), buffer.as_slice())
-            ),
+            None => {
+                warn!(
+                    "Deleted clause is not present in the formula: {}",
+                    ClauseCopy::new(Clause(0), buffer.as_slice())
+                );
+                // need this for sickcheck
+                parser
+                    .proof
+                    .push(ProofStep::Deletion(Clause::DOES_NOT_EXIST))
+            }
             Some(clause) => {
                 parser.clause_scheduled_for_deletion[clause.as_offset()] = true;
                 parser.proof.push(ProofStep::Deletion(clause))
@@ -546,12 +552,11 @@ p cnf 2 2
         parser
     }
 
-    // TODO
-    // #[test]
-    // fn invalid_formulas() {
-    //     invariant!(parse_formula(&mut Parser::new(), Slice::new(b"p c")).is_some());
-    //     invariant!(parse_formula(&mut Parser::new(), Slice::new(b"p cnf 1 1\na")).is_some());
-    // }
+    #[test]
+    fn invalid_formulas() {
+        invariant!(parse_formula(&mut Parser::new(), Slice::new(b"p c")).is_some());
+        invariant!(parse_formula(&mut Parser::new(), Slice::new(b"p cnf 1 1\na")).is_some());
+    }
 
     #[test]
     fn valid_formula_and_proof() {

@@ -10,7 +10,7 @@ use std::{
 ///
 /// The array is allocated at construction time, i.e. the maximum capacity needs to be known
 /// already.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Array<I: Offset, T: Clone> {
     // TODO replace by ptr
     vec: Stack<T>,

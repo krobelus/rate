@@ -9,6 +9,7 @@ use crate::{
     memory::{Array, Offset, Slice, Stack, StackMapping},
     parser::Parser,
 };
+use ansi_term::Colour;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
 use std::{fmt, fs::File, io, io::Write, ops};
@@ -40,6 +41,17 @@ pub struct Checker {
     soft_propagation: bool,
     stage: Stage,
     watchlist: Array<Literal, Watchlist>,
+    processed: usize,
+    rejection: Rejection,
+    num_premises: usize,
+}
+
+#[derive(Debug)]
+struct Rejection {
+    failed_proof_step: usize,
+    pivot: Option<Literal>,
+    resolved_with: Option<Clause>,
+    stable_assignment: Option<Assignment>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +75,7 @@ impl Checker {
         let mut checker = Checker {
             assignment: Assignment::new(maxvar),
             clause_is_a_reason: Array::new(false, num_clauses),
-            clause_lrat_id: Array::new(Clause::INVALID, num_clauses),
+            clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
             clause_offset: Array::from(parser.clause_offset),
             clause_scheduled: Array::new(false, num_clauses),
             clause_pivot: None,
@@ -73,13 +85,13 @@ impl Checker {
             implication_graph: StackMapping::with_initial_value_array_size_stack_size(
                 false,
                 maxvar.array_size_for_literals(),
-                maxvar.as_offset() + 2, // allow for a single conflict
+                maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
             lemma_lratlemma: Array::new(Stack::new(), num_clauses),
             lemma_newly_marked_clauses: Array::new(Stack::new(), num_clauses),
             lemma_revision: Array::new(false, num_clauses),
             literal_reason: Array::new(
-                Reason::Forced(Clause::INVALID),
+                Reason::Forced(Clause::NEVER_READ),
                 maxvar.array_size_for_literals(),
             ),
             lrat_id: Clause(0),
@@ -93,6 +105,9 @@ impl Checker {
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             stage: Stage::Preprocessing,
             watchlist: Array::new(Stack::new(), maxvar.array_size_for_literals()),
+            processed: 1, // skip Literal::TOP
+            rejection: Rejection::new(),
+            num_premises: parser.proof_start.as_offset(),
         };
         checker.literal_reason[Literal::TOP] = Reason::Assumed;
         for clause in Clause::range(0, checker.lemma) {
@@ -100,7 +115,7 @@ impl Checker {
             checker.clause_lrat_id[clause] = checker.lrat_id;
         }
         if checker.config.pivot_is_first_literal {
-            let mut pivots = Array::new(Literal::INVALID, num_clauses);
+            let mut pivots = Array::new(Literal::NEVER_READ, num_clauses);
             for clause in Clause::range(0, num_clauses) {
                 if !checker.clause(clause).empty() {
                     pivots[clause] = checker.clause(clause)[0];
@@ -122,6 +137,32 @@ impl Checker {
     }
     fn clause_watches(&self, clause: Clause) -> (Literal, Literal) {
         (self.clause(clause)[0], self.clause(clause)[1])
+    }
+    #[allow(dead_code)]
+    fn clause_colorized(&self, clause: Clause) -> String {
+        let mut result = String::new();
+        for &literal in self.clause(clause) {
+            let style = match (self.assignment[literal], self.assignment[-literal]) {
+                (true, true) => Colour::Purple,
+                (true, false) => Colour::Green,
+                (false, true) => Colour::Red,
+                (false, false) => Colour::Yellow,
+            }
+            .normal();
+            result += &format!("{}", style.paint(&format!("{} ", literal)));
+        }
+        result
+    }
+}
+
+impl Rejection {
+    fn new() -> Rejection {
+        Rejection {
+            failed_proof_step: usize::max_value(),
+            pivot: None,
+            resolved_with: None,
+            stable_assignment: None,
+        }
     }
 }
 
@@ -159,6 +200,39 @@ impl ops::Try for MaybeConflict {
     }
 }
 
+macro_rules! watch_invariants {
+    ($checker:expr) => {
+        invariant!({
+            fn is_assigned(checker: &Checker, lit: Literal) -> bool {
+                checker.assignment[lit] || checker.assignment[-lit]
+            }
+            // each watch points to a clause that is neither falsified nor satisfied
+            if false {
+                for lit in Literal::all($checker.maxvar) {
+                    for watch in &$checker.watchlist[lit] {
+                        if let &Some(clause) = watch {
+                            let (l0, l1) = $checker.clause_watches(clause);
+                            invariant!(lit == l0 || lit == l1,
+                                       "watch {} not within the first two literals in {}"
+                                       ,lit, $checker.clause_copy(clause)
+                            );
+                            invariant!(
+                                is_assigned($checker, l0) ||
+                                is_assigned($checker, l1) ||
+                                (!is_assigned($checker, -l0) && !is_assigned($checker, -l1))
+                                ,
+                                format!("each watched clause needs at least one unassigned literal: violated in {} - {}", $checker.clause_copy(clause),
+                                $checker.assignment)
+                            );
+                        }
+                    }
+                }
+            }
+            true
+        });
+    };
+}
+
 fn schedule(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.clause_scheduled[clause] {
         let lemma = checker.lemma;
@@ -190,40 +264,191 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
 }
 
 fn propagate(checker: &mut Checker) -> MaybeConflict {
-    #[derive(Clone, Copy)]
-    enum Mode {
-        Core,
-        NonCore,
-    };
-    fn propagate_mode(checker: &mut Checker, mode: Mode) -> MaybeConflict {
-        while let Some(literal) = checker.assignment.next_unprocessed() {
-            // NOTE this will return upon conflict.
-            propagate_literal(checker, literal, mode)?;
-            watchlist_compact(checker, literal);
-        }
-        NO_CONFLICT
+    if checker.config.no_core_first {
+        propagate_no_core_first(checker)
+    } else {
+        propagate_core_first(checker)
     }
-    fn propagate_literal(checker: &mut Checker, literal: Literal, mode: Mode) -> MaybeConflict {
+}
+
+fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
+    fn watches_align(
+        checker: &mut Checker,
+        literal: Literal,
+        position_in_watchlist: usize,
+    ) -> MaybeConflict {
+        let clause = checker.watchlist[literal][position_in_watchlist].unwrap();
+        requires!(clause < checker.lemma);
+        let (l0, l1) = checker.clause_watches(clause);
+        if checker.assignment[l0] || checker.assignment[l1] {
+            return NO_CONFLICT;
+        }
+        let head = checker.clause_range(clause).start;
+        if literal == l0 {
+            checker.db[head] = checker.db[head + 1];
+        }
+        match first_non_falsified(checker, clause, head + 2) {
+            Some(offset) => {
+                let new = checker.db[offset];
+                checker.db[offset] = literal;
+                checker.db[head + 1] = new;
+                watch_remove_at(checker, literal, position_in_watchlist);
+                watch_add(checker, new, clause);
+                NO_CONFLICT
+            }
+            None => {
+                checker.db[head + 1] = literal;
+                let unit = checker.db[head];
+                assign(checker, unit, Reason::Forced(clause))
+            }
+        }
+    }
+
+    fn propagate_literal(checker: &mut Checker, literal: Literal) -> MaybeConflict {
         requires!(checker.assignment[literal]);
-        requires!(checker.literal_reason[literal] != Reason::Forced(Clause::INVALID));
+        requires!(checker.literal_reason[literal] != Reason::Forced(Clause::NEVER_READ));
         for i in 0..checker.watchlist[-literal].len() {
-            if let Some(clause) = checker.watchlist[-literal][i] {
-                let visit = match mode {
-                    Mode::Core => checker.clause_scheduled[clause],
-                    Mode::NonCore => true,
-                };
-                if visit {
-                    watches_align(checker, -literal, i)?;
-                }
+            if let Some(_clause) = checker.watchlist[-literal][i] {
+                watches_align(checker, -literal, i)?;
             }
         }
         NO_CONFLICT
     }
-    // TODO this is super hacky
-    let old = checker.assignment.first_unprocessed;
-    propagate_mode(checker, Mode::Core)?;
-    checker.assignment.first_unprocessed = old;
-    propagate_mode(checker, Mode::NonCore)
+    while checker.processed < checker.assignment.len() {
+        let literal = checker.assignment.trace_at(checker.processed);
+        checker.processed += 1;
+        propagate_literal(checker, literal)?;
+        watchlist_compact(checker, literal);
+    }
+    NO_CONFLICT
+}
+
+// stolen from gratgen
+fn propagate_core_first(checker: &mut Checker) -> MaybeConflict {
+    let mut processed_core = checker.processed;
+    let mut core_mode = true;
+    let mut noncore_watchlist_index = 0;
+    loop {
+        if core_mode {
+            if processed_core == checker.assignment.len() {
+                core_mode = false;
+                continue;
+            }
+            let literal = -checker.assignment.trace_at(processed_core);
+            processed_core += 1;
+
+            let mut i = 0;
+            while i < checker.watchlist[literal].len() {
+                let clause = match checker.watchlist[literal][i] {
+                    Some(c) => c,
+                    None => {
+                        i += 1;
+                        continue;
+                    }
+                };
+                let (mut w1, mut w2) = checker.clause_watches(clause);
+                if checker.assignment[w1] || checker.assignment[w2] {
+                    i += 1;
+                    continue;
+                }
+                let head = checker.clause_range(clause).start;
+                if w1 == literal {
+                    checker.db[head] = w2;
+                    w1 = w2;
+                    w2 = literal;
+                }
+                invariant!(w2 == literal);
+                invariant!(checker.assignment[-w2]);
+                invariant!(checker.db[head] == w1);
+
+                match first_non_falsified(checker, clause, head + 2) {
+                    Some(wo) => {
+                        checker.watchlist[literal].swap_remove(i);
+                        let w = checker.db[wo];
+                        invariant!(w != literal);
+                        watch_add(checker, w, clause);
+                        checker.db[head + 1] = w;
+                        checker.db[wo] = w2;
+                        continue;
+                    }
+                    None => (),
+                }
+
+                checker.db[head + 1] = w2;
+
+                assign(checker, w1, Reason::Forced(clause));
+                if !checker.assignment[-w1] {
+                    i += 1;
+                    continue;
+                } else {
+                    return CONFLICT;
+                }
+            }
+        } else {
+            if checker.processed == checker.assignment.len() {
+                return NO_CONFLICT;
+            }
+            let literal = -checker.assignment.trace_at(checker.processed);
+            checker.processed += 1;
+
+            let mut i = noncore_watchlist_index;
+            noncore_watchlist_index = 0;
+
+            while i < checker.watchlist[literal].len() {
+                let clause = match checker.watchlist[literal][i] {
+                    Some(c) => c,
+                    None => {
+                        i += 1;
+                        continue;
+                    }
+                };
+
+                let head = checker.clause_range(clause).start;
+                let (mut w1, mut w2) = checker.clause_watches(clause);
+                invariant!(w1 == literal || w2 == literal);
+
+                if checker.assignment[w1] || checker.assignment[w2] {
+                    i += 1;
+                    continue;
+                }
+
+                if w1 == literal {
+                    checker.db[head] = w2;
+                    w1 = w2;
+                    w2 = literal;
+                }
+
+                invariant!(w2 == literal);
+                invariant!(checker.assignment[-w2]);
+                invariant!(checker.db[head] == w1);
+
+                match first_non_falsified(checker, clause, head + 2) {
+                    Some(wo) => {
+                        checker.watchlist[literal].swap_remove(i);
+                        let w = checker.db[wo];
+                        invariant!(w != literal);
+                        watch_add(checker, w, clause);
+                        checker.db[head + 1] = w;
+                        checker.db[wo] = w2;
+                        continue;
+                    }
+                    None => (),
+                }
+
+                checker.db[head + 1] = w2;
+
+                assign(checker, w1, Reason::Forced(clause));
+                if !checker.assignment[-w1] {
+                    checker.processed -= 1;
+                    noncore_watchlist_index = i + 1;
+                    core_mode = true;
+                    break;
+                } else {
+                    return CONFLICT;
+                }
+            }
+        }
+    }
 }
 
 macro_rules! preserve_assignment {
@@ -233,7 +458,7 @@ macro_rules! preserve_assignment {
         while $checker.assignment.len() > trace_length {
             $checker.assignment.pop();
         }
-        $checker.assignment.first_unprocessed = trace_length;
+        $checker.processed = trace_length;
         result
     }};
 }
@@ -244,6 +469,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
         for i in 0..checker.watchlist[lit].len() {
             if let Some(clause) = checker.watchlist[lit][i] {
                 if checker.clause(clause)[0] == lit
+                    && checker.clause_scheduled[clause]
                     && checker
                         .clause(clause)
                         .iter()
@@ -260,7 +486,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
 
 fn rup(checker: &mut Checker, clause: Clause, pivot: Literal) -> bool {
     assignment_invariants(checker);
-    requires!(checker.assignment.next_unprocessed().is_none());
+    requires!(checker.processed == checker.assignment.len());
     let mut conflict_literal = None;
     for offset in checker.clause_range(clause) {
         let unit = checker.db[offset];
@@ -307,7 +533,7 @@ fn rat(checker: &mut Checker, pivot: Literal) -> bool {
             (!checker.config.unmarked_rat_candidates
                 && !checker.clause_scheduled[resolution_candidate])
                 || {
-                    watch_invariants(checker);
+                    watch_invariants!(checker);
                     // During the RUP check, -pivot was an assumption.  We need to change the
                     // reason to the clause we are resolving with to appease LRAT checkers.
                     checker.literal_reason[-pivot] = Reason::Forced(resolution_candidate);
@@ -319,7 +545,13 @@ fn rat(checker: &mut Checker, pivot: Literal) -> bool {
                     );
                     checker.lemma_lratlemma[lemma]
                         .push(LRATLiteral::ResolutionCandidate(resolution_candidate));
-                    rup(checker, resolution_candidate, pivot)
+                    let ok = rup(checker, resolution_candidate, pivot);
+                    if !ok {
+                        checker.rejection.pivot = Some(pivot);
+                        checker.rejection.resolved_with = Some(resolution_candidate);
+                        checker.rejection.stable_assignment = Some(checker.assignment.clone());
+                    }
+                    ok
                 }
         )
     })
@@ -329,12 +561,8 @@ fn check_inference(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     checker.soft_propagation = true;
     let copy = checker.clause_copy(lemma);
-    for offset in checker.clause_range(lemma) {
-        let lit = checker.db[offset];
-        checker.resolvent[lit] = true;
-    }
     let pivot_index = copy.iter().position(|&pivot| {
-        watch_invariants(checker);
+        watch_invariants!(checker);
         checker.lemma_lratlemma[lemma].clear();
         pivot != Literal::BOTTOM
             && match &checker.clause_pivot {
@@ -343,10 +571,6 @@ fn check_inference(checker: &mut Checker) -> bool {
             }
             && preserve_assignment!(checker, rup(checker, lemma, pivot) || rat(checker, pivot))
     });
-    for offset in checker.clause_range(lemma) {
-        let lit = checker.db[offset];
-        checker.resolvent[lit] = false;
-    }
     checker.soft_propagation = false;
     if let Some(i) = pivot_index {
         // Make pivot the first literal in the LRAT proof.
@@ -367,6 +591,8 @@ fn extract_dependencies_for_last_literal(checker: &mut Checker) {
 fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
     let lemma = checker.lemma;
     assignment_invariants(checker);
+    requires!(checker.assignment[conflict_literal]);
+    requires!(checker.assignment[-conflict_literal]);
     requires!(checker.implication_graph.empty());
     fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
         match checker.literal_reason[literal] {
@@ -383,9 +609,7 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
         let pivot = checker.implication_graph.stack_at(i);
         invariant!(checker.assignment[pivot]);
         match checker.literal_reason[pivot] {
-            Reason::Assumed => {
-                // log!(checker, 3, "{} was assumed", pivot);
-            }
+            Reason::Assumed => {}
             Reason::Forced(clause) => {
                 schedule(checker, clause);
                 for offset in checker.clause_range(clause) {
@@ -468,9 +692,12 @@ fn preprocess(checker: &mut Checker) -> bool {
         }
     }
     for i in 0..checker.proof.len() {
-        watch_invariants(checker);
+        watch_invariants!(checker);
         match checker.proof[i] {
             ProofStep::Deletion(clause) => {
+                if clause == Clause::DOES_NOT_EXIST {
+                    continue;
+                }
                 log!(
                     checker,
                     1,
@@ -478,6 +705,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                     checker.clause_copy(clause)
                 );
                 if checker.config.skip_deletions {
+                    // do not delete pseudo unit clauses
                     if !checker.clause_is_a_reason[clause] {
                         watches_remove(checker, clause);
                     }
@@ -499,18 +727,25 @@ fn preprocess(checker: &mut Checker) -> bool {
                 let conflict_claimed = checker.clause(clause).empty();
                 if conflict_claimed {
                     warn!("conflict claimed but not detected");
+                    checker.rejection.failed_proof_step = i;
                     return false;
                 }
                 checker.lemma += 1;
-                watches_add(checker, clause);
-                if propagate(checker) == CONFLICT {
+                if add_premise(checker, clause) == CONFLICT {
                     extract_dependencies_for_last_literal(checker);
                     return close_proof(checker, i + 1);
                 }
             }
         };
     }
-    false
+    invariant!({
+        let last_step = checker.proof[checker.proof_steps_until_conflict];
+        match last_step {
+            ProofStep::Lemma(clause) => checker.clause(clause).empty(),
+            ProofStep::Deletion(_) => false,
+        }
+    });
+    unreachable()
 }
 
 #[cfg_attr(feature = "flame_it", flame)]
@@ -519,16 +754,26 @@ fn verify(checker: &mut Checker) -> bool {
     log!(checker, 1, "[verify]");
     defer_log!(checker, 1, "[verify] done\n");
     for i in (0..checker.proof_steps_until_conflict).rev() {
-        watch_invariants(checker);
+        watch_invariants!(checker);
         let accepted = match checker.proof[i] {
             ProofStep::Deletion(clause) => {
-                log!(checker, 1, "[verify] del {}", checker.clause_copy(clause));
-                if !checker.config.skip_deletions && checker.lemma_revision[clause] {
-                    let mut revision = checker.revisions.pop();
-                    revision_apply(checker, &mut revision);
-                    watches_reset(checker, &mut revision);
+                if clause == Clause::DOES_NOT_EXIST {
+                    continue;
                 }
-                watches_add(checker, clause);
+                log!(checker, 1, "[verify] del {}", checker.clause_copy(clause));
+                if checker.config.skip_deletions {
+                    if !checker.clause_is_a_reason[clause] {
+                        // not actually deleted otherwise
+                        watches_add(checker, clause);
+                    }
+                } else {
+                    if checker.lemma_revision[clause] {
+                        let mut revision = checker.revisions.pop();
+                        revision_apply(checker, &mut revision);
+                        watches_reset(checker, &mut revision);
+                    }
+                    watches_add(checker, clause);
+                }
                 true
             }
             ProofStep::Lemma(_clause) => {
@@ -547,6 +792,7 @@ fn verify(checker: &mut Checker) -> bool {
             }
         };
         if !accepted {
+            checker.rejection.failed_proof_step = i;
             return false;
         }
     }
@@ -567,15 +813,15 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
                 let lit = checker.assignment.pop();
                 set_reason_flag(checker, lit, true);
             }
-            checker.assignment.first_unprocessed = trace_length;
+            checker.processed = trace_length;
         });
 }
 
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
-    if checker.config.lrat_filename.is_empty() {
-        return Ok(());
-    }
-    let mut file = File::create(checker.config.lrat_filename.clone())?;
+    let mut file = match &checker.config.lrat_filename {
+        Some(filename) => File::create(filename)?,
+        None => return Ok(()),
+    };
     let num_clauses = checker.lemma.as_offset() + checker.proof_steps_until_conflict;
     let mut clause_deleted = Array::new(false, num_clauses);
     let empty_clause_as_premise =
@@ -609,6 +855,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                         checker.lrat_id += 1;
                         checker.clause_lrat_id[lemma] = checker.lrat_id;
                         write!(file, "{} ", checker.clause_lrat_id[lemma])?;
+                        // NOTE this could optimised
                         checker.clause_copy(lemma).dimacs(&mut file)?;
                         write!(file, " ")?;
                         for hint in &checker.lemma_lratlemma[lemma] {
@@ -618,7 +865,9 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                                 }
                                 &LRATLiteral::Unit(clause) => {
                                     invariant!(checker.clause_scheduled[clause]);
-                                    invariant!(checker.clause_lrat_id[clause] != Clause::INVALID);
+                                    invariant!(
+                                        checker.clause_lrat_id[clause] != Clause::NEVER_READ
+                                    );
                                     write!(file, "{} ", checker.clause_lrat_id[clause])
                                 }
                             }?;
@@ -647,10 +896,10 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                 }
                 ProofStep::Deletion(clause) => {
                     invariant!(
-                        (checker.clause_lrat_id[clause] == Clause::INVALID)
+                        (checker.clause_lrat_id[clause] == Clause::UNINITIALIZED)
                             == (clause >= checker.lemma && !checker.clause_scheduled[clause])
                     );
-                    if checker.clause_lrat_id[clause] != Clause::INVALID {
+                    if checker.clause_lrat_id[clause] != Clause::UNINITIALIZED {
                         write_deletion(checker, &mut file, &mut clause_deleted, clause)?;
                     }
                     i += 1;
@@ -683,12 +932,83 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     Ok(())
 }
 
+fn write_sick_witness(checker: &Checker) -> io::Result<()> {
+    let mut file = match &checker.config.sick_filename {
+        Some(filename) => File::create(filename)?,
+        None => return Ok(()),
+    };
+
+    let lemma = checker.lemma;
+    let step = checker.rejection.failed_proof_step + checker.num_premises + 1;
+    let assignment = if let Some(stable) = &checker.rejection.stable_assignment {
+        stable
+    } else {
+        &checker.assignment
+    };
+
+    write!(file, "v ")?;
+    write!(
+        file,
+        "{} ",
+        checker
+            .rejection
+            .pivot
+            .map_or("0".to_string(), |pivot| format!("{}", pivot))
+    )?;
+    write!(file, "{}\n", step)?;
+    write!(file, "n ")?;
+    checker.clause_copy(lemma).dimacs(&mut file)?;
+    write!(file, " ")?;
+    for literal in Literal::all(checker.maxvar) {
+        if assignment[literal] {
+            write!(file, "{} ", literal)?;
+        }
+    }
+    write!(file, "0\n")?;
+    write!(file, "r ")?;
+    if let Some(resolved_with) = checker.rejection.resolved_with {
+        for &literal in checker.clause(resolved_with) {
+            write!(file, "{} ", literal)?;
+        }
+        write!(file, "0 ")?;
+        for literal in Literal::all(checker.maxvar) {
+            if assignment[literal] {
+                write!(file, "{} ", literal)?;
+            }
+        }
+    } else {
+        write!(file, "0 ")?;
+    }
+    write!(file, "0\n")?;
+    Ok(())
+}
+
 pub fn check(checker: &mut Checker) -> bool {
     let ok = preprocess(checker) && verify(checker);
     if ok {
         write_lrat_certificate(checker).expect("Failed to write LRAT certificate.");
+    } else {
+        write_sick_witness(checker).expect("Failed to write incorrectness witness.")
     }
     ok
+}
+
+fn watch_remove_at(checker: &mut Checker, lit: Literal, position_in_watchlist: usize) {
+    requires!(checker.watchlist[lit][position_in_watchlist].is_some());
+    log!(
+        checker,
+        3,
+        "watchlist[{}] del [{}]: {}",
+        lit,
+        position_in_watchlist,
+        checker.watchlist[lit][position_in_watchlist].unwrap()
+    );
+    checker.watchlist[lit][position_in_watchlist] = None
+}
+
+fn watch_add(checker: &mut Checker, lit: Literal, clause: Clause) {
+    log!(checker, 3, "watchlist[{}] add {}", lit, clause);
+    checker.watchlist[lit].push(Some(clause))
 }
 
 fn watches_add(checker: &mut Checker, clause: Clause) -> MaybeConflict {
@@ -700,16 +1020,16 @@ fn watches_add(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     );
     let size = checker.clause(clause).len();
     invariant!(size >= 2);
-    let range = checker.clause_range(clause);
-    match first_non_falsified(&checker, clause, range.start) {
+    let head = checker.clause_range(clause).start;
+    match first_non_falsified(&checker, clause, head) {
         Some(i0) => {
             let l0 = checker.db[i0];
-            checker.db.as_mut_slice().swap(range.start, i0);
-            checker.watchlist[l0].push(Some(clause));
-            let l1 = match first_non_falsified(checker, clause, range.start + 1) {
+            checker.db.as_mut_slice().swap(head, i0);
+            watch_add(checker, l0, clause);
+            let l1 = match first_non_falsified(checker, clause, head + 1) {
                 Some(i1) => {
                     let l1 = checker.db[i1];
-                    checker.db.as_mut_slice().swap(range.start + 1, i1);
+                    checker.db.as_mut_slice().swap(head + 1, i1);
                     l1
                 }
                 None => {
@@ -717,37 +1037,21 @@ fn watches_add(checker: &mut Checker, clause: Clause) -> MaybeConflict {
                         let result = assign(checker, l0, Reason::Forced(clause));
                         invariant!(result == NO_CONFLICT);
                     }
-                    checker.db[range.start + 1]
+                    checker.db[head + 1]
                 }
             };
-            checker.watchlist[l1].push(Some(clause));
+            watch_add(checker, l1, clause);
             NO_CONFLICT
         }
-        None => CONFLICT,
-    }
-}
-
-fn watches_remove_at(checker: &mut Checker, lit: Literal, position_in_watchlist: usize) {
-    checker.watchlist[lit][position_in_watchlist] = None;
-}
-
-fn watches_find_and_remove(checker: &mut Checker, lit: Literal, clause: Clause) {
-    requires!(lit != Literal::TOP);
-    checker.watchlist[lit]
-        .iter()
-        .position(|&watched| watched == Some(clause))
-        .map(|position| watches_remove_at(checker, lit, position));
-}
-
-fn watches_find_and_remove_all(checker: &mut Checker, lit: Literal, clause: Clause) {
-    for i in 0..checker.watchlist[lit].len() {
-        if checker.watchlist[lit][i] == Some(clause) {
-            watches_remove_at(checker, lit, i);
+        None => {
+            // TODO does this only happen for real units
+            assign(checker, checker.db[head], Reason::Forced(clause));
+            CONFLICT
         }
     }
 }
 
-fn watches_remove(checker: &mut Checker, clause: Clause) -> Option<()> {
+fn watches_remove(checker: &mut Checker, clause: Clause) {
     log!(
         checker,
         2,
@@ -757,39 +1061,21 @@ fn watches_remove(checker: &mut Checker, clause: Clause) -> Option<()> {
     let (l0, l1) = checker.clause_watches(clause);
     watches_find_and_remove_all(checker, l0, clause);
     watches_find_and_remove_all(checker, l1, clause);
-    Some(())
+    fn watches_find_and_remove_all(checker: &mut Checker, lit: Literal, clause: Clause) {
+        for i in 0..checker.watchlist[lit].len() {
+            if checker.watchlist[lit][i] == Some(clause) {
+                watch_remove_at(checker, lit, i);
+            }
+        }
+    }
 }
 
-fn watches_align(
-    checker: &mut Checker,
-    literal: Literal,
-    position_in_watchlist: usize,
-) -> MaybeConflict {
-    let clause = checker.watchlist[literal][position_in_watchlist].unwrap();
-    requires!(clause < checker.lemma);
-    let (l0, l1) = checker.clause_watches(clause);
-    if checker.assignment[l0] || checker.assignment[l1] {
-        return NO_CONFLICT;
-    }
-    let head = checker.clause_range(clause).start;
-    if literal == l0 {
-        checker.db[head] = checker.db[head + 1];
-    }
-    match first_non_falsified(checker, clause, head + 2) {
-        Some(offset) => {
-            let new = checker.db[offset];
-            checker.db[offset] = literal;
-            checker.db[head + 1] = new;
-            watches_remove_at(checker, literal, position_in_watchlist);
-            checker.watchlist[new].push(Some(clause));
-            NO_CONFLICT
-        }
-        None => {
-            checker.db[head + 1] = literal;
-            let unit = checker.db[head];
-            assign(checker, unit, Reason::Forced(clause))
-        }
-    }
+fn watches_find_and_remove(checker: &mut Checker, lit: Literal, clause: Clause) {
+    requires!(lit != Literal::TOP);
+    checker.watchlist[lit]
+        .iter()
+        .position(|&watched| watched == Some(clause))
+        .map(|position| watch_remove_at(checker, lit, position));
 }
 
 fn watches_revise(
@@ -816,8 +1102,8 @@ fn watches_revise(
         Some(offset) => {
             let new_literal = checker.db[offset];
             checker.db.as_mut_slice().swap(my_offset, offset);
-            watches_remove_at(checker, lit, position_in_watchlist);
-            checker.watchlist[new_literal].push(Some(clause));
+            watch_remove_at(checker, lit, position_in_watchlist);
+            watch_add(checker, new_literal, clause);
         }
     };
 }
@@ -827,88 +1113,92 @@ fn watches_reset(checker: &mut Checker, revision: &Revision) {
         watches_reset_list(checker, literal);
         watches_reset_list(checker, -literal);
     }
-}
 
-fn watches_reset_list(checker: &mut Checker, literal: Literal) {
-    for i in 0..checker.watchlist[literal].len() {
-        if checker.watchlist[literal][i].is_some() {
-            watches_reset_list_at(checker, literal, i);
+    fn watches_reset_list(checker: &mut Checker, literal: Literal) {
+        for i in 0..checker.watchlist[literal].len() {
+            if checker.watchlist[literal][i].is_some() {
+                watches_reset_list_at(checker, literal, i);
+            }
         }
     }
-}
 
-fn watches_reset_list_at(checker: &mut Checker, literal: Literal, position_in_watchlist: usize) {
-    let clause =
-        checker.watchlist[literal][position_in_watchlist].expect("can't reset - watch was deleted");
-    let (l0, l1) = checker.clause_watches(clause);
-    if !checker.assignment[-l0] && !checker.assignment[-l1] {
-        // watches are correct
-        return;
-    }
-    let head = checker.clause_range(clause).start;
-    if literal != l0 {
-        requires!(literal == l1);
-        checker.db.as_mut_slice().swap(head, head + 1);
-    }
-    let other_lit = checker.db[head + 1];
-    let offset = head;
-    let mut first_offset = head;
-    let mut best_offset = head;
-    let mut best_position = usize::max_value();
-    let ok = watch_find(
-        checker,
-        clause,
-        &mut first_offset,
-        &mut best_offset,
-        &mut best_position,
-    );
-    invariant!(ok, "broken invariant");
-    let mut second_offset = first_offset + 1;
-    let ok = watch_find(
-        checker,
-        clause,
-        &mut second_offset,
-        &mut best_offset,
-        &mut best_position,
-    );
-    if !ok {
-        if first_offset > best_offset {
-            second_offset = first_offset;
-            first_offset = best_offset;
-        } else {
-            second_offset = best_offset;
-        }
-    }
-    // At this point, we have ensured that first_offset < second_offset
-    // There are four cases:
-    //   A) first_offset is in 0, second_offset is in 1
-    //   B) first_offset is in 0, second_offset is in >=2
-    //   C) first_offset is in 1, second_offset is in >=2
-    //   D) both first_offset and second_offset are in >=2
-    if offset == first_offset {
-        if offset + 1 == second_offset {
-            // Case A: nothing to do!
+    fn watches_reset_list_at(
+        checker: &mut Checker,
+        literal: Literal,
+        position_in_watchlist: usize,
+    ) {
+        let clause = checker.watchlist[literal][position_in_watchlist]
+            .expect("can't reset - watch was deleted");
+        let (l0, l1) = checker.clause_watches(clause);
+        if !checker.assignment[-l0] && !checker.assignment[-l1] {
+            // watches are correct
             return;
-        } else {
-            // Case B: clause will not be watched on other_lit, but on checker.db[second_offset] instead.
-            watches_find_and_remove(checker, other_lit, clause);
-            let tmp = checker.db[second_offset];
-            checker.db[offset + 1] = tmp;
-            checker.db[second_offset] = other_lit;
-            checker.watchlist[tmp].push(Some(clause));
         }
-    } else {
-        // Cases C and D: clause will not be watched on literal, but on *second_offset instead.
-        watches_remove_at(checker, literal, position_in_watchlist);
-        checker.db[offset] = checker.db[second_offset];
-        checker.db[second_offset] = literal;
-        checker.watchlist[checker.db[offset]].push(Some(clause)); // Case C: additionally, clause will still be watched on other_lit
-        if offset + 1 != first_offset {
-            // Case D: additionally, clause will not be watched on other_lit, but on checker.db[offset + 1] instead.
-            watches_find_and_remove(checker, other_lit, clause);
-            checker.db[offset + 1] = checker.db[first_offset];
-            checker.db[first_offset] = other_lit;
-            checker.watchlist[checker.db[offset + 1]].push(Some(clause));
+        let head = checker.clause_range(clause).start;
+        if literal != l0 {
+            requires!(literal == l1);
+            checker.db.as_mut_slice().swap(head, head + 1);
+        }
+        let other_lit = checker.db[head + 1];
+        let offset = head;
+        let mut first_offset = head;
+        let mut best_offset = head;
+        let mut best_position = usize::max_value();
+        let ok = watch_find(
+            checker,
+            clause,
+            &mut first_offset,
+            &mut best_offset,
+            &mut best_position,
+        );
+        invariant!(ok, "broken invariant");
+        let mut second_offset = first_offset + 1;
+        let ok = watch_find(
+            checker,
+            clause,
+            &mut second_offset,
+            &mut best_offset,
+            &mut best_position,
+        );
+        if !ok {
+            if first_offset > best_offset {
+                second_offset = first_offset;
+                first_offset = best_offset;
+            } else {
+                second_offset = best_offset;
+            }
+        }
+        // At this point, we have ensured that first_offset < second_offset
+        // There are four cases:
+        //   A) first_offset is in 0, second_offset is in 1
+        //   B) first_offset is in 0, second_offset is in >=2
+        //   C) first_offset is in 1, second_offset is in >=2
+        //   D) both first_offset and second_offset are in >=2
+        if offset == first_offset {
+            if offset + 1 == second_offset {
+                // Case A: nothing to do!
+                return;
+            } else {
+                // Case B: clause will not be watched on other_lit, but on checker.db[second_offset] instead.
+                watches_find_and_remove(checker, other_lit, clause);
+                let tmp = checker.db[second_offset];
+                checker.db[offset + 1] = tmp;
+                checker.db[second_offset] = other_lit;
+                watch_add(checker, tmp, clause);
+            }
+        } else {
+            // Cases C and D: clause will not be watched on literal, but on *second_offset instead.
+            watch_remove_at(checker, literal, position_in_watchlist);
+            checker.db[offset] = checker.db[second_offset];
+            checker.db[second_offset] = literal;
+            watch_add(checker, checker.db[offset], clause); // Case C: additionally, clause will still be watched on other_lit
+            if offset + 1 != first_offset {
+                // Case D: additionally, clause will not be watched on other_lit, but on checker.db[offset + 1] instead.
+                watches_find_and_remove(checker, other_lit, clause);
+                checker.db[offset + 1] = checker.db[first_offset];
+                checker.db[first_offset] = other_lit;
+                watch_add(checker, checker.db[offset + 1], clause);
+            }
         }
     }
 }
@@ -993,6 +1283,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         }
     }
     checker.assignment.resize_trace(next_position_to_overwrite);
+    checker.processed = next_position_to_overwrite;
     for &literal in &revision.cone {
         watchlist_revise(checker, literal);
     }
@@ -1000,7 +1291,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     checker.revisions.push(revision);
     fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal) {
         checker.assignment.unassign(lit);
-        set_reason_flag(checker, lit, true);
+        set_reason_flag(checker, lit, false);
         revision.cone.push(lit, true);
         revision
             .position_in_trace
@@ -1055,6 +1346,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     let mut right_position = checker.assignment.len() + introductions;
     let mut left_position = right_position - 1 - literals_to_revise;
     checker.assignment.resize_trace(right_position);
+    checker.processed = right_position;
     // Introduce the revisions in the trace, starting from the ones with the
     // highest offset in the trace.
     while literals_to_revise > 0 {
@@ -1097,29 +1389,4 @@ fn assignment_invariants(checker: &Checker) {
         }
         true
     })
-}
-
-fn watch_invariants(checker: &Checker) {
-    invariant!({
-        fn is_assigned(checker: &Checker, lit: Literal) -> bool {
-            checker.assignment[lit] || checker.assignment[-lit]
-        }
-        // each watch points to a clause that is neither falsified nor satisfied
-        for lit in Literal::all(checker.maxvar) {
-            for watch in &checker.watchlist[lit] {
-                if let &Some(clause) = watch {
-                    let (l0, l1) = checker.clause_watches(clause);
-                    invariant!(
-                        is_assigned(checker, l0) ||
-                        is_assigned(checker, l1) ||
-                        (!is_assigned(checker, -l0) && !is_assigned(checker, -l1))
-                        ,
-                        format!("each watched clause needs at least one unassigned literal: violated in {} - {}", checker.clause_copy(clause),
-                        checker.assignment)
-                    );
-                }
-            }
-        }
-        true
-    });
 }

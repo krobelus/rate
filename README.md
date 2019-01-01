@@ -32,10 +32,6 @@ This can be run with `pytest test.py`. The requirements are:
 - `pytest`
 - `drat-trim` and `rupee` need to be executable on your system.
 
-There is also `scripts/test-random-instances.sh` that creates random CNF
-formulas until there is a discrepant result. This assumes that
-[`cadical`](https://github.com/arminbiere/cadical) is executable.
-
 ## Crate
 
 Currently we provide a reimplementation of Rate in C (see [crate.c](crate.c)).
@@ -45,13 +41,13 @@ features. Build `./crate` by typing `make`.
 
 # Contributing
 
-We appreciate contributions, please let us know if Rate behaves in a way that
-is unexpected to you.
+We appreciate contributions. Please let us know if Rate behaves in a way that is
+unexpected to you, or if you need some feature.
 
 # Caveats
 
 Please note that, Rate accepts proof that are technically not fully correct,
-We perform some transformations on the proof before actually checking its
+We perform some transformations on the proof before actually checking the
 steps, mainly to improve performance, as do other checkers. So this might
 result in a proof that contains some invalid instructions being accepted, but
 this should only be possible for unsatisfiable formulas.
@@ -67,7 +63,8 @@ Here are the transformations we do:
   is sound is a bit tricky.
 - If `--skip-deletions` is specified, then deletions of clauses that are unit
   with respect to the current assignment are ignored, as in drat-trim.
-- RAT checks are done upon every possible pivot and not just the first literal.
+- RAT checks are done upon every possible pivot and not just the first literal
+  in a clause.
 
 # Roadmap
 These features are planned to be implemented:

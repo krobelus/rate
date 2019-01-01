@@ -45,7 +45,11 @@ impl Literal {
 
     pub const TOP: Literal = Literal { encoding: 0 };
     pub const BOTTOM: Literal = Literal { encoding: 1 };
-    pub const INVALID: Literal = Literal {
+
+    #[cfg(feature = "fast")]
+    pub const NEVER_READ: Literal = Literal { encoding: 0 };
+    #[cfg(not(feature = "fast"))]
+    pub const NEVER_READ: Literal = Literal {
         encoding: u32::max_value(),
     };
 

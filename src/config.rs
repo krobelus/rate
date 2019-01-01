@@ -7,8 +7,10 @@ pub struct Config {
     pub skip_deletions: bool,
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
+    pub no_core_first: bool,
     pub verbosity: u64,
-    pub lrat_filename: String, // empty if none
+    pub lrat_filename: Option<String>,
+    pub sick_filename: Option<String>,
 }
 
 pub const DISABLE_CHECKS_AND_LOGGING: bool = cfg!(feature = "fast");
@@ -102,7 +104,8 @@ impl Config {
         Config {
             skip_deletions: drat_trim || matches.is_present("SKIP_DELETIONS"),
             unmarked_rat_candidates: !drat_trim && matches.is_present("UNMARKED_RAT_CANDIDATES"),
-            pivot_is_first_literal: rupee || matches.is_present("ASSUME_PIVOT_IS_HEAD"),
+            pivot_is_first_literal: rupee || matches.is_present("ASSUME_PIVOT_IS_FIRST"),
+            no_core_first: matches.is_present("NO_CORE_FIRST"),
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {
                     warn!("verbosity can be at most 3");
@@ -110,7 +113,8 @@ impl Config {
                 }
                 i => i,
             },
-            lrat_filename: String::from(matches.value_of("LRAT_FILE").unwrap_or("")),
+            lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
+            sick_filename: matches.value_of("SICK_FILE").map(String::from),
         }
     }
 }

@@ -17,9 +17,9 @@ do
     echo s SATISFIABLE; continue
   }
   sed 1q tmp.cnf
-  rupee tmp.* | grep '^s ACCEPTED'
+  rupee tmp.{cnf,drat} | grep '^s ACCEPTED'
   rupee=$?
-  rate tmp.* | grep '^s ACCEPTED'
+  rate tmp.{cnf,drat} | grep '^s ACCEPTED'
   rate=$?
   test $rupee -eq $rate
 done

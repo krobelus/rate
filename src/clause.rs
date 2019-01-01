@@ -21,7 +21,14 @@ impl Clause {
     pub fn range(start: impl Offset, end: impl Offset) -> impl Iterator<Item = Clause> {
         (start.as_offset()..end.as_offset()).map(Clause)
     }
-    pub const INVALID: Clause = Clause(usize::max_value());
+
+    #[cfg(feature = "fast")]
+    pub const NEVER_READ: Clause = Clause(0);
+    #[cfg(not(feature = "fast"))]
+    pub const NEVER_READ: Clause = Clause(usize::max_value());
+
+    pub const DOES_NOT_EXIST: Clause = Clause(usize::max_value());
+    pub const UNINITIALIZED: Clause = Clause(usize::max_value());
 }
 
 impl Offset for Clause {
@@ -85,10 +92,8 @@ impl<'a> ClauseCopy {
         self.into_iter()
     }
     pub fn dimacs(&self, f: &mut impl Write) -> io::Result<()> {
-        for literal in &self.literals {
-            if !literal.is_constant() {
-                write!(f, "{} ", literal)?;
-            }
+        for literal in self {
+            write!(f, "{} ", literal)?;
         }
         write!(f, "0")
     }
@@ -98,18 +103,20 @@ impl<'a> IntoIterator for &'a ClauseCopy {
     type Item = &'a Literal;
     type IntoIter = std::slice::Iter<'a, Literal>;
     fn into_iter(self) -> Self::IntoIter {
-        self.literals.into_iter()
+        // unit clauses are padded with Literal::BOTTOM
+        if !self.literals.empty() && self.literals[1] == Literal::BOTTOM {
+            self.literals.as_slice().range(0, 1).into_iter()
+        } else {
+            self.literals.into_iter()
+        }
     }
 }
 
 impl fmt::Display for ClauseCopy {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}] ", self.id)?;
-        for &literal in &self.literals {
-            // unit clauses are padded with Literal::BOTTOM
-            if literal != Literal::BOTTOM {
-                write!(f, "{} ", literal)?;
-            }
+        for &literal in self {
+            write!(f, "{} ", literal)?;
         }
         write!(f, "0")
     }

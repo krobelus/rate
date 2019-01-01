@@ -5,7 +5,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BoundedStack<T> {
     stack: Stack<T>,
 }
