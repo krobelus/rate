@@ -190,23 +190,40 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
 }
 
 fn propagate(checker: &mut Checker) -> MaybeConflict {
-    while let Some(literal) = checker.assignment.next_unprocessed() {
-        // NOTE this will return upon conflict.
-        propagate_literal(checker, literal)?;
-        watchlist_compact(checker, literal);
-    }
-    NO_CONFLICT
-}
-
-fn propagate_literal(checker: &mut Checker, literal: Literal) -> MaybeConflict {
-    requires!(checker.assignment[literal]);
-    requires!(checker.literal_reason[literal] != Reason::Forced(Clause::INVALID));
-    for i in 0..checker.watchlist[-literal].len() {
-        if checker.watchlist[-literal][i].is_some() {
-            watches_align(checker, -literal, i)?;
+    #[derive(Clone, Copy)]
+    enum Mode {
+        Core,
+        NonCore,
+    };
+    fn propagate_mode(checker: &mut Checker, mode: Mode) -> MaybeConflict {
+        while let Some(literal) = checker.assignment.next_unprocessed() {
+            // NOTE this will return upon conflict.
+            propagate_literal(checker, literal, mode)?;
+            watchlist_compact(checker, literal);
         }
+        NO_CONFLICT
     }
-    NO_CONFLICT
+    fn propagate_literal(checker: &mut Checker, literal: Literal, mode: Mode) -> MaybeConflict {
+        requires!(checker.assignment[literal]);
+        requires!(checker.literal_reason[literal] != Reason::Forced(Clause::INVALID));
+        for i in 0..checker.watchlist[-literal].len() {
+            if let Some(clause) = checker.watchlist[-literal][i] {
+                let visit = match mode {
+                    Mode::Core => checker.clause_scheduled[clause],
+                    Mode::NonCore => true,
+                };
+                if visit {
+                    watches_align(checker, -literal, i)?;
+                }
+            }
+        }
+        NO_CONFLICT
+    }
+    // TODO this is super hacky
+    let old = checker.assignment.first_unprocessed;
+    propagate_mode(checker, Mode::Core)?;
+    checker.assignment.first_unprocessed = old;
+    propagate_mode(checker, Mode::NonCore)
 }
 
 macro_rules! preserve_assignment {
