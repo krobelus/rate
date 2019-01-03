@@ -32,6 +32,9 @@ This can be run with `pytest test.py`. The requirements are:
 - `pytest`
 - `drat-trim` and `rupee` need to be executable on your system.
 
+If you're in a hurry use `pytest test.py -k quick` to only run the tests on
+small input files.
+
 ## Crate
 
 Currently we provide a reimplementation of Rate in C (see [crate.c](crate.c)).
