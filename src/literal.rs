@@ -8,7 +8,7 @@ pub struct Variable(pub u32);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 pub struct Literal {
-    encoding: u32,
+    pub encoding: u32,
 }
 
 impl Variable {

@@ -101,3 +101,12 @@ impl<I: Offset, T: Clone + Debug> Debug for Array<I, T> {
         write!(f, "]")
     }
 }
+
+impl<I: Offset, T: Clone + PartialEq> PartialEq for Array<I, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.size() == other.size()
+            && (0..self.size()).all(|i| unsafe {
+                (*self.ptr().offset(i as isize)) == (*other.ptr().offset(i as isize))
+            })
+    }
+}

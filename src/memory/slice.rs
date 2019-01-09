@@ -125,3 +125,19 @@ impl<'a, T> IntoIterator for SliceMut<'a, T> {
         self.slice.into_iter()
     }
 }
+
+impl<'a, T: Ord> SliceMut<'a, T> {
+    pub fn sort_unstable(&mut self) {
+        self.slice.sort_unstable()
+    }
+}
+
+impl<'a, T> SliceMut<'a, T> {
+    pub fn sort_unstable_by_key<K, F>(&mut self, f: F)
+    where
+        F: FnMut(&T) -> K,
+        K: Ord,
+    {
+        self.slice.sort_unstable_by_key(f)
+    }
+}

@@ -2,13 +2,13 @@
 
 use crate::{
     clause::{Clause, ClauseCopy, ProofStep},
+    config::HASHTABLE_SIZE,
     literal::{Literal, Variable},
-    memory::{Offset, Slice, Stack},
+    memory::{Array, Offset, Slice, Stack},
 };
 #[cfg(feature = "flame_it")]
 use flamer::flame;
 use memmap::MmapOptions;
-use multimap::MultiMap;
 use std::{
     cmp, fmt,
     fmt::{Display, Formatter},
@@ -16,32 +16,17 @@ use std::{
     io, str,
 };
 
-/// Sorted copy of a clause. We perform the copy to make it possible to reuse an existing
-/// implementation of a hash map. Generally collections should own the data the contain, otherwise
-/// it gets tricky. If this causes as problem, we might implement the hashing ourselves.
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct HashableClause {
-    clause: Stack<Literal>,
-}
-
-impl<'a> HashableClause {
-    fn new(clause: Slice<Literal>) -> HashableClause {
-        let mut copy = clause.to_stack();
-        copy.sort_unstable();
-        HashableClause { clause: copy }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Parser {
     pub maxvar: Variable,
     pub num_clauses: usize,
     pub db: Stack<Literal>,
+    pub clause_pivot: Option<Stack<Literal>>,
     pub clause_offset: Stack<usize>,
     clause_scheduled_for_deletion: Stack<bool>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
-    clause_to_id: MultiMap<HashableClause, Clause>,
+    hashtable: Array<usize, Stack<Clause>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -52,23 +37,33 @@ struct ParseError {
 }
 
 impl Parser {
-    pub fn new() -> Parser {
+    pub fn new(pivot_is_first_literal: bool) -> Parser {
         Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
             db: Stack::new(),
+            clause_pivot: if pivot_is_first_literal {
+                Some(Stack::new())
+            } else {
+                None
+            },
             clause_offset: Stack::new(),
             clause_scheduled_for_deletion: Stack::new(),
             proof_start: Clause(0),
             proof: Stack::new(),
-            clause_to_id: MultiMap::new(),
+            // clause_to_id: MultiMap::new(),
+            hashtable: Array::new(Stack::new(), HASHTABLE_SIZE),
         }
     }
 }
 
 #[cfg_attr(feature = "flame_it", flame)]
-pub fn parse_files<'a>(formula_file: &str, proof_file: &str) -> Parser {
-    let mut parser = Parser::new();
+pub fn parse_files<'a>(
+    formula_file: &str,
+    proof_file: &str,
+    pivot_is_first_literal: bool,
+) -> Parser {
+    let mut parser = Parser::new(pivot_is_first_literal);
     parse_formula(&mut parser, read_or_die(formula_file).as_slice())
         .map(|err| die!("error parsing formula at line {} col {}", err.line, err.col));
     parse_proof(&mut parser, read_or_die(proof_file).as_slice())
@@ -99,12 +94,17 @@ where
         .unwrap()
 }
 
+fn descending(literal: &Literal) -> i32 {
+    -(literal.encoding as i32)
+}
+
 fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Stack<Literal>) -> Literal {
     if literal.is_zero() {
         if buffer.len() == 1 {
             buffer.push(Literal::BOTTOM);
         }
-        match find_clause(&buffer, &parser) {
+        buffer.sort_unstable_by_key(descending);
+        match find_clause(buffer.as_slice(), parser) {
             None => {
                 warn!(
                     "Deleted clause is not present in the formula: {}",
@@ -154,10 +154,11 @@ fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
             add_literal(parser, Literal::BOTTOM);
             end += 1;
         }
-        let clause = HashableClause::new(parser.db.as_slice().range(begin, end));
-        parser
-            .clause_to_id
-            .insert(clause, Clause(parser.clause_offset.len() - 1));
+        let clause = Clause(parser.clause_offset.len() - 1);
+        let mut slice = parser.db.as_mut_slice().range(begin, end);
+        slice.sort_unstable_by_key(descending);
+        let hash = compute_hash(slice.as_const());
+        parser.hashtable[hash].push(clause)
     } else {
         parser.maxvar = cmp::max(parser.maxvar, literal.var());
         parser.db.push(literal);
@@ -170,14 +171,37 @@ fn add_literal_ascii<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Litera
     literal
 }
 
-fn find_clause<'a>(needle: &Stack<Literal>, parser: &Parser) -> Option<Clause> {
-    let clause = HashableClause::new(needle.as_slice());
-    parser.clause_to_id.get_vec(&clause).and_then(|clauses| {
-        clauses
-            .iter()
-            .map(|c| *c)
-            .find(|c| !parser.clause_scheduled_for_deletion[c.as_offset()])
-    })
+fn find_clause<'a>(needle: Slice<Literal>, parser: &mut Parser) -> Option<Clause> {
+    let hash = compute_hash(needle);
+    for i in 0..parser.hashtable[hash].len() {
+        let clause = parser.hashtable[hash][i];
+        let begin = parser.clause_offset[clause.as_offset()];
+        let end = if clause.as_offset() + 1 == parser.clause_offset.len() {
+            parser.db.len()
+        } else {
+            parser.clause_offset[clause.as_offset() + 1]
+        };
+        let literals = parser.db.as_slice().range(begin, end);
+        invariant!(!parser.clause_scheduled_for_deletion[clause.as_offset()]);
+        if literals != needle {
+            continue;
+        }
+        parser.hashtable[hash].swap_remove(i);
+        return Some(clause);
+    }
+    None
+}
+
+fn compute_hash(clause: Slice<Literal>) -> usize {
+    let mut sum = 0;
+    let mut prod = 1;
+    let mut xor = 0;
+    for &literal in clause {
+        prod *= literal.as_offset();
+        sum += literal.as_offset();
+        xor ^= literal.as_offset();
+    }
+    (1023 * sum + prod ^ (31 * xor)) % HASHTABLE_SIZE
 }
 
 fn isdigit(value: u8) -> bool {
@@ -281,6 +305,10 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
                 b' ' | b'\n' => {
                     if head {
                         start_clause(&mut *parser);
+                        parser
+                            .clause_pivot
+                            .as_mut()
+                            .map(|pivots| pivots.push(Literal::NEVER_READ));
                     }
                     let literal = add_literal_ascii(&mut *parser, input.range(start, i));
                     head = literal.is_zero();
@@ -328,6 +356,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
 
     let mut state = LemmaPositionBinary::Start;
     let mut buffer = Stack::new();
+    let mut head = true;
     while input.len() > 0 {
         input = match state {
             LemmaPositionBinary::Start => {
@@ -338,12 +367,20 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
                     invariant!(addition_or_deletion == 'a');
                     state = LemmaPositionBinary::Lemma;
                     let clause = start_clause(&mut parser);
+                    head = true;
                     parser.proof.push(ProofStep::Lemma(clause));
                 }
                 input
             }
             LemmaPositionBinary::Lemma => match number_binary(input) {
                 (input, literal) => {
+                    if head {
+                        parser
+                            .clause_pivot
+                            .as_mut()
+                            .map(|pivots| pivots.push(literal));
+                        head = false;
+                    }
                     add_literal(parser, literal);
                     if literal.is_zero() {
                         state = LemmaPositionBinary::Start;
@@ -436,6 +473,12 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
             LemmaPositionText::LemmaLiteral => match c {
                 b' ' | b'\n' => {
                     let literal = add_literal_ascii(&mut *parser, input.range(start, i));
+                    if head {
+                        parser
+                            .clause_pivot
+                            .as_mut()
+                            .map(|pivots| pivots.push(literal));
+                    }
                     head = literal.is_zero();
                     state = if head {
                         LemmaPositionText::Start
@@ -524,20 +567,20 @@ mod tests {
     }
 
     #[allow(unused_macros)]
-    macro_rules! multimap(
-    { $($key:expr => $value:expr),+ } => {
-        {
-            let mut m = MultiMap::new();
-            $(
-                m.insert($key, $value);
-            )+
-            m
+    macro_rules! hashtable(
+        { $($literals:expr => $clause:expr),+ } => {
+            {
+                let mut table = Array::new(Stack::new(), HASHTABLE_SIZE);
+                $(
+                    table[compute_hash($literals.as_slice())].push($clause);
+                )+
+                table
+            }
         }
-     };
-);
+    );
 
     fn sample_formula() -> Parser {
-        let mut parser = Parser::new();
+        let mut parser = Parser::new(false);
         assert!(parse_formula(
             &mut parser,
             Slice::new(
@@ -554,8 +597,8 @@ p cnf 2 2
 
     #[test]
     fn invalid_formulas() {
-        invariant!(parse_formula(&mut Parser::new(), Slice::new(b"p c")).is_some());
-        invariant!(parse_formula(&mut Parser::new(), Slice::new(b"p cnf 1 1\na")).is_some());
+        invariant!(parse_formula(&mut Parser::new(false), Slice::new(b"p c")).is_some());
+        invariant!(parse_formula(&mut Parser::new(false), Slice::new(b"p cnf 1 1\na")).is_some());
     }
 
     #[test]
@@ -567,7 +610,8 @@ p cnf 2 2
             Parser {
                 maxvar: Variable::new(3),
                 num_clauses: 4,
-                db: literals!(1, 2, -1, -2, 1, 2, 3),
+                db: literals!(2, 1, -2, -1, 3, 2, 1),
+                clause_pivot: None,
                 clause_offset: stack!(0, 2, 4, 7, 7),
                 clause_scheduled_for_deletion: stack!(true, false, false),
                 proof_start: Clause(2),
@@ -576,10 +620,9 @@ p cnf 2 2
                     ProofStep::Deletion(Clause(0)),
                     ProofStep::Lemma(Clause(3))
                 ],
-                clause_to_id: multimap! {
-                    HashableClause::new(literals!(1, 2).as_slice()) => Clause(0),
-                    HashableClause::new(literals!(-1, -2).as_slice()) => Clause(1),
-                    HashableClause::new(literals!(1, 2, 3).as_slice()) => Clause(2)
+                hashtable: hashtable! {
+                    literals!(-1, -2) => Clause(1),
+                    literals!(1, 2, 3) => Clause(2)
                 }
             }
         );

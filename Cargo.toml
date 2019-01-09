@@ -7,13 +7,11 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-nom = "*"
 memmap = "*"
 ansi_term = "*"
 derive_more = "*"
 clap = "*"
 scopeguard = "*"
-multimap = "*"
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.3", optional = true }
 

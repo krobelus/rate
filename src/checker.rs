@@ -88,7 +88,7 @@ impl Checker {
             clause_offset: Array::from(parser.clause_offset),
             clause_scheduled: Array::new(false, num_clauses),
             clause_in_watchlist: Array::new(false, num_clauses),
-            clause_pivot: None,
+            clause_pivot: parser.clause_pivot.map(Array::from),
             config: config,
             db: Array::from(parser.db),
             soft_propagation: false,
@@ -122,15 +122,6 @@ impl Checker {
         for clause in Clause::range(0, checker.lemma) {
             checker.lrat_id += 1;
             checker.clause_lrat_id[clause] = checker.lrat_id;
-        }
-        if checker.config.pivot_is_first_literal {
-            let mut pivots = Array::new(Literal::NEVER_READ, num_clauses);
-            for clause in Clause::range(0, num_clauses) {
-                if !checker.clause(clause).empty() {
-                    pivots[clause] = checker.clause(clause)[0];
-                }
-            }
-            checker.clause_pivot = Some(pivots);
         }
         checker
     }

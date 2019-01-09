@@ -26,7 +26,11 @@ use crate::{
 };
 
 fn run_checker(config: Config) -> (bool, Checker) {
-    let parser = parse_files(&config.formula_filename, &config.proof_filename);
+    let parser = parse_files(
+        &config.formula_filename,
+        &config.proof_filename,
+        config.pivot_is_first_literal,
+    );
     //     matches.value_of("INPUT").unwrap(),
     //     matches.value_of("PROOF").unwrap(),
     // );

@@ -15,6 +15,11 @@ pub struct Config {
     pub sick_filename: Option<String>,
 }
 
+#[cfg(test)]
+pub const HASHTABLE_SIZE: usize = 1 << 4;
+#[cfg(not(test))]
+pub const HASHTABLE_SIZE: usize = 1 << 19;
+
 pub const DISABLE_CHECKS_AND_LOGGING: bool = cfg!(feature = "fast");
 
 macro_rules! enabled {
