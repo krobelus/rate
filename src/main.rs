@@ -10,17 +10,29 @@ mod clause;
 mod literal;
 mod memory;
 mod parser;
+mod watchlist;
 
 use clap::Arg;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
-use std::process;
+use std::{process, time::SystemTime};
 
 use crate::{
     checker::{check, Checker},
     config::Config,
     parser::parse_files,
 };
+
+fn run_checker(config: Config) -> (bool, Checker) {
+    let parser = parse_files(&config.formula_filename, &config.proof_filename);
+    //     matches.value_of("INPUT").unwrap(),
+    //     matches.value_of("PROOF").unwrap(),
+    // );
+
+    let mut checker = Checker::new(parser, config);
+    let ok = check(&mut checker);
+    (ok, checker)
+}
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn main() {
@@ -59,15 +71,13 @@ fn main() {
         );
     }
 
-    let matches = app.get_matches();
-
-    let parser = parse_files(
-        matches.value_of("INPUT").unwrap(),
-        matches.value_of("PROOF").unwrap(),
+    let config = Config::new(app.get_matches());
+    let start = SystemTime::now();
+    let (ok, checker) = run_checker(config);
+    echo!(
+        "c elapsed time: {} seconds",
+        start.elapsed().expect("failed to get time").as_secs()
     );
-
-    let mut checker = Checker::new(parser, Config::new(matches));
-    let ok = check(&mut checker);
     echo!("c propcount {}", checker.propcount);
     echo!("s {}", if ok { "ACCEPTED" } else { "REJECTED" });
     #[cfg(feature = "flame_it")]

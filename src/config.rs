@@ -9,6 +9,8 @@ pub struct Config {
     pub pivot_is_first_literal: bool,
     pub no_core_first: bool,
     pub verbosity: u64,
+    pub formula_filename: String,
+    pub proof_filename: String,
     pub lrat_filename: Option<String>,
     pub sick_filename: Option<String>,
 }
@@ -24,6 +26,7 @@ macro_rules! enabled {
 pub const BOUNDS_CHECKING: bool = enabled!(true);
 pub const ASSERTIONS: bool = enabled!(true);
 pub const LOGGING: bool = enabled!(true);
+pub const COSTLY_INVARIANT_CHECKING: bool = enabled!(cfg!(debug));
 
 // print to stdout
 macro_rules! echo {
@@ -113,6 +116,8 @@ impl Config {
                 }
                 i => i,
             },
+            formula_filename: matches.value_of("INPUT").unwrap().to_string(),
+            proof_filename: matches.value_of("PROOF").unwrap().to_string(),
             lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
             sick_filename: matches.value_of("SICK_FILE").map(String::from),
         }

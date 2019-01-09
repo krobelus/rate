@@ -158,9 +158,9 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
         assert accepts(a + args, name) == accepts(b + args, name)
 
 
-def certify_with_lrat_checker(
+def double_check(
         drat_checker,
-        lrat_checker,
+        lrat_checker=['lratcheck'],
         *,
         instances=all_inputs()):
     build_release()
@@ -181,7 +181,7 @@ def certify_with_lrat_checker(
             assert lrat_checker_accepts(
                 lrat_checker + [args[0], args[3]], name)
         else:
-            # FIXME hack sickcheck to handle some edge cases
+            # TODO hack sickcheck to handle some edge cases
             if name == 'benchmarks/crafted/empty':
                 continue
             if name == 'benchmarks/crafted/multi-delete':
@@ -192,20 +192,28 @@ def certify_with_lrat_checker(
                 ['sickcheck'] + args[:2] + [args[-1]], name)
 
 
-def test_quick_lratcheck():
-    certify_with_lrat_checker(
+def test_quick():
+    double_check(
         rate(
             flags=['--assume-pivot-is-first']),
-        ['lratcheck'], instances=small_inputs())
+        instances=small_inputs())
 
 
-def test_using_lrat_check():
-    certify_with_lrat_checker(rate(
+def test_quick_no_core_first():
+    double_check(
+        rate(
+            flags=['--assume-pivot-is-first',
+                   '--no-core-first']),
+        instances=small_inputs())
+
+
+def test_with_lrat_check():
+    double_check(rate(
         flags=['--assume-pivot-is-first']), ['lrat-check'])
 
 
-def test_using_lratcheck():
-    certify_with_lrat_checker(
+def test_with_lratcheck():
+    double_check(
         rate(
             flags=['--assume-pivot-is-first']),
         ['lratcheck'])
