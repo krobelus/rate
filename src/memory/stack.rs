@@ -51,6 +51,12 @@ impl<T> Stack<T> {
     pub fn as_mut_slice(&mut self) -> SliceMut<T> {
         SliceMut::new(&mut self.vec)
     }
+    pub fn as_ptr(&mut self) -> *const T {
+        self.vec.as_ptr()
+    }
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.vec.as_mut_ptr()
+    }
 }
 
 impl<T: Clone> Stack<T> {

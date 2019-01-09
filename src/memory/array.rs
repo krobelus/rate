@@ -1,7 +1,13 @@
 use crate::memory::{Offset, Slice, SliceMut, Stack};
+use alloc::raw_vec::RawVec;
 use std::{
+    fmt,
+    fmt::Debug,
     marker::PhantomData,
+    mem::forget,
     ops::{Index, IndexMut},
+    ptr::write,
+    slice,
 };
 
 /// Map data structure with contiguous storage.
@@ -10,47 +16,88 @@ use std::{
 ///
 /// The array is allocated at construction time, i.e. the maximum capacity needs to be known
 /// already.
-#[derive(Debug, Clone)]
+
 pub struct Array<I: Offset, T: Clone> {
-    // TODO replace by ptr
-    vec: Stack<T>,
+    vec: RawVec<T>,
     phantom: PhantomData<I>,
 }
 
 impl<I: Offset, T: Clone> Array<I, T> {
     pub fn new(value: T, size: usize) -> Array<I, T> {
+        // optimize zero?
+        let vec = RawVec::with_capacity(size);
+        for i in 0..size {
+            unsafe {
+                write((vec.ptr() as *mut T).offset(i as isize), value.clone());
+            }
+        }
         Array {
-            vec: Stack::from_vec(vec![value; size]),
+            vec: vec,
             phantom: PhantomData,
         }
     }
-    pub fn from(vector: Stack<T>) -> Array<I, T> {
+    pub fn from(mut stack: Stack<T>) -> Array<I, T> {
+        let ptr = stack.as_mut_ptr();
+        let cap = stack.capacity();
+        forget(stack);
         Array {
-            vec: vector,
+            vec: unsafe { RawVec::from_raw_parts(ptr, cap) },
             phantom: PhantomData,
         }
     }
-    pub fn len(&self) -> usize {
-        self.vec.len()
+    pub fn size(&self) -> usize {
+        self.vec.cap()
     }
-    // TODO avoid bounds checking
     pub fn as_slice(&self) -> Slice<T> {
-        self.vec.as_slice()
+        Slice::new(unsafe { slice::from_raw_parts(self.ptr(), self.size()) })
     }
-    pub fn as_mut_slice(&mut self) -> SliceMut<T> {
-        self.vec.as_mut_slice()
+    pub fn as_mut_slice(&self) -> SliceMut<T> {
+        SliceMut::new(unsafe { slice::from_raw_parts_mut(self.vec.ptr(), self.size()) })
+    }
+    fn with_capacity(size: usize) -> Array<I, T> {
+        Array {
+            vec: RawVec::with_capacity(size),
+            phantom: PhantomData,
+        }
+    }
+    fn ptr(&self) -> *const T {
+        self.vec.ptr()
     }
 }
 
 impl<I: Offset, T: Clone> Index<I> for Array<I, T> {
     type Output = T;
     fn index(&self, key: I) -> &T {
-        &self.vec[key.as_offset()]
+        unsafe { &*self.ptr().offset(key.as_offset() as isize) }
     }
 }
 
 impl<I: Offset, T: Clone> IndexMut<I> for Array<I, T> {
     fn index_mut(&mut self, key: I) -> &mut T {
-        &mut self.vec[key.as_offset()]
+        unsafe { &mut *self.vec.ptr().offset(key.as_offset() as isize) }
+    }
+}
+
+impl<I: Offset, T: Clone> Clone for Array<I, T> {
+    fn clone(&self) -> Self {
+        let copy = Array::with_capacity(self.size());
+        for i in 0..self.size() {
+            unsafe {
+                let value = (*self.ptr().offset(i as isize)).clone();
+                write((copy.ptr() as *mut T).offset(i as isize), value);
+            }
+        }
+        copy
+    }
+}
+
+impl<I: Offset, T: Clone + Debug> Debug for Array<I, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        for i in 0..self.size() {
+            let value = unsafe { (*self.ptr().offset(i as isize)).clone() };
+            write!(f, "{:?}, ", value)?;
+        }
+        write!(f, "]")
     }
 }

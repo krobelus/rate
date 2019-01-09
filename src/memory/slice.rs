@@ -32,7 +32,6 @@ impl<'a, T> Slice<'a, T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.slice.iter()
     }
-    // TODO
     pub fn slice(&self) -> &'a [T] {
         self.slice
     }

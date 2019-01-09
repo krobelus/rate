@@ -1,6 +1,8 @@
-#![feature(try_trait)]
+#![feature(try_trait, alloc, ptr_wrapping_offset_from, raw_vec_internals)]
 #[macro_use(defer)]
 extern crate scopeguard;
+
+extern crate alloc;
 
 #[macro_use]
 mod config;

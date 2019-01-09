@@ -36,12 +36,10 @@ pub struct Checker {
     pub literal_reason: Array<Literal, Reason>,
     lrat_id: Clause,
     pub maxvar: Variable,
-    num_clauses: Clause,
     proof: Array<usize, ProofStep>,
     lemma: Clause, // current lemma / first lemma of proof
     proof_steps_until_conflict: usize,
     pub propcount: usize,
-    resolvent: Array<Literal, bool>,
     pub revisions: Stack<Revision>,
     soft_propagation: bool,
     stage: Stage,
@@ -108,12 +106,10 @@ impl Checker {
             ),
             lrat_id: Clause(0),
             maxvar: maxvar,
-            num_clauses: Clause(num_clauses),
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             propcount: 0,
-            resolvent: Array::new(false, maxvar.array_size_for_literals()),
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             stage: Stage::Preprocessing,
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
@@ -738,7 +734,7 @@ fn preprocess(checker: &mut Checker) -> bool {
             return close_proof(checker, 0);
         }
     }
-    for i in 0..checker.proof.len() {
+    for i in 0..checker.proof.size() {
         watch_invariants(checker);
         match checker.proof[i] {
             ProofStep::Deletion(clause) => {
