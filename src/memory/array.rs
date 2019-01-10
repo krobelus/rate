@@ -54,6 +54,9 @@ impl<I: Offset, T: Clone> Array<I, T> {
     pub fn ptr(&self) -> *const T {
         self.vec.ptr()
     }
+    pub fn mut_ptr(&self) -> *mut T {
+        self.vec.ptr()
+    }
     pub fn size(&self) -> usize {
         self.vec.cap()
     }

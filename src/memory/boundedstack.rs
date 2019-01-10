@@ -71,3 +71,14 @@ impl<'a, T: Copy> IntoIterator for &'a BoundedStack<T> {
         unsafe { std::slice::from_raw_parts(self.array.ptr(), self.len).into_iter() }
     }
 }
+
+impl<T: Copy> BoundedStack<T> {
+    pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
+    where
+        F: FnMut(&T) -> K,
+        K: Ord,
+    {
+        unsafe { std::slice::from_raw_parts_mut(self.array.mut_ptr(), self.len) }
+            .sort_unstable_by_key(f)
+    }
+}

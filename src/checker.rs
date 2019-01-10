@@ -6,7 +6,7 @@ use crate::{
     config::unreachable,
     config::Config,
     literal::{Literal, Variable},
-    memory::{Array, Offset, Slice, Stack, StackMapping},
+    memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
     parser::Parser,
     watchlist::{
         revision_apply, revision_create, watch_add, watch_invariants, watch_remove_at, watches_add,
@@ -663,35 +663,27 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
         }
         i += 1;
     }
-    let mut relevant_literals = Stack::new();
+    // We might be able to eliminate this by using checker.implication_graph instead.
+    let mut reason_literals = BoundedStack::with_capacity(checker.implication_graph.len());
     for &literal in &checker.implication_graph {
         match checker.literal_reason[literal] {
             Reason::Forced(clause) => {
                 invariant!(clause < lemma);
-                relevant_literals.push(literal);
+                reason_literals.push(literal);
             }
             Reason::Assumed => unreachable(),
         }
     }
-    relevant_literals
-        .sort_unstable_by_key(|&literal| checker.assignment.position_in_trace(literal));
-    let num_clauses = lemma.as_offset();
-    let mut reason_clauses =
-        StackMapping::with_array_value_size_stack_size(false, num_clauses, num_clauses);
+    reason_literals.sort_unstable_by_key(|&literal| checker.assignment.position_in_trace(literal));
     log!(checker, 3, "Resolution chain:");
-    for &literal in &relevant_literals {
+    for &literal in &reason_literals {
         match checker.literal_reason[literal] {
             Reason::Forced(clause) => {
-                if !reason_clauses[clause] {
-                    log!(checker, 3, "{}:\t{}", literal, checker.clause_copy(clause));
-                    reason_clauses.push(clause, true);
-                }
+                log!(checker, 3, "{}:\t{}", literal, checker.clause_copy(clause));
+                checker.lemma_lratlemma[lemma].push(LRATLiteral::Unit(clause));
             }
             Reason::Assumed => unreachable(),
         }
-    }
-    for &clause in &reason_clauses {
-        checker.lemma_lratlemma[lemma].push(LRATLiteral::Unit(clause));
     }
     checker.implication_graph.clear();
 }
