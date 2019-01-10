@@ -77,7 +77,7 @@ These features are planned to be implemented:
 - [x] Double-sweep DRAT checking
 - [x] Two watched literals
 - [x] Incremental prepropagation
-- [ ] Core-first propagation
+- [x] Core-first propagation
 - [ ] Resolution candidate caching
 - [ ] Comprehensive input validation
 - [x] Linearly computing propagation cones
