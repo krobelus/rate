@@ -10,7 +10,7 @@ use crate::{
     parser::Parser,
     watchlist::{
         revision_apply, revision_create, watch_add, watch_invariants, watch_remove_at, watches_add,
-        watches_find_and_remove_all, watches_remove, watchlist, Mode, Watchlist,
+        watches_find_and_remove, watches_remove, watchlist, Mode, Watchlist,
     },
 };
 use ansi_term::Colour;
@@ -471,9 +471,10 @@ fn move_to_core(checker: &mut Checker, clause: Clause) {
     }
 
     let (w1, w2) = checker.clause_watches(clause);
-    // FIXME why do we have duplicates in the watchlists?
-    watches_find_and_remove_all(checker, Mode::NonCore, w1, clause);
-    watches_find_and_remove_all(checker, Mode::NonCore, w2, clause);
+    let d1 = watches_find_and_remove(checker, Mode::NonCore, w1, clause);
+    let d2 = watches_find_and_remove(checker, Mode::NonCore, w2, clause);
+    invariant!(d1);
+    invariant!(d2);
 
     watch_add(checker, Mode::Core, w1, clause);
     watch_add(checker, Mode::Core, w2, clause);

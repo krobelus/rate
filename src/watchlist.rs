@@ -139,26 +139,30 @@ pub fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
         checker.clause_copy(clause)
     );
     let (w1, w2) = checker.clause_watches(clause);
-    watches_find_and_remove_all(checker, mode, w1, clause);
-    watches_find_and_remove_all(checker, mode, w2, clause);
+    watches_find_and_remove(checker, mode, w1, clause);
+    watches_find_and_remove(checker, mode, w2, clause);
     checker.clause_in_watchlist[clause] = false;
 }
 
-pub fn watches_find_and_remove_all(
+pub fn watches_find_and_remove(
     checker: &mut Checker,
     mode: Mode,
     lit: Literal,
     clause: Clause,
-) {
-    // TODO one should be enough!!
-    let mut i = 0;
-    while i < watchlist(checker, mode)[lit].len() {
-        if watchlist(checker, mode)[lit][i] == clause {
-            watch_remove_at(checker, mode, lit, i);
-        } else {
-            i += 1;
-        }
-    }
+) -> bool {
+    requires!(lit != Literal::TOP);
+    invariant!(
+        watchlist(checker, mode)[lit]
+            .iter()
+            .filter(|&c| *c == clause)
+            .count()
+            <= 1
+    );
+    watchlist(checker, mode)[lit]
+        .iter()
+        .position(|&watched| watched == clause)
+        .map(|position| watch_remove_at(checker, mode, lit, position))
+        .is_some()
 }
 
 // Revisions
@@ -387,7 +391,8 @@ fn watches_reset_list_at(
             return;
         } else {
             // Case B: clause will not be watched on other_lit, but on checker.db[second_offset] instead.
-            watches_find_and_remove(checker, mode, other_lit, clause);
+            let removed = watches_find_and_remove(checker, mode, other_lit, clause);
+            invariant!(removed);
             let tmp = checker.db[second_offset];
             checker.db[offset + 1] = tmp;
             checker.db[second_offset] = other_lit;
@@ -402,20 +407,13 @@ fn watches_reset_list_at(
         watch_add(checker, mode, checker.db[offset], clause); // Case C: additionally, clause will still be watched on other_lit
         if offset + 1 != first_offset {
             // Case D: additionally, clause will not be watched on other_lit, but on checker.db[offset + 1] instead.
-            watches_find_and_remove(checker, mode, other_lit, clause);
+            let removed = watches_find_and_remove(checker, mode, other_lit, clause);
+            invariant!(removed);
             checker.db[offset + 1] = checker.db[first_offset];
             checker.db[first_offset] = other_lit;
             watch_add(checker, mode, checker.db[offset + 1], clause);
         }
     }
-}
-
-pub fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, clause: Clause) {
-    requires!(lit != Literal::TOP);
-    watchlist(checker, mode)[lit]
-        .iter()
-        .position(|&watched| watched == clause)
-        .map(|position| watch_remove_at(checker, mode, lit, position));
 }
 
 fn watch_find<'a>(
