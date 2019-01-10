@@ -71,15 +71,15 @@ macro_rules! defer_log {
 macro_rules! warn {
     ($($arg:tt)*) => ({
         let style = ansi_term::Colour::Red.normal();
-        eprint!("{}", style.paint("Warning: "));
-        eprintln!("{}", style.paint(&format!($($arg)*)));
+        print!("{}", style.paint("Warning: "));
+        println!("{}", style.paint(&format!($($arg)*)));
     })
 }
 
 macro_rules! die {
     ($($arg:tt)*) => ({
-        eprint!("*** Fatal error: ");
-        eprintln!($($arg)*);
+        print!("*** Fatal error: ");
+        println!($($arg)*);
         std::process::exit(2);
     })
 }

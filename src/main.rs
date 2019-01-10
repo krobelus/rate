@@ -81,7 +81,7 @@ fn main() {
     let start = SystemTime::now();
     let (ok, checker) = run_checker(config);
     echo!(
-        "c elapsed time: {} seconds",
+        "c Elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
     );
     echo!("c nf {}", checker.premise_length);
