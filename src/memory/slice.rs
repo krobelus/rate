@@ -1,6 +1,9 @@
 use crate::{config::BOUNDS_CHECKING, memory::Stack};
 
-use std::ops::{Index, IndexMut};
+use std::{
+    ops::{Index, IndexMut},
+    slice,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Slice<'a, T> {
@@ -24,8 +27,7 @@ impl<'a, T> Slice<'a, T> {
     }
     // TODO rename to slice
     pub fn range(&self, start: usize, end: usize) -> Slice<'a, T> {
-        let slice =
-            unsafe { std::slice::from_raw_parts(self.slice.as_ptr().add(start), end - start) };
+        let slice = unsafe { slice::from_raw_parts(self.slice.as_ptr().add(start), end - start) };
         Slice::new(slice)
     }
     // TODO avoid bounds checking

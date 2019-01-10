@@ -36,6 +36,12 @@ impl<I: Offset, T: Clone> Array<I, T> {
             phantom: PhantomData,
         }
     }
+    pub fn with_capacity(size: usize) -> Array<I, T> {
+        Array {
+            vec: RawVec::with_capacity(size),
+            phantom: PhantomData,
+        }
+    }
     pub fn from(mut stack: Stack<T>) -> Array<I, T> {
         let ptr = stack.as_mut_ptr();
         let cap = stack.capacity();
@@ -45,6 +51,9 @@ impl<I: Offset, T: Clone> Array<I, T> {
             phantom: PhantomData,
         }
     }
+    pub fn ptr(&self) -> *const T {
+        self.vec.ptr()
+    }
     pub fn size(&self) -> usize {
         self.vec.cap()
     }
@@ -53,15 +62,6 @@ impl<I: Offset, T: Clone> Array<I, T> {
     }
     pub fn as_mut_slice(&self) -> SliceMut<T> {
         SliceMut::new(unsafe { slice::from_raw_parts_mut(self.vec.ptr(), self.size()) })
-    }
-    fn with_capacity(size: usize) -> Array<I, T> {
-        Array {
-            vec: RawVec::with_capacity(size),
-            phantom: PhantomData,
-        }
-    }
-    fn ptr(&self) -> *const T {
-        self.vec.ptr()
     }
 }
 

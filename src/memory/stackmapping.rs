@@ -11,15 +11,15 @@ pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {
 }
 
 impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
-    pub fn with_initial_value_array_size_stack_size(
-        default_value: T,
+    pub fn with_array_value_size_stack_size(
+        array_value: T,
         array_size: usize,
-        stack_capacity: usize,
+        stack_size: usize,
     ) -> StackMapping<Key, T> {
         StackMapping {
-            default_value: default_value,
-            array: Array::new(default_value, array_size),
-            stack: BoundedStack::with_capacity(stack_capacity),
+            default_value: array_value,
+            array: Array::new(array_value, array_size),
+            stack: BoundedStack::with_capacity(stack_size),
         }
     }
     pub fn len(&self) -> usize {

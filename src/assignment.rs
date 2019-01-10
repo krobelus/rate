@@ -60,7 +60,7 @@ impl Assignment {
         self.position_in_trace[literal] = dst;
     }
     pub fn resize_trace(&mut self, level: usize) {
-        self.trace.resize(level, Literal::NEVER_READ);
+        self.trace.resize(level);
     }
     pub fn unassign(&mut self, lit: Literal) {
         requires!(self[lit], "Literal {} is not assigned.", lit);

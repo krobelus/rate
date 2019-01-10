@@ -193,12 +193,12 @@ fn find_clause<'a>(needle: Slice<Literal>, parser: &mut Parser) -> Option<Clause
 }
 
 fn compute_hash(clause: Slice<Literal>) -> usize {
-    let mut sum = 0;
-    let mut prod = 1;
-    let mut xor = 0;
+    let mut sum: usize = 0;
+    let mut prod: usize = 1;
+    let mut xor: usize = 0;
     for &literal in clause {
-        prod *= literal.as_offset();
-        sum += literal.as_offset();
+        prod = prod.wrapping_mul(literal.as_offset());
+        sum = sum.wrapping_add(literal.as_offset());
         xor ^= literal.as_offset();
     }
     (1023 * sum + prod ^ (31 * xor)) % HASHTABLE_SIZE

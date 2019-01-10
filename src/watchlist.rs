@@ -183,7 +183,7 @@ pub fn revision_create(checker: &mut Checker, clause: Clause) {
     let unit_position = checker.assignment.position_in_trace(unit);
     checker.lemma_revision[clause] = true;
     let mut revision = Revision {
-        cone: StackMapping::with_initial_value_array_size_stack_size(
+        cone: StackMapping::with_array_value_size_stack_size(
             false,
             checker.maxvar.array_size_for_literals(),
             checker.maxvar.as_offset(),

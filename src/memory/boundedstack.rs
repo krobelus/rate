@@ -1,87 +1,73 @@
 //! Stack that never grows.
-use crate::memory::Stack;
+use crate::memory::Array;
 use std::{
     iter::IntoIterator,
     ops::{Index, IndexMut},
 };
 
 #[derive(Debug, Clone)]
-pub struct BoundedStack<T> {
-    stack: Stack<T>,
+pub struct BoundedStack<T: Clone> {
+    array: Array<usize, T>,
+    len: usize,
 }
 
-impl<T> BoundedStack<T> {
-    pub fn with_capacity(size: usize) -> BoundedStack<T> {
+impl<T: Copy> BoundedStack<T> {
+    pub fn with_capacity(capacity: usize) -> BoundedStack<T> {
         BoundedStack {
-            stack: Stack::with_capacity(size),
+            array: Array::with_capacity(capacity),
+            len: 0,
         }
     }
+}
+
+impl<T: Copy> BoundedStack<T> {
     pub fn len(&self) -> usize {
-        self.stack.len()
+        self.len
     }
     pub fn empty(&self) -> bool {
-        self.stack.empty()
+        self.len() == 0
     }
     pub fn capacity(&self) -> usize {
-        self.stack.capacity()
+        self.array.size()
     }
     pub fn push(&mut self, value: T) {
-        invariant!(self.len() < self.capacity());
-        self.stack.push(value)
+        invariant!(self.len < self.capacity());
+        self.array[self.len] = value;
+        self.len += 1;
     }
     pub fn pop(&mut self) -> T {
         invariant!(self.len() != 0);
-        self.stack.pop()
+        self.len -= 1;
+        self.array[self.len]
     }
     pub fn clear(&mut self) {
-        self.stack.clear()
+        self.len = 0
     }
 }
 
-impl<T: Clone> BoundedStack<T> {
-    pub fn fill(size: usize, default_value: T) -> BoundedStack<T> {
-        BoundedStack {
-            stack: Stack::fill(size, default_value),
-        }
-    }
-    pub fn resize(&mut self, new_len: usize, value: T) {
-        self.stack.resize(new_len, value)
+impl<T: Copy> BoundedStack<T> {
+    pub fn resize(&mut self, new_len: usize) {
+        self.len = new_len
     }
 }
 
-impl<T: Ord> BoundedStack<T> {
-    pub fn sort_unstable(&mut self) {
-        self.stack.sort_unstable()
-    }
-}
-
-impl<T> BoundedStack<T> {
-    pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
-    where
-        F: FnMut(&T) -> K,
-        K: Ord,
-    {
-        self.stack.sort_unstable_by_key(f)
-    }
-}
-
-impl<T> Index<usize> for BoundedStack<T> {
+impl<T: Copy> Index<usize> for BoundedStack<T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        &self.stack[offset]
+        &self.array[offset]
     }
 }
 
-impl<T> IndexMut<usize> for BoundedStack<T> {
+impl<T: Copy> IndexMut<usize> for BoundedStack<T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
-        &mut self.stack[offset]
+        &mut self.array[offset]
     }
 }
 
-impl<'a, T> IntoIterator for &'a BoundedStack<T> {
+impl<'a, T: Copy> IntoIterator for &'a BoundedStack<T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
     fn into_iter(self) -> std::slice::Iter<'a, T> {
-        self.stack.into_iter()
+        unsafe { std::slice::from_raw_parts(self.array.ptr(), self.len).into_iter() }
     }
 }

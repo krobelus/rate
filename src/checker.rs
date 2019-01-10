@@ -100,7 +100,7 @@ impl Checker {
             config: config,
             db: Array::from(parser.db),
             soft_propagation: false,
-            implication_graph: StackMapping::with_initial_value_array_size_stack_size(
+            implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
                 maxvar.array_size_for_literals(),
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
@@ -688,7 +688,7 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
         .sort_unstable_by_key(|&literal| checker.assignment.position_in_trace(literal));
     let num_clauses = lemma.as_offset();
     let mut reason_clauses =
-        StackMapping::with_initial_value_array_size_stack_size(false, num_clauses, num_clauses);
+        StackMapping::with_array_value_size_stack_size(false, num_clauses, num_clauses);
     log!(checker, 3, "Resolution chain:");
     for &literal in &relevant_literals {
         match checker.literal_reason[literal] {
