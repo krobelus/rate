@@ -10,7 +10,7 @@ use crate::{
     parser::Parser,
     watchlist::{
         revision_apply, revision_create, watch_add, watch_invariants, watch_remove_at, watches_add,
-        watches_find_and_remove_all, watches_remove, watchlist, watchlist_compact, Mode, Watchlist,
+        watches_find_and_remove_all, watches_remove, watchlist, Mode, Watchlist,
     },
 };
 use ansi_term::Colour;
@@ -290,9 +290,9 @@ fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
         checker: &mut Checker,
         mode: Mode,
         literal: Literal,
-        position_in_watchlist: usize,
+        position_in_watchlist: &mut usize,
     ) -> MaybeConflict {
-        let clause = watchlist(checker, mode)[literal][position_in_watchlist].unwrap();
+        let clause = watchlist(checker, mode)[literal][*position_in_watchlist];
         requires!(clause < checker.lemma);
         let (w1, w2) = checker.clause_watches(clause);
         if checker.assignment[w1] || checker.assignment[w2] {
@@ -307,7 +307,8 @@ fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
                 let new = checker.db[offset];
                 checker.db[offset] = literal;
                 checker.db[head + 1] = new;
-                watch_remove_at(checker, mode, literal, position_in_watchlist);
+                watch_remove_at(checker, mode, literal, *position_in_watchlist);
+                *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
                 watch_add(checker, mode, new, clause);
                 NO_CONFLICT
             }
@@ -322,10 +323,10 @@ fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
     fn propagate_literal(checker: &mut Checker, mode: Mode, literal: Literal) -> MaybeConflict {
         requires!(checker.assignment[literal]);
         requires!(checker.literal_reason[literal] != Reason::Forced(Clause::NEVER_READ));
-        for i in 0..watchlist(checker, mode)[-literal].len() {
-            if let Some(_clause) = watchlist(checker, mode)[-literal][i] {
-                watches_align(checker, mode, -literal, i)?;
-            }
+        let mut i = 0;
+        while i < watchlist(checker, mode)[-literal].len() {
+            watches_align(checker, mode, -literal, &mut i)?;
+            i = i.wrapping_add(1);
         }
         NO_CONFLICT
     }
@@ -335,7 +336,6 @@ fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
         let literal = checker.assignment.trace_at(checker.processed);
         checker.processed += 1;
         propagate_literal(checker, mode, literal)?;
-        watchlist_compact(checker, mode, literal);
     }
     NO_CONFLICT
 }
@@ -360,13 +360,7 @@ fn propagate_core_first(checker: &mut Checker) -> MaybeConflict {
 
             let mut i = 0;
             while i < checker.watchlist_core[literal].len() {
-                let clause = match checker.watchlist_core[literal][i] {
-                    Some(c) => c,
-                    None => {
-                        i += 1;
-                        continue;
-                    }
-                };
+                let clause = checker.watchlist_core[literal][i];
                 let (mut w1, mut w2) = checker.clause_watches(clause);
                 if checker.assignment[w1] || checker.assignment[w2] {
                     i += 1;
@@ -416,14 +410,7 @@ fn propagate_core_first(checker: &mut Checker) -> MaybeConflict {
             noncore_watchlist_index = 0;
 
             while i < checker.watchlist_noncore[literal].len() {
-                let clause = match checker.watchlist_noncore[literal][i] {
-                    Some(c) => c,
-                    None => {
-                        i += 1;
-                        continue;
-                    }
-                };
-
+                let clause = checker.watchlist_noncore[literal][i];
                 let head = checker.clause_range(clause).start;
                 let (mut w1, mut w2) = checker.clause_watches(clause);
                 invariant!(w1 == literal || w2 == literal);
@@ -508,22 +495,21 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
     let mut candidates = Stack::new();
     for lit in Literal::all(checker.maxvar) {
         for i in 0..checker.watchlist_core[lit].len() {
-            if let Some(clause) = checker.watchlist_core[lit][i] {
-                let want = if checker.config.no_core_first {
-                    checker.clause_scheduled[clause]
-                } else {
-                    invariant!(checker.clause_scheduled[clause]);
-                    true
-                };
-                if want
-                    && checker.clause(clause)[0] == lit
-                    && checker
-                        .clause(clause)
-                        .iter()
-                        .any(|&literal| literal == -pivot)
-                {
-                    candidates.push(clause);
-                }
+            let clause = checker.watchlist_core[lit][i];
+            let want = if checker.config.no_core_first {
+                checker.clause_scheduled[clause]
+            } else {
+                invariant!(checker.clause_scheduled[clause]);
+                true
+            };
+            if want
+                && checker.clause(clause)[0] == lit
+                && checker
+                    .clause(clause)
+                    .iter()
+                    .any(|&literal| literal == -pivot)
+            {
+                candidates.push(clause);
             }
         }
     }

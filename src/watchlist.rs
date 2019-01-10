@@ -9,7 +9,7 @@ use crate::{
     memory::{Array, Offset, Stack, StackMapping},
 };
 
-pub type Watchlist = Stack<Option<Clause>>;
+pub type Watchlist = Stack<Clause>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Mode {
@@ -26,10 +26,8 @@ pub fn watch_invariants(checker: &Checker) {
         // each watch points to a clause that is neither falsified nor satisfied
         for &mode in &[Mode::Core, Mode::NonCore] {
             for lit in Literal::all(checker.maxvar) {
-                for watch in &watchlist(checker, mode)[lit] {
-                    if let &Some(clause) = watch {
-                        watch_invariant(checker, lit, clause);
-                    }
+                for &clause in &watchlist(checker, mode)[lit] {
+                    watch_invariant(checker, lit, clause);
                 }
             }
         }
@@ -76,21 +74,20 @@ pub fn watch_remove_at(
     lit: Literal,
     position_in_watchlist: usize,
 ) {
-    requires!(watchlist(checker, mode)[lit][position_in_watchlist].is_some());
     log!(
         checker,
         3,
         "watchlist[{}] del [{}]: {}",
         lit,
         position_in_watchlist,
-        watchlist(checker, mode)[lit][position_in_watchlist].unwrap()
+        watchlist(checker, mode)[lit][position_in_watchlist]
     );
-    watchlist_mut(checker, mode)[lit][position_in_watchlist] = None
+    watchlist_mut(checker, mode)[lit].swap_remove(position_in_watchlist);
 }
 
 pub fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, clause: Clause) {
     log!(checker, 3, "watchlist[{}] add {}", lit, clause);
-    watchlist_mut(checker, mode)[lit].push(Some(clause))
+    watchlist_mut(checker, mode)[lit].push(clause)
 }
 
 pub fn watches_add(checker: &mut Checker, mode: Mode, clause: Clause) -> MaybeConflict {
@@ -153,18 +150,11 @@ pub fn watches_find_and_remove_all(
     lit: Literal,
     clause: Clause,
 ) {
-    for i in 0..watchlist(checker, mode)[lit].len() {
-        if watchlist(checker, mode)[lit][i] == Some(clause) {
-            watch_remove_at(checker, mode, lit, i);
-        }
-    }
-}
-
-pub fn watchlist_compact(checker: &mut Checker, mode: Mode, lit: Literal) {
+    // TODO one should be enough!!
     let mut i = 0;
-    while i < watchlist(checker, mode)[-lit].len() {
-        if watchlist(checker, mode)[-lit][i].is_none() {
-            watchlist_mut(checker, mode)[-lit].swap_remove(i);
+    while i < watchlist(checker, mode)[lit].len() {
+        if watchlist(checker, mode)[lit][i] == clause {
+            watch_remove_at(checker, mode, lit, i);
         } else {
             i += 1;
         }
@@ -215,12 +205,12 @@ pub fn revision_create(checker: &mut Checker, clause: Clause) {
 
 fn watchlist_revise(checker: &mut Checker, lit: Literal) {
     for &mode in &[Mode::Core, Mode::NonCore] {
-        (0..watchlist(checker, mode)[lit].len()).for_each(|i| {
-            if let Some(clause) = watchlist(checker, mode)[lit][i] {
-                watches_revise(checker, mode, lit, clause, i)
-            }
-        });
-        watchlist_compact(checker, mode, lit);
+        let mut i = 0;
+        while i < watchlist(checker, mode)[lit].len() {
+            let clause = watchlist(checker, mode)[lit][i];
+            watches_revise(checker, mode, lit, clause, &mut i);
+            i = i.wrapping_add(1);
+        }
     }
 }
 
@@ -229,7 +219,7 @@ pub fn watches_revise(
     mode: Mode,
     lit: Literal,
     clause: Clause,
-    position_in_watchlist: usize,
+    position_in_watchlist: &mut usize,
 ) {
     // NOTE swap them to simplify this
     let (w1, _w2) = checker.clause_watches(clause);
@@ -249,7 +239,8 @@ pub fn watches_revise(
         Some(offset) => {
             let new_literal = checker.db[offset];
             checker.db.as_mut_slice().swap(my_offset, offset);
-            watch_remove_at(checker, mode, lit, position_in_watchlist);
+            watch_remove_at(checker, mode, lit, *position_in_watchlist);
+            *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
             invariant!(mode == checker.clause_mode(clause));
             watch_add(checker, mode, new_literal, clause);
         }
@@ -326,11 +317,11 @@ fn watches_reset(checker: &mut Checker, revision: &Revision) {
 fn watches_reset_list(checker: &mut Checker, literal: Literal) {
     checker.watch_reset_list_count += 1;
     for &mode in &[Mode::Core, Mode::NonCore] {
-        for i in 0..watchlist(checker, mode)[literal].len() {
-            if watchlist(checker, mode)[literal][i].is_some() {
-                checker.watch_reset_count += 1;
-                watches_reset_list_at(checker, mode, literal, i);
-            }
+        let mut i = 0;
+        while i < watchlist(checker, mode)[literal].len() {
+            checker.watch_reset_count += 1;
+            watches_reset_list_at(checker, mode, literal, &mut i);
+            i = i.wrapping_add(1);
         }
     }
 }
@@ -339,10 +330,9 @@ fn watches_reset_list_at(
     checker: &mut Checker,
     mode: Mode,
     literal: Literal,
-    position_in_watchlist: usize,
+    position_in_watchlist: &mut usize,
 ) {
-    let clause = watchlist(checker, mode)[literal][position_in_watchlist]
-        .expect("can't reset - watch was deleted");
+    let clause = watchlist(checker, mode)[literal][*position_in_watchlist];
     let (w1, w2) = checker.clause_watches(clause);
     if !checker.assignment[-w1] && !checker.assignment[-w2] {
         // watches are correct
@@ -391,7 +381,8 @@ fn watches_reset_list_at(
     if offset == first_offset {
         if offset + 1 == second_offset ||
             // TODO why
-            offset == second_offset {
+            offset == second_offset
+        {
             // Case A: nothing to do!
             return;
         } else {
@@ -404,7 +395,8 @@ fn watches_reset_list_at(
         }
     } else {
         // Cases C and D: clause will not be watched on literal, but on *second_offset instead.
-        watch_remove_at(checker, mode, literal, position_in_watchlist);
+        watch_remove_at(checker, mode, literal, *position_in_watchlist);
+        *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
         checker.db[offset] = checker.db[second_offset];
         checker.db[second_offset] = literal;
         watch_add(checker, mode, checker.db[offset], clause); // Case C: additionally, clause will still be watched on other_lit
@@ -422,7 +414,7 @@ pub fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, 
     requires!(lit != Literal::TOP);
     watchlist(checker, mode)[lit]
         .iter()
-        .position(|&watched| watched == Some(clause))
+        .position(|&watched| watched == clause)
         .map(|position| watch_remove_at(checker, mode, lit, position));
 }
 
