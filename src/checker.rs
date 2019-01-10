@@ -50,6 +50,7 @@ pub struct Checker {
     rejection: Rejection,
 
     pub premise_length: usize,
+    pub rup_introductions: usize,
     pub rat_introductions: usize,
     pub clause_deletions: usize,
     pub skipped_deletions: usize,
@@ -127,6 +128,7 @@ impl Checker {
             rejection: Rejection::new(),
 
             premise_length: parser.proof_start.as_offset(),
+            rup_introductions: 0,
             rat_introductions: 0,
             clause_deletions: 0,
             skipped_deletions: 0,
@@ -606,7 +608,13 @@ fn check_inference(checker: &mut Checker) -> bool {
                 None => true,
                 Some(pivots) => pivots[lemma] == pivot,
             }
-            && preserve_assignment!(checker, rup(checker, lemma, pivot) || rat(checker, pivot))
+            && preserve_assignment!(
+                checker,
+                rup(checker, lemma, pivot) && {
+                    checker.rup_introductions += 1;
+                    true
+                } || rat(checker, pivot)
+            )
     });
     checker.soft_propagation = false;
     if let Some(i) = pivot_index {
