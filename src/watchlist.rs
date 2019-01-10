@@ -389,7 +389,9 @@ fn watches_reset_list_at(
     //   C) first_offset is in 1, second_offset is in >=2
     //   D) both first_offset and second_offset are in >=2
     if offset == first_offset {
-        if offset + 1 == second_offset {
+        if offset + 1 == second_offset ||
+            // TODO why
+            offset == second_offset {
             // Case A: nothing to do!
             return;
         } else {
