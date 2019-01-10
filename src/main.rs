@@ -31,9 +31,6 @@ fn run_checker(config: Config) -> (bool, Checker) {
         &config.proof_filename,
         config.pivot_is_first_literal,
     );
-    //     matches.value_of("INPUT").unwrap(),
-    //     matches.value_of("PROOF").unwrap(),
-    // );
 
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
