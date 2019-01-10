@@ -36,10 +36,9 @@ pub struct Checker {
     pub literal_reason: Array<Literal, Reason>,
     lrat_id: Clause,
     pub maxvar: Variable,
-    proof: Array<usize, ProofStep>,
+    pub proof: Array<usize, ProofStep>,
     lemma: Clause, // current lemma / first lemma of proof
     proof_steps_until_conflict: usize,
-    pub propcount: usize,
     pub revisions: Stack<Revision>,
     soft_propagation: bool,
     stage: Stage,
@@ -47,7 +46,16 @@ pub struct Checker {
     pub watchlist_core: Array<Literal, Watchlist>,
     pub processed: usize,
     rejection: Rejection,
-    num_premises: usize,
+
+    pub premise_length: usize,
+    pub rat_introductions: usize,
+    pub clause_deletions: usize,
+    pub skipped_deletions: usize,
+    pub reason_deletions: usize,
+
+    pub assign_count: usize,
+    pub watch_reset_count: usize,
+    pub watch_reset_list_count: usize,
 }
 
 #[derive(Debug)]
@@ -109,14 +117,21 @@ impl Checker {
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
-            propcount: 0,
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             stage: Stage::Preprocessing,
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             processed: 1, // skip Literal::TOP
             rejection: Rejection::new(),
-            num_premises: parser.proof_start.as_offset(),
+
+            premise_length: parser.proof_start.as_offset(),
+            rat_introductions: 0,
+            clause_deletions: 0,
+            skipped_deletions: 0,
+            reason_deletions: 0,
+            assign_count: 0,
+            watch_reset_count: 0,
+            watch_reset_list_count: 0,
         };
         checker.literal_reason[Literal::TOP] = Reason::Assumed;
         for clause in Clause::range(0, checker.lemma) {
@@ -248,7 +263,7 @@ pub fn set_reason_flag(checker: &mut Checker, lit: Literal, value: bool) {
 }
 
 pub fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConflict {
-    checker.propcount += 1;
+    checker.assign_count += 1;
     requires!(!checker.assignment[literal]);
     checker.literal_reason[literal] = reason;
     checker.assignment.push(literal);
@@ -549,6 +564,7 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Literal) -> bool {
 
 fn rat(checker: &mut Checker, pivot: Literal) -> bool {
     assignment_invariants(checker);
+    checker.rat_introductions += 1;
     let lemma = checker.lemma;
     let resolution_candidates = collect_resolution_candidates(checker, pivot);
     log!(
@@ -732,6 +748,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                 if clause == Clause::DOES_NOT_EXIST {
                     continue;
                 }
+                checker.clause_deletions += 1;
                 log!(
                     checker,
                     1,
@@ -739,19 +756,31 @@ fn preprocess(checker: &mut Checker) -> bool {
                     checker.clause_copy(clause)
                 );
                 if checker.config.skip_deletions {
-                    // do not delete pseudo unit clauses
-                    if checker.clause_is_a_reason[clause] {
-                        warn!(
-                            "Ignoring deletion of (pseudo) unit clause {}",
-                            checker.clause_copy(clause)
-                        );
-                    } else {
-                        watches_remove(checker, checker.clause_mode(clause), clause);
+                    // TODO omit this check?
+                    let is_unit = checker
+                        .clause_range(clause)
+                        .filter(|&i| !checker.assignment[-checker.db[i]])
+                        .count()
+                        == 1;
+                    if !is_unit {
+                        checker.skipped_deletions += 1;
+                        if checker.clause_is_a_reason[clause] {
+                            checker.reason_deletions += 1;
+                            if checker.config.verbosity > 0 {
+                                warn!(
+                                    "Ignoring deletion of (pseudo) unit clause {}",
+                                    checker.clause_copy(clause)
+                                );
+                            }
+                        } else {
+                            watches_remove(checker, checker.clause_mode(clause), clause);
+                        }
                     }
                 } else {
                     invariant!(!checker.clause_scheduled[clause]);
                     watches_remove(checker, checker.mode_non_core(), clause);
                     if checker.clause_is_a_reason[clause] {
+                        checker.reason_deletions += 1;
                         revision_create(checker, clause);
                     }
                 }
@@ -979,7 +1008,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     };
 
     let lemma = checker.lemma;
-    let step = checker.rejection.failed_proof_step + checker.num_premises + 1;
+    let step = checker.rejection.failed_proof_step + checker.premise_length + 1;
     let assignment = if let Some(stable) = &checker.rejection.stable_assignment {
         stable
     } else {

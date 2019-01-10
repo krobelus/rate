@@ -84,7 +84,15 @@ fn main() {
         "c elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
     );
-    echo!("c propcount {}", checker.propcount);
+    echo!("c nf {}", checker.premise_length);
+    echo!("c np {}", checker.proof.size());
+    echo!("c nr {}", checker.rat_introductions);
+    echo!("c dc {}", checker.clause_deletions);
+    echo!("c ds {}", checker.skipped_deletions);
+    echo!("c dr {}", checker.reason_deletions);
+    echo!("c ac {}", checker.assign_count);
+    echo!("c rl {}", checker.watch_reset_list_count);
+    echo!("c wr {}", checker.watch_reset_count);
     echo!("s {}", if ok { "ACCEPTED" } else { "REJECTED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
