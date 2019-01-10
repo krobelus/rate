@@ -6,6 +6,7 @@ use std::{
     marker::PhantomData,
     mem::forget,
     ops::{Index, IndexMut},
+    ptr,
     ptr::write,
     slice,
 };
@@ -60,11 +61,14 @@ impl<I: Offset, T: Clone> Array<I, T> {
     pub fn size(&self) -> usize {
         self.vec.cap()
     }
+    pub fn mut_slice(&self) -> &mut [T] {
+        unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) }
+    }
     pub fn as_slice(&self) -> Slice<T> {
         Slice::new(unsafe { slice::from_raw_parts(self.ptr(), self.size()) })
     }
     pub fn as_mut_slice(&self) -> SliceMut<T> {
-        SliceMut::new(unsafe { slice::from_raw_parts_mut(self.vec.ptr(), self.size()) })
+        SliceMut::new(unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) })
     }
 }
 
@@ -111,5 +115,12 @@ impl<I: Offset, T: Clone + PartialEq> PartialEq for Array<I, T> {
             && (0..self.size()).all(|i| unsafe {
                 (*self.ptr().offset(i as isize)) == (*other.ptr().offset(i as isize))
             })
+    }
+}
+
+/// If T does not implement Copy, then each member must have been initialized.
+impl<I: Offset, T: Clone> Drop for Array<I, T> {
+    fn drop(&mut self) {
+        unsafe { ptr::drop_in_place(self.mut_slice()) }
     }
 }
