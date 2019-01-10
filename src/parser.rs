@@ -251,9 +251,13 @@ fn parse_comment(input: Slice<u8>) -> Option<(Slice<u8>, ())> {
     return None;
 }
 
-fn parse_formula_header(mut input: Slice<u8>) -> Option<(Slice<u8>, (u32, u32))> {
+fn parse_formula_header<'a>(
+    mut input: Slice<'a, u8>,
+    line: &mut usize,
+) -> Option<(Slice<'a, u8>, (u32, u32))> {
     while let Some((rest, _comment)) = parse_comment(input) {
         input = rest;
+        *line += 1;
     }
     let prefix = Slice::new(b"p cnf");
     if input.range(0, prefix.len()) != prefix {
@@ -264,7 +268,12 @@ fn parse_formula_header(mut input: Slice<u8>) -> Option<(Slice<u8>, (u32, u32))>
     Some((input, (maxvar, num_clauses)))
 }
 
+fn isspace(c: u8) -> bool {
+    [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
+}
+
 fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseError> {
+    #[derive(Debug)]
     enum ClauseState {
         InLiteral,
         NotInLiteral,
@@ -272,7 +281,7 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
     let mut line = 0;
     let mut col = 0;
 
-    let input = match parse_formula_header(input) {
+    let input = match parse_formula_header(input, &mut line) {
         None => {
             return Some(ParseError {
                 line: line,
@@ -293,16 +302,16 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
         let error = || Some(ParseError::new(line, col, ""));
         match state {
             ClauseState::NotInLiteral => match c {
-                b' ' | b'\n' => (),
                 b'-' | b'0'..=b'9' => {
                     state = ClauseState::InLiteral;
                     start = i;
                 }
+                _ if isspace(c) => (),
                 _ => return error(),
             },
             ClauseState::InLiteral => match c {
                 b'-' | b'0'..=b'9' => (),
-                b' ' | b'\n' => {
+                _ if isspace(c) => {
                     if head {
                         start_clause(&mut *parser);
                         parser
@@ -458,7 +467,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
         match state {
             LemmaPositionText::Start => match c {
                 b'\n' => head = true,
-                b' ' => (),
+                b' ' | b'\r' => (),
                 b'd' => state = LemmaPositionText::Deletion,
                 b'-' | b'0'..=b'9' => {
                     if head {
@@ -471,7 +480,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
                 _ => return error(),
             },
             LemmaPositionText::LemmaLiteral => match c {
-                b' ' | b'\n' => {
+                _ if isspace(c) => {
                     let literal = add_literal_ascii(&mut *parser, input.range(start, i));
                     if head {
                         parser
@@ -491,7 +500,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
             },
             LemmaPositionText::PostLemmaLiteral => match c {
                 b'\n' => state = LemmaPositionText::Start,
-                b' ' => (),
+                b' ' | b'\r' => (),
                 b'-' | b'0'..=b'9' => {
                     state = LemmaPositionText::LemmaLiteral;
                     start = i;
@@ -507,7 +516,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
                 _ => return error(),
             },
             LemmaPositionText::DeletionLiteral => match c {
-                b' ' | b'\n' => {
+                _ if isspace(c) => {
                     let literal = add_deletion_ascii(parser, input.range(start, i), &mut buffer);
                     state = if literal.is_zero() {
                         LemmaPositionText::Start
