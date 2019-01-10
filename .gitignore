@@ -8,3 +8,6 @@ __pycache__
 /benchmarks/random
 *.lrat
 *.sick
+/perf.data*
+/*.profile
+/flame-graph.html

@@ -14,11 +14,13 @@ clap = "*"
 scopeguard = "*"
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.3", optional = true }
+cpuprofiler = { version = "0.0.3", optional = true }
 
 [features]
 default = []
-flame_it = ["flame", "flamer"]
 fast = []
+flame_it = ["flame", "flamer"]
+profile_it = ["cpuprofiler"]
 
 [profile.release]
 panic = "abort"
