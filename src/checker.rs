@@ -756,13 +756,14 @@ fn preprocess(checker: &mut Checker) -> bool {
                     checker.clause_copy(clause)
                 );
                 if checker.config.skip_deletions {
-                    // TODO omit this check?
-                    let is_unit = checker
-                        .clause_range(clause)
-                        .filter(|&i| !checker.assignment[-checker.db[i]])
-                        .count()
-                        == 1;
-                    if !is_unit {
+                    // TODO this would break stuff..
+                    // let is_unit = checker
+                    //     .clause_range(clause)
+                    //     .filter(|&i| !checker.assignment[-checker.db[i]])
+                    //     .count()
+                    //     == 1;
+                    // if !is_unit
+                    {
                         checker.skipped_deletions += 1;
                         if checker.clause_is_a_reason[clause] {
                             checker.reason_deletions += 1;
