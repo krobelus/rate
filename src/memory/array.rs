@@ -1,4 +1,4 @@
-use crate::memory::{Offset, Slice, SliceMut, Stack};
+use crate::memory::{Offset, Stack};
 use alloc::raw_vec::RawVec;
 use std::{
     fmt,
@@ -63,12 +63,6 @@ impl<I: Offset, T: Clone> Array<I, T> {
     }
     pub fn mut_slice(&self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) }
-    }
-    pub fn as_slice(&self) -> Slice<T> {
-        Slice::new(unsafe { slice::from_raw_parts(self.ptr(), self.size()) })
-    }
-    pub fn as_mut_slice(&self) -> SliceMut<T> {
-        SliceMut::new(unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) })
     }
 }
 

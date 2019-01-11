@@ -1,4 +1,10 @@
-#![feature(try_trait, alloc, ptr_wrapping_offset_from, raw_vec_internals)]
+#![feature(
+    try_trait,
+    alloc,
+    ptr_wrapping_offset_from,
+    raw_vec_internals,
+    const_vec_new
+)]
 #[macro_use(defer)]
 extern crate scopeguard;
 

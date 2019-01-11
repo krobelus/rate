@@ -12,6 +12,7 @@ ansi_term = "0.11.0"
 derive_more = "0.13.0"
 clap = "2.32.0"
 scopeguard = "0.3.3"
+multimap = "0.4.0"
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.3", optional = true }
 cpuprofiler = { version = "0.0.3", optional = true }

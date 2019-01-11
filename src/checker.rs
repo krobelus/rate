@@ -7,7 +7,7 @@ use crate::{
     config::Config,
     literal::{Literal, Variable},
     memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
-    parser::Parser,
+    parser::{Parser, CLAUSE_OFFSET, DB},
     watchlist::{
         revision_apply, revision_create, watch_add, watch_invariants, watch_remove_at, watches_add,
         watches_find_and_remove, watches_remove, watchlist, Mode, Watchlist,
@@ -25,12 +25,12 @@ pub struct Checker {
     pub assignment: Assignment,
     clause_is_a_reason: Array<Clause, bool>,
     clause_lrat_id: Array<Clause, Clause>,
-    clause_offset: Array<Clause, usize>,
+    clause_offset: &'static mut Stack<usize>,
     pub clause_scheduled: Array<Clause, bool>,
     pub clause_in_watchlist: Array<Clause, bool>,
     clause_pivot: Option<Array<Clause, Literal>>,
     pub config: Config,
-    pub db: Array<usize, Literal>,
+    pub db: &'static mut Stack<Literal>,
     implication_graph: StackMapping<Literal, bool>,
     lemma_lratlemma: Array<Clause, Stack<LRATLiteral>>,
     lemma_newly_marked_clauses: Array<Clause, Stack<Clause>>,
@@ -97,12 +97,12 @@ impl Checker {
             assignment: Assignment::new(maxvar),
             clause_is_a_reason: Array::new(false, num_clauses),
             clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
-            clause_offset: Array::from(parser.clause_offset),
+            clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_scheduled: Array::new(false, num_clauses),
             clause_in_watchlist: Array::new(false, num_clauses),
             clause_pivot: parser.clause_pivot.map(Array::from),
             config: config,
-            db: Array::from(parser.db),
+            db: unsafe { &mut DB },
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -154,7 +154,7 @@ impl Checker {
         ClauseCopy::new(clause, self.clause(clause))
     }
     pub fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause]..self.clause_offset[clause + 1]
+        self.clause_offset[clause.as_offset()]..self.clause_offset[clause.as_offset() + 1]
     }
     pub fn clause_watches(&self, clause: Clause) -> (Literal, Literal) {
         (self.clause(clause)[0], self.clause(clause)[1])
@@ -712,7 +712,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.proof_steps_until_conflict = steps_until_conflict;
     let clause = checker.lemma;
-    checker.clause_offset[clause + 1] = checker.clause_offset[clause];
+    checker.clause_offset[clause.as_offset() + 1] = checker.clause_offset[clause.as_offset()];
     invariant!(checker.clause(clause).empty());
     schedule(checker, clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::Lemma(clause);

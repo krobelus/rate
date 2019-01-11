@@ -2,31 +2,35 @@
 
 use crate::{
     clause::{Clause, ClauseCopy, ProofStep},
-    config::HASHTABLE_SIZE,
     literal::{Literal, Variable},
-    memory::{Array, Offset, Slice, Stack},
+    memory::{Offset, Slice, Stack},
 };
 #[cfg(feature = "flame_it")]
 use flamer::flame;
 use memmap::MmapOptions;
+use std::collections::HashMap;
 use std::{
     cmp, fmt,
     fmt::{Display, Formatter},
     fs::File,
-    io, str,
+    hash::{Hash, Hasher},
+    io, ops, panic, str,
 };
+
+pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
+pub static mut DB: Stack<Literal> = Stack { vec: Vec::new() };
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
     pub maxvar: Variable,
     pub num_clauses: usize,
-    pub db: Stack<Literal>,
+    pub db: &'static mut Stack<Literal>,
+    pub current_clause_offset: usize,
+    pub clause_offset: &'static mut Stack<usize>,
+    clause_ids: HashMap<ClauseHashEq, Stack<Clause>>,
     pub clause_pivot: Option<Stack<Literal>>,
-    pub clause_offset: Stack<usize>,
-    clause_scheduled_for_deletion: Stack<bool>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
-    hashtable: Array<usize, Stack<Clause>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -38,22 +42,33 @@ struct ParseError {
 
 impl Parser {
     pub fn new(pivot_is_first_literal: bool) -> Parser {
+        unsafe { CLAUSE_OFFSET.push(DB.len()) };
         Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
-            db: Stack::new(),
+            db: unsafe { &mut DB },
+            current_clause_offset: 0,
+            clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_pivot: if pivot_is_first_literal {
                 Some(Stack::new())
             } else {
                 None
             },
-            clause_offset: Stack::new(),
-            clause_scheduled_for_deletion: Stack::new(),
             proof_start: Clause(0),
             proof: Stack::new(),
-            // clause_to_id: MultiMap::new(),
-            hashtable: Array::new(Stack::new(), HASHTABLE_SIZE),
+            clause_ids: HashMap::new(),
         }
+    }
+    // TODO consolidate
+    fn clause(&self, clause: Clause) -> Slice<Literal> {
+        let range = self.clause_range(clause);
+        self.db.as_slice().range(range.start, range.end)
+    }
+    fn clause_copy(&self, clause: Clause) -> ClauseCopy {
+        ClauseCopy::new(clause, self.clause(clause))
+    }
+    fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
+        self.clause_offset[clause.as_offset()]..self.clause_offset[clause.as_offset() + 1]
     }
 }
 
@@ -94,71 +109,38 @@ where
         .unwrap()
 }
 
-fn descending(literal: &Literal) -> i32 {
-    -(literal.encoding as i32)
-}
-
-fn add_deletion(parser: &mut Parser, literal: Literal, buffer: &mut Stack<Literal>) -> Literal {
-    if literal.is_zero() {
-        if buffer.len() == 1 {
-            buffer.push(Literal::BOTTOM);
-        }
-        buffer.sort_unstable_by_key(descending);
-        match find_clause(buffer.as_slice(), parser) {
-            None => {
-                warn!(
-                    "Deleted clause is not present in the formula: {}",
-                    ClauseCopy::new(Clause(0), buffer.as_slice())
-                );
-                // need this for sickcheck
-                parser
-                    .proof
-                    .push(ProofStep::Deletion(Clause::DOES_NOT_EXIST))
-            }
-            Some(clause) => {
-                parser.clause_scheduled_for_deletion[clause.as_offset()] = true;
-                parser.proof.push(ProofStep::Deletion(clause))
-            }
-        }
-        buffer.clear();
-    } else {
-        buffer.push(literal);
-    }
-    literal
-}
-
-fn add_deletion_ascii(
-    parser: &mut Parser,
-    input: Slice<u8>,
-    buffer: &mut Stack<Literal>,
-) -> Literal {
-    add_deletion(parser, Literal::new(convert_ascii::<i32>(input)), buffer)
-}
-
 fn start_clause(parser: &mut Parser) -> Clause {
+    parser.clause_offset.pop();
     let clause = parser.clause_offset.len();
     parser.clause_offset.push(parser.db.len());
-    parser.clause_scheduled_for_deletion.push(false);
     Clause(clause)
+}
+
+fn close_clause(parser: &mut Parser) -> Clause {
+    let clause = Clause(parser.clause_offset.len()) - 1;
+    let start = parser.current_clause_offset;
+    let end = parser.db.len();
+    let len = end - start;
+    parser.current_clause_offset = if len == 1 {
+        parser.db.push(Literal::BOTTOM);
+        end + 1
+    } else {
+        end
+    };
+    parser.clause_offset.push(parser.db.len());
+    parser.db.as_mut_slice().range(start, end).sort_unstable();
+    clause
 }
 
 fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
     if literal.is_zero() {
-        let begin = if parser.clause_offset.empty() {
-            0
-        } else {
-            *parser.clause_offset.last()
-        };
-        let mut end = parser.db.len();
-        if end - begin == 1 {
-            add_literal(parser, Literal::BOTTOM);
-            end += 1;
-        }
-        let clause = Clause(parser.clause_offset.len() - 1);
-        let mut slice = parser.db.as_mut_slice().range(begin, end);
-        slice.sort_unstable_by_key(descending);
-        let hash = compute_hash(slice.as_const());
-        parser.hashtable[hash].push(clause)
+        let clause = close_clause(parser);
+        let key = ClauseHashEq(clause);
+        parser
+            .clause_ids
+            .entry(key)
+            .or_insert(Stack::new())
+            .push(clause);
     } else {
         parser.maxvar = cmp::max(parser.maxvar, literal.var());
         parser.db.push(literal);
@@ -171,25 +153,78 @@ fn add_literal_ascii<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Litera
     literal
 }
 
-fn find_clause<'a>(needle: Slice<Literal>, parser: &mut Parser) -> Option<Clause> {
-    let hash = compute_hash(needle);
-    for i in 0..parser.hashtable[hash].len() {
-        let clause = parser.hashtable[hash][i];
-        let begin = parser.clause_offset[clause.as_offset()];
-        let end = if clause.as_offset() + 1 == parser.clause_offset.len() {
-            parser.db.len()
-        } else {
-            parser.clause_offset[clause.as_offset() + 1]
-        };
-        let literals = parser.db.as_slice().range(begin, end);
-        invariant!(!parser.clause_scheduled_for_deletion[clause.as_offset()]);
-        if literals != needle {
-            continue;
+fn add_deletion(parser: &mut Parser, literal: Literal) -> Literal {
+    if literal.is_zero() {
+        let tmp = parser.current_clause_offset;
+        let clause = close_clause(parser);
+        match find_clause(clause, parser) {
+            None => {
+                warn!(
+                    "Deleted clause is not present in the formula: {}",
+                    parser.clause_copy(clause)
+                );
+                // need this for sickcheck
+                parser
+                    .proof
+                    .push(ProofStep::Deletion(Clause::DOES_NOT_EXIST))
+            }
+            Some(clause) => parser.proof.push(ProofStep::Deletion(clause)),
         }
-        parser.hashtable[hash].swap_remove(i);
-        return Some(clause);
+        parser.current_clause_offset = tmp;
+        parser.db.truncate(parser.current_clause_offset);
+        parser.clause_offset.pop();
+    } else {
+        parser.db.push(literal);
     }
-    None
+    literal
+}
+
+fn add_deletion_ascii(parser: &mut Parser, input: Slice<u8>) -> Literal {
+    add_deletion(parser, Literal::new(convert_ascii::<i32>(input)))
+}
+
+#[derive(Debug, Eq, Clone, Copy)]
+struct ClauseHashEq(Clause);
+
+impl Hash for ClauseHashEq {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        unsafe {
+            let start = CLAUSE_OFFSET[self.0.as_offset()];
+            let end = CLAUSE_OFFSET[self.0.as_offset() + 1];
+            compute_hash(DB.as_slice().range(start, end)).hash(hasher)
+        }
+    }
+}
+
+impl PartialEq for ClauseHashEq {
+    fn eq(&self, other: &ClauseHashEq) -> bool {
+        unsafe {
+            invariant!(self.0.as_offset() + 1 < CLAUSE_OFFSET.len());
+            let start = CLAUSE_OFFSET[self.0.as_offset()];
+            let end = CLAUSE_OFFSET[self.0.as_offset() + 1];
+            let other_start = CLAUSE_OFFSET[other.0.as_offset()];
+            for i in 0..end - start {
+                if other_start + i == DB.len() {
+                    return false;
+                }
+                if DB[start + i] != DB[other_start + i] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+fn find_clause<'a>(needle: Clause, parser: &mut Parser) -> Option<Clause> {
+    parser
+        .clause_ids
+        .get_mut(&ClauseHashEq(needle))
+        .map(|clauses| {
+            let clause = *clauses.first();
+            clauses.swap_remove(0);
+            clause
+        })
 }
 
 fn compute_hash(clause: Slice<Literal>) -> usize {
@@ -201,7 +236,7 @@ fn compute_hash(clause: Slice<Literal>) -> usize {
         sum = sum.wrapping_add(literal.as_offset());
         xor ^= literal.as_offset();
     }
-    (1023 * sum + prod ^ (31 * xor)) % HASHTABLE_SIZE
+    (1023 * sum + prod ^ (31 * xor))
 }
 
 fn isdigit(value: u8) -> bool {
@@ -364,7 +399,6 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
     }
 
     let mut state = LemmaPositionBinary::Start;
-    let mut buffer = Stack::new();
     let mut head = true;
     while input.len() > 0 {
         input = match state {
@@ -372,6 +406,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
                 let (input, addition_or_deletion) = lemma_binary(input);
                 if addition_or_deletion == 'd' {
                     state = LemmaPositionBinary::Deletion;
+                    start_clause(parser);
                 } else {
                     invariant!(addition_or_deletion == 'a');
                     state = LemmaPositionBinary::Lemma;
@@ -399,7 +434,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
             },
             LemmaPositionBinary::Deletion => match number_binary(input) {
                 (input, literal) => {
-                    add_deletion(parser, literal, &mut buffer);
+                    add_deletion(parser, literal);
                     if literal.is_zero() {
                         state = LemmaPositionBinary::Start;
                     }
@@ -411,7 +446,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
 }
 
 fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseError> {
-    parser.proof_start = Clause(parser.clause_offset.len());
+    parser.proof_start = Clause(parser.clause_offset.len() - 1);
 
     let mut binary = false;
 
@@ -430,16 +465,10 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseErro
     } else {
         parse_proof_text(parser, input)
     };
-    // Add empty clauses to the end of the proof and make sure that the
-    // computation of the length of clause `c` can be safely computed as
-    // `clause_offset[c + 1] - clause_offset[c]`.
-    parser.num_clauses = parser.clause_offset.len() + 1;
-    parser
-        .proof
-        .push(ProofStep::Lemma(Clause(parser.num_clauses - 1)));
-    let end_of_empty_clause = parser.db.len();
-    parser.clause_offset.push(end_of_empty_clause);
-    parser.clause_offset.push(end_of_empty_clause);
+    // Add empty clauses to the end of the proof.
+    parser.num_clauses = parser.clause_offset.len();
+    let empty_clause = close_clause(parser);
+    parser.proof.push(ProofStep::Lemma(empty_clause));
     result
 }
 
@@ -458,7 +487,6 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
     let mut start = 0;
     let mut line = 0;
     let mut col = 0;
-    let mut buffer = Stack::new();
     for i in 0..input.len() {
         let c = input[i];
         line += if c == b'\n' { 1 } else { 0 };
@@ -517,7 +545,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
             },
             LemmaPositionText::DeletionLiteral => match c {
                 _ if isspace(c) => {
-                    let literal = add_deletion_ascii(parser, input.range(start, i), &mut buffer);
+                    let literal = add_deletion_ascii(parser, input.range(start, i));
                     state = if literal.is_zero() {
                         LemmaPositionText::Start
                     } else {
@@ -534,7 +562,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
             add_literal_ascii(parser, input.range(start, input.len()));
         }
         LemmaPositionText::DeletionLiteral => {
-            add_deletion_ascii(parser, input.range(start, input.len()), &mut buffer);
+            add_deletion_ascii(parser, input.range(start, input.len()));
         }
         _ => (),
     }
@@ -570,70 +598,74 @@ mod tests {
         ($($x:expr),*) => (Stack::from_vec(vec!($(Literal::new($x)),*)));
     }
 
-    #[allow(unused_macros)]
     macro_rules! stack {
         ($($x:expr),*) => (Stack::from_vec(vec!($($x),*)));
     }
 
-    #[allow(unused_macros)]
-    macro_rules! hashtable(
-        { $($literals:expr => $clause:expr),+ } => {
-            {
-                let mut table = Array::new(Stack::new(), HASHTABLE_SIZE);
-                $(
-                    table[compute_hash($literals.as_slice())].push($clause);
-                )+
-                table
-            }
-        }
-    );
-
     fn sample_formula() -> Parser {
         let mut parser = Parser::new(false);
-        assert!(parse_formula(
+        parse_formula(
             &mut parser,
             Slice::new(
                 r#"c comment
 p cnf 2 2
 1 2 0
 -1 -2 0"#
-                    .as_bytes()
+                    .as_bytes(),
             ),
         )
-        .is_none());
+        .map(|err| assert!(false, "{}", err));
         parser
     }
 
     #[test]
-    fn invalid_formulas() {
-        invariant!(parse_formula(&mut Parser::new(false), Slice::new(b"p c")).is_some());
-        invariant!(parse_formula(&mut Parser::new(false), Slice::new(b"p cnf 1 1\na")).is_some());
+    fn valid_formula_and_proof() {
+        run_test(|| {
+            let mut parser = sample_formula();
+            parse_proof(&mut parser, Slice::new(b"1 2 3 0\nd 1 2 0"));
+            let clause_ids = [
+                (ClauseHashEq(Clause(0)), stack!()),
+                (ClauseHashEq(Clause(1)), stack!(Clause(1))),
+                (ClauseHashEq(Clause(2)), stack!(Clause(2))),
+            ]
+            .iter()
+            .cloned()
+            .collect();
+            assert_eq!(
+                parser,
+                Parser {
+                    maxvar: Variable::new(3),
+                    num_clauses: 4,
+                    db: unsafe { &mut DB },
+                    // &mut literals!(2, 1, -2, -1, 3, 2, 1),
+                    current_clause_offset: 7,
+                    clause_offset: unsafe { &mut CLAUSE_OFFSET },
+                    // stack!(0, 2, 4, 7, 7),
+                    clause_ids: clause_ids,
+                    clause_pivot: None,
+                    proof_start: Clause(2),
+                    proof: stack![
+                        ProofStep::Lemma(Clause(2)),
+                        ProofStep::Deletion(Clause(0)),
+                        ProofStep::Lemma(Clause(3))
+                    ],
+                }
+            );
+        })
     }
 
-    #[test]
-    fn valid_formula_and_proof() {
-        let mut parser = sample_formula();
-        parse_proof(&mut parser, Slice::new(b"1 2 3 0\nd 1 2 0"));
-        assert_eq!(
-            parser,
-            Parser {
-                maxvar: Variable::new(3),
-                num_clauses: 4,
-                db: literals!(2, 1, -2, -1, 3, 2, 1),
-                clause_pivot: None,
-                clause_offset: stack!(0, 2, 4, 7, 7),
-                clause_scheduled_for_deletion: stack!(true, false, false),
-                proof_start: Clause(2),
-                proof: stack![
-                    ProofStep::Lemma(Clause(2)),
-                    ProofStep::Deletion(Clause(0)),
-                    ProofStep::Lemma(Clause(3))
-                ],
-                hashtable: hashtable! {
-                    literals!(-1, -2) => Clause(1),
-                    literals!(1, 2, 3) => Clause(2)
-                }
-            }
-        );
+    fn run_test<F>(case: F)
+    where
+        F: FnOnce() -> () + panic::UnwindSafe,
+    {
+        let result = panic::catch_unwind(case);
+        reset_globals();
+        assert!(result.is_ok())
+    }
+    fn reset_globals() {
+        unsafe {
+            CLAUSE_OFFSET.clear();
+            DB.clear();
+        }
     }
 }

@@ -6,7 +6,7 @@ use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Stack<T> {
-    vec: Vec<T>,
+    pub vec: Vec<T>,
 }
 
 impl<T> Stack<T> {
@@ -39,6 +39,10 @@ impl<T> Stack<T> {
     pub fn clear(&mut self) {
         self.vec.clear()
     }
+    pub fn first(&self) -> &T {
+        requires!(!self.empty());
+        &self[0]
+    }
     pub fn last(&self) -> &T {
         requires!(!self.empty());
         &self[self.len() - 1]
@@ -67,9 +71,6 @@ impl<T: Clone> Stack<T> {
         Stack {
             vec: vec![default_value; size],
         }
-    }
-    pub fn swap_remove(&mut self, offset: usize) -> T {
-        self.vec.swap_remove(offset)
     }
     pub fn truncate(&mut self, new_len: usize) {
         self.vec.truncate(new_len)
