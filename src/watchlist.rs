@@ -6,7 +6,7 @@ use crate::{
     clause::Clause,
     config::unreachable,
     literal::Literal,
-    memory::{Array, Offset, Stack, StackMapping},
+    memory::{Array, Stack},
 };
 
 pub type Watchlist = Stack<Clause>;
@@ -177,11 +177,7 @@ pub fn revision_create(checker: &mut Checker, clause: Clause) {
     let unit_position = checker.assignment.position_in_trace(unit);
     checker.lemma_revision[clause] = true;
     let mut revision = Revision {
-        cone: StackMapping::with_array_value_size_stack_size(
-            false,
-            checker.maxvar.array_size_for_literals(),
-            checker.maxvar.as_offset(),
-        ),
+        cone: Stack::new(),
         position_in_trace: Stack::new(),
         reason_clause: Stack::new(),
     };
@@ -189,7 +185,7 @@ pub fn revision_create(checker: &mut Checker, clause: Clause) {
     let mut next_position_to_overwrite = unit_position;
     for position in unit_position + 1..checker.assignment.len() {
         let lit = checker.assignment.trace_at(position);
-        if is_in_cone(checker, lit, &revision.cone) {
+        if is_in_cone(checker, lit) {
             add_to_revision(checker, &mut revision, lit);
         } else {
             checker
@@ -204,6 +200,10 @@ pub fn revision_create(checker: &mut Checker, clause: Clause) {
         watchlist_revise(checker, literal);
     }
     log!(checker, 1, "Created {}\n{}", revision, checker.assignment);
+    for &literal in &revision.cone {
+        invariant!(checker.literal_is_in_cone[literal]);
+        checker.literal_is_in_cone[literal] = false;
+    }
     checker.revisions.push(revision);
 }
 
@@ -254,7 +254,8 @@ pub fn watches_revise(
 fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal) {
     checker.assignment.unassign(lit);
     set_reason_flag(checker, lit, false);
-    revision.cone.push(lit, true);
+    revision.cone.push(lit);
+    checker.literal_is_in_cone[lit] = true;
     revision
         .position_in_trace
         .push(checker.assignment.position_in_trace(lit));
@@ -264,13 +265,13 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal)
     }
 }
 
-fn is_in_cone(checker: &Checker, literal: Literal, cone: &StackMapping<Literal, bool>) -> bool {
+fn is_in_cone(checker: &Checker, literal: Literal) -> bool {
     match checker.literal_reason[literal] {
         Reason::Assumed => unreachable(),
         Reason::Forced(clause) => checker
             .clause(clause)
             .iter()
-            .any(|&lit| lit != literal && cone[-lit]),
+            .any(|&lit| lit != literal && checker.literal_is_in_cone[-lit]),
     }
 }
 
@@ -295,7 +296,7 @@ pub fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
         let literal;
         if right_position == revision.position_in_trace[literals_to_revise - 1] {
             literals_to_revise -= 1;
-            literal = revision.cone.stack_at(literals_to_revise);
+            literal = revision.cone[literals_to_revise];
             checker.literal_reason[literal] =
                 Reason::Forced(revision.reason_clause[literals_to_revise]);
             set_reason_flag(checker, literal, true);

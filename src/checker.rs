@@ -41,6 +41,7 @@ pub struct Checker {
     pub proof: Array<usize, ProofStep>,
     lemma: Clause, // current lemma / first lemma of proof
     proof_steps_until_conflict: usize,
+    pub literal_is_in_cone: Array<Literal, bool>,
     pub revisions: Stack<Revision>,
     soft_propagation: bool,
     stage: Stage,
@@ -83,7 +84,7 @@ enum LRATLiteral {
 
 #[derive(Debug)]
 pub struct Revision {
-    pub cone: StackMapping<Literal, bool>,
+    pub cone: Stack<Literal>,
     pub position_in_trace: Stack<usize>,
     pub reason_clause: Stack<Clause>,
 }
@@ -120,6 +121,7 @@ impl Checker {
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
+            literal_is_in_cone: Array::new(false, maxvar.array_size_for_literals()),
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             stage: Stage::Preprocessing,
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
