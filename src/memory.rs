@@ -8,8 +8,6 @@
 //! - If we know a good upper bound for a stack we prefer to use
 //! `BoundedStack<T>` or `StackMapping<Key, T>` as they never allocate after being constructed.
 
-use crate::config::BOUNDS_CHECKING;
-
 mod array;
 mod boundedstack;
 mod slice;
@@ -32,21 +30,5 @@ pub trait Offset {
 impl Offset for usize {
     fn as_offset(self) -> usize {
         self
-    }
-}
-
-fn index_vec<T>(vec: &Vec<T>, index: impl Offset) -> &T {
-    if BOUNDS_CHECKING {
-        &vec[index.as_offset()]
-    } else {
-        unsafe { vec.get_unchecked(index.as_offset()) }
-    }
-}
-
-fn index_vec_mut<T>(vec: &mut Vec<T>, index: impl Offset) -> &mut T {
-    if BOUNDS_CHECKING {
-        &mut vec[index.as_offset()]
-    } else {
-        unsafe { vec.get_unchecked_mut(index.as_offset()) }
     }
 }

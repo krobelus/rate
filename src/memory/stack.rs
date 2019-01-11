@@ -1,4 +1,7 @@
-use crate::memory::{index_vec, index_vec_mut, Slice, SliceMut};
+use crate::{
+    config::BOUNDS_CHECKING,
+    memory::{Slice, SliceMut},
+};
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -65,11 +68,18 @@ impl<T: Clone> Stack<T> {
             vec: vec![default_value; size],
         }
     }
-    pub fn resize(&mut self, new_len: usize, value: T) {
-        self.vec.resize(new_len, value)
-    }
     pub fn swap_remove(&mut self, offset: usize) -> T {
         self.vec.swap_remove(offset)
+    }
+    pub fn truncate(&mut self, new_len: usize) {
+        self.vec.truncate(new_len)
+    }
+}
+
+impl<T: Copy> Stack<T> {
+    pub fn swap_remove(&mut self, offset: usize) {
+        self[offset] = self[self.len() - 1];
+        self.vec.pop();
     }
 }
 
@@ -92,13 +102,21 @@ impl<T> Stack<T> {
 impl<T> Index<usize> for Stack<T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        index_vec(&self.vec, offset)
+        if BOUNDS_CHECKING {
+            &self.vec[offset]
+        } else {
+            unsafe { self.vec.get_unchecked(offset) }
+        }
     }
 }
 
 impl<T> IndexMut<usize> for Stack<T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
-        index_vec_mut(&mut self.vec, offset)
+        if BOUNDS_CHECKING {
+            &mut self.vec[offset]
+        } else {
+            unsafe { self.vec.get_unchecked_mut(offset) }
+        }
     }
 }
 
