@@ -749,6 +749,33 @@ enum Stage {
     Verification,
 }
 
+fn watches_add_with_first(
+    checker: &mut Checker,
+    mode: Mode,
+    clause: Clause,
+    i1: usize,
+) -> MaybeConflict {
+    let head = checker.clause_range(clause).start;
+    let w1 = checker.db[i1];
+    checker.clause_in_watchlist[clause] = true;
+    checker.db.as_mut_slice().swap(head, i1);
+    watch_add(checker, mode, w1, clause);
+    match first_non_falsified(checker, clause, head + 1) {
+        None => {
+            if !checker.assignment[w1] {
+                let conflict = assign(checker, w1, Reason::Forced(clause));
+                invariant!(conflict == NO_CONFLICT);
+            }
+        }
+        Some(i2) => {
+            let w2 = checker.db[i2];
+            checker.db.as_mut_slice().swap(head + 1, i2);
+            watch_add(checker, mode, w2, clause);
+        }
+    };
+    NO_CONFLICT
+}
+
 fn watches_add_forward(checker: &mut Checker, mode: Mode, clause: Clause) -> MaybeConflict {
     log!(
         checker,
@@ -758,29 +785,10 @@ fn watches_add_forward(checker: &mut Checker, mode: Mode, clause: Clause) -> May
     );
     let head = checker.clause_range(clause).start;
     match first_non_falsified(&checker, clause, head) {
+        Some(i1) => watches_add_with_first(checker, mode, clause, i1),
         None => {
             assign(checker, checker.db[head], Reason::Forced(clause));
             CONFLICT
-        }
-        Some(i1) => {
-            checker.clause_in_watchlist[clause] = true;
-            let w1 = checker.db[i1];
-            checker.db.as_mut_slice().swap(head, i1);
-            watch_add(checker, mode, w1, clause);
-            match first_non_falsified(&checker, clause, head + 1) {
-                None => {
-                    if !checker.assignment[w1] {
-                        let conflict = assign(checker, w1, Reason::Forced(clause));
-                        invariant!(conflict == NO_CONFLICT);
-                    }
-                }
-                Some(i2) => {
-                    let w2 = checker.db[i2];
-                    checker.db.as_mut_slice().swap(head + 1, i2);
-                    watch_add(checker, mode, w2, clause);
-                }
-            };
-            NO_CONFLICT
         }
     }
 }
@@ -796,24 +804,7 @@ fn watches_add_backward(checker: &mut Checker, mode: Mode, clause: Clause) {
     match first_non_falsified(&checker, clause, head) {
         None => unreachable(),
         Some(i1) => {
-            checker.clause_in_watchlist[clause] = true;
-            let w1 = checker.db[i1];
-            checker.db.as_mut_slice().swap(head, i1);
-            watch_add(checker, mode, w1, clause);
-            match first_non_falsified(checker, clause, head + 1) {
-                None => {
-                    if !checker.assignment[w1] {
-                        let conflict = assign(checker, w1, Reason::Forced(clause));
-                        invariant!(conflict == NO_CONFLICT);
-                    }
-                    watch_add(checker, mode, checker.db[head + 1], clause);
-                }
-                Some(i2) => {
-                    let w2 = checker.db[i2];
-                    checker.db.as_mut_slice().swap(head + 1, i2);
-                    watch_add(checker, mode, w2, clause);
-                }
-            };
+            watches_add_with_first(checker, mode, clause, i1);
         }
     }
 }
