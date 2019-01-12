@@ -89,6 +89,7 @@ fn main() {
     );
     echo!("c nf {}", checker.premise_length);
     echo!("c np {}", checker.proof.size());
+    echo!("c sc {}", checker.satisfied_count);
     echo!("c nu {}", checker.rup_introductions);
     echo!("c nr {}", checker.rat_introductions);
     echo!("c dc {}", checker.clause_deletions);

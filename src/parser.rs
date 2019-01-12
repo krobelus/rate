@@ -29,6 +29,7 @@ pub struct Parser {
     pub clause_offset: &'static mut Stack<usize>,
     clause_ids: HashMap<ClauseHashEq, Stack<Clause>>,
     pub clause_pivot: Option<Stack<Literal>>,
+    pub clause_deleted_at: Stack<usize>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
 }
@@ -42,7 +43,7 @@ struct ParseError {
 
 impl Parser {
     pub fn new(pivot_is_first_literal: bool) -> Parser {
-        unsafe { CLAUSE_OFFSET.push(DB.len()) };
+        unsafe { CLAUSE_OFFSET.push(0) }; // sentinel
         Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
@@ -54,6 +55,7 @@ impl Parser {
             } else {
                 None
             },
+            clause_deleted_at: Stack::new(),
             proof_start: Clause(0),
             proof: Stack::new(),
             clause_ids: HashMap::new(),
@@ -110,9 +112,10 @@ where
 }
 
 fn start_clause(parser: &mut Parser) -> Clause {
-    parser.clause_offset.pop();
+    parser.clause_offset.pop(); // pop sentinel
     let clause = parser.clause_offset.len();
     parser.clause_offset.push(parser.db.len());
+    parser.clause_deleted_at.push(usize::max_value());
     Clause(clause)
 }
 
@@ -127,14 +130,27 @@ fn close_clause(parser: &mut Parser) -> Clause {
     } else {
         end
     };
-    parser.clause_offset.push(parser.db.len());
-    parser.db.as_mut_slice().range(start, end).sort_unstable();
+    let _sort_literally = |&literal: &Literal| literal.decode();
+    let _sort_magnitude = |&literal: &Literal| literal.encoding;
+    parser
+        .db
+        .as_mut_slice()
+        .range(start, end)
+        .sort_unstable_by_key(_sort_literally);
+    parser.clause_offset.push(parser.db.len()); // sentinel
     clause
+}
+
+fn pop_clause(parser: &mut Parser, previous_offset: usize) {
+    parser.current_clause_offset = previous_offset;
+    parser.db.truncate(previous_offset);
+    parser.clause_offset.pop();
 }
 
 fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
     if literal.is_zero() {
         let clause = close_clause(parser);
+        // TODO we could handle duplicate literals here
         let key = ClauseHashEq(clause);
         parser
             .clause_ids
@@ -155,7 +171,7 @@ fn add_literal_ascii<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Litera
 
 fn add_deletion(parser: &mut Parser, literal: Literal) -> Literal {
     if literal.is_zero() {
-        let tmp = parser.current_clause_offset;
+        let prev = parser.current_clause_offset;
         let clause = close_clause(parser);
         match find_clause(clause, parser) {
             None => {
@@ -168,11 +184,12 @@ fn add_deletion(parser: &mut Parser, literal: Literal) -> Literal {
                     .proof
                     .push(ProofStep::Deletion(Clause::DOES_NOT_EXIST))
             }
-            Some(clause) => parser.proof.push(ProofStep::Deletion(clause)),
+            Some(clause) => {
+                parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
+                parser.proof.push(ProofStep::Deletion(clause))
+            }
         }
-        parser.current_clause_offset = tmp;
-        parser.db.truncate(parser.current_clause_offset);
-        parser.clause_offset.pop();
+        pop_clause(parser, prev);
     } else {
         parser.db.push(literal);
     }
@@ -631,18 +648,19 @@ p cnf 2 2
             .iter()
             .cloned()
             .collect();
+            assert_eq!(unsafe { &DB }, &literals!(1, 2, -2, -1, 1, 2, 3));
+            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 2, 4, 7, 7));
             assert_eq!(
                 parser,
                 Parser {
                     maxvar: Variable::new(3),
                     num_clauses: 4,
                     db: unsafe { &mut DB },
-                    // &mut literals!(2, 1, -2, -1, 3, 2, 1),
                     current_clause_offset: 7,
                     clause_offset: unsafe { &mut CLAUSE_OFFSET },
-                    // stack!(0, 2, 4, 7, 7),
                     clause_ids: clause_ids,
                     clause_pivot: None,
+                    clause_deleted_at: stack!(1, usize::max_value(), usize::max_value()),
                     proof_start: Clause(2),
                     proof: stack![
                         ProofStep::Lemma(Clause(2)),

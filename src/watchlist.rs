@@ -1,8 +1,5 @@
 use crate::{
-    checker::{
-        assign, first_non_falsified, set_reason_flag, Checker, MaybeConflict, Reason, Revision,
-        CONFLICT, NO_CONFLICT,
-    },
+    checker::{assign, first_non_falsified, set_reason_flag, Checker, Reason, Revision},
     clause::Clause,
     config::unreachable,
     literal::Literal,
@@ -88,47 +85,6 @@ pub fn watch_remove_at(
 pub fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, clause: Clause) {
     log!(checker, 3, "watchlist[{}] add {}", lit, clause);
     watchlist_mut(checker, mode)[lit].push(clause)
-}
-
-pub fn watches_add(checker: &mut Checker, mode: Mode, clause: Clause) -> MaybeConflict {
-    log!(
-        checker,
-        2,
-        "initializing watches for {}",
-        checker.clause_copy(clause)
-    );
-    let size = checker.clause(clause).len();
-    invariant!(size >= 2);
-    let head = checker.clause_range(clause).start;
-    match first_non_falsified(&checker, clause, head) {
-        Some(i0) => {
-            let w1 = checker.db[i0];
-            checker.db.as_mut_slice().swap(head, i0);
-            watch_add(checker, mode, w1, clause);
-            let w2 = match first_non_falsified(checker, clause, head + 1) {
-                Some(i1) => {
-                    let w2 = checker.db[i1];
-                    checker.db.as_mut_slice().swap(head + 1, i1);
-                    w2
-                }
-                None => {
-                    if !checker.assignment[w1] {
-                        let result = assign(checker, w1, Reason::Forced(clause));
-                        invariant!(result == NO_CONFLICT);
-                    }
-                    checker.db[head + 1]
-                }
-            };
-            watch_add(checker, mode, w2, clause);
-            checker.clause_in_watchlist[clause] = true;
-            NO_CONFLICT
-        }
-        None => {
-            // TODO does this only happen for real units
-            assign(checker, checker.db[head], Reason::Forced(clause));
-            CONFLICT
-        }
-    }
 }
 
 pub fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
@@ -253,6 +209,7 @@ pub fn watches_revise(
 
 fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal) {
     checker.assignment.unassign(lit);
+    checker.literal_minimal_lifetime[lit] = 0;
     set_reason_flag(checker, lit, false);
     revision.cone.push(lit);
     checker.literal_is_in_cone[lit] = true;

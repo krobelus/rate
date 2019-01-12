@@ -1,0 +1,8 @@
+c 3 0 is never deleted, therefore we skip satisfied clause 3 4 0
+p cnf 4 6
+1 2 0
+1 -2 0
+-1 2 0
+-1 -2 0
+3 0
+3 4 0

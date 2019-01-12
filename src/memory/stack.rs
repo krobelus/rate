@@ -50,11 +50,9 @@ impl<T> Stack<T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.into_iter()
     }
-    // TODO
     pub fn as_slice(&self) -> Slice<T> {
         Slice::new(&self.vec)
     }
-    // TODO
     pub fn as_mut_slice(&mut self) -> SliceMut<T> {
         SliceMut::new(&mut self.vec)
     }

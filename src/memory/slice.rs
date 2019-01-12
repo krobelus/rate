@@ -30,7 +30,6 @@ impl<'a, T> Slice<'a, T> {
         let slice = unsafe { slice::from_raw_parts(self.slice.as_ptr().add(start), end - start) };
         Slice::new(slice)
     }
-    // TODO avoid bounds checking
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.slice.iter()
     }
@@ -65,7 +64,6 @@ impl<'a, T> SliceMut<'a, T> {
         };
         SliceMut::new(slice)
     }
-    // TODO avoid bounds checking
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.slice.iter()
     }
@@ -110,7 +108,6 @@ impl<'a, T> IndexMut<usize> for SliceMut<'a, T> {
     }
 }
 
-// TODO avoid bounds checking
 impl<'a, T> IntoIterator for Slice<'a, T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
@@ -119,7 +116,6 @@ impl<'a, T> IntoIterator for Slice<'a, T> {
     }
 }
 
-// TODO avoid bounds checking
 impl<'a, T> IntoIterator for SliceMut<'a, T> {
     type Item = &'a mut T;
     type IntoIter = std::slice::IterMut<'a, T>;

@@ -136,8 +136,6 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
         if 'rupee' in b[0]:
             if name == 'benchmarks/crafted/bottom':
                 continue  # different result
-            if name == 'benchmarks/rupee/trick':
-                continue  # different clauses are scheduled
         if name == 'benchmarks/crafted/faux-conflict' and 'drat-trim' in b[0]:
             continue  # drat-trim uses binary mode here
         if name == 'benchmarks/crafted/falsified' and INITIAL_COMMIT in b[0]:
