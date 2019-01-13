@@ -2,9 +2,9 @@
 
 set -u
 
-name="$1"
+name=`dirname "$1"`/`basename "$1" .`
 
-cargo run "$name".{cnf,drat} -L "$name".lrat -i "$name".sick --assume-pivot-is-first && {
+cargo run --release "$name".{cnf,drat} -L "$name".lrat -i "$name".sick --assume-pivot-is-first && {
   echo
   echo LRAT PROOF
   cat "$name".lrat

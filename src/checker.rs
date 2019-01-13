@@ -46,7 +46,6 @@ pub struct Checker {
     pub literal_minimal_lifetime: Array<Literal, usize>,
     pub revisions: Stack<Revision>,
     soft_propagation: bool,
-    stage: Stage,
     pub watchlist_noncore: Array<Literal, Watchlist>,
     pub watchlist_core: Array<Literal, Watchlist>,
     pub processed: usize,
@@ -128,7 +127,6 @@ impl Checker {
             literal_is_in_cone: Array::new(false, maxvar.array_size_for_literals()),
             literal_minimal_lifetime: Array::new(0, maxvar.array_size_for_literals()),
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
-            stage: Stage::Preprocessing,
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             processed: 1, // skip Literal::TOP
@@ -373,10 +371,6 @@ fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
         propagate_literal(checker, mode, literal)?;
     }
     NO_CONFLICT
-}
-
-pub fn first_non_falsified(checker: &Checker, clause: Clause, start: usize) -> Option<usize> {
-    (start..checker.clause_range(clause).end).find(|&i| !checker.assignment[-checker.db[i]])
 }
 
 // stolen from gratgen
@@ -655,8 +649,14 @@ fn check_inference(checker: &mut Checker) -> bool {
                             pivot
                         );
                         checker.rejection.pivot = Some(pivot);
-                        invariant!(!resolution_candidates.empty());
-                        checker.rejection.resolved_with = Some(resolution_candidates[0]);
+                        invariant!(
+                            !resolution_candidates.empty()
+                                || (checker.config.skip_deletions
+                                    && checker.clause_is_a_reason[lemma])
+                        );
+                        if !resolution_candidates.empty() {
+                            checker.rejection.resolved_with = Some(resolution_candidates[0]);
+                        }
                         checker.rejection.stable_assignment = Some(checker.assignment.clone());
                         false
                     } else {
@@ -749,62 +749,72 @@ enum Stage {
     Verification,
 }
 
-fn watches_add_with_first(
-    checker: &mut Checker,
-    mode: Mode,
-    clause: Clause,
-    i1: usize,
-) -> MaybeConflict {
+pub fn first_non_falsified(checker: &Checker, clause: Clause, start: usize) -> Option<usize> {
+    (start..checker.clause_range(clause).end).find(|&i| !checker.assignment[-checker.db[i]])
+}
+
+enum NonFalsified {
+    None,
+    One(usize),
+    Two(usize, usize),
+}
+
+fn first_two_non_falsified(checker: &Checker, clause: Clause) -> NonFalsified {
     let head = checker.clause_range(clause).start;
-    let w1 = checker.db[i1];
-    checker.clause_in_watchlist[clause] = true;
-    checker.db.as_mut_slice().swap(head, i1);
-    watch_add(checker, mode, w1, clause);
-    match first_non_falsified(checker, clause, head + 1) {
-        None => {
+    match first_non_falsified(checker, clause, head) {
+        None => NonFalsified::None,
+        Some(i1) => match first_non_falsified(checker, clause, i1 + 1) {
+            None => NonFalsified::One(i1),
+            Some(i2) => NonFalsified::Two(i1, i2),
+        },
+    }
+}
+
+fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConflict {
+    log!(
+        checker,
+        2,
+        "initializing watches for {}",
+        checker.clause_copy(clause)
+    );
+    let head = checker.clause_range(clause).start;
+    let mode = match stage {
+        Stage::Preprocessing => checker.mode_non_core(),
+        Stage::Verification => checker.clause_mode(clause),
+    };
+    match first_two_non_falsified(checker, clause) {
+        NonFalsified::None => match stage {
+            Stage::Preprocessing => {
+                assign(checker, checker.db[head], Reason::Forced(clause));
+                CONFLICT
+            }
+            Stage::Verification => unreachable(),
+        },
+        NonFalsified::One(i1) => {
+            let w1 = checker.db[i1];
             if !checker.assignment[w1] {
                 let conflict = assign(checker, w1, Reason::Forced(clause));
                 invariant!(conflict == NO_CONFLICT);
             }
+            if !checker.config.skip_deletions {
+                checker.clause_in_watchlist[clause] = true;
+                checker.db.as_mut_slice().swap(head, i1);
+                watch_add(checker, mode, w1, clause);
+                if stage == Stage::Verification {
+                    watch_add(checker, mode, checker.db[head + 1], clause);
+                }
+            }
+            NO_CONFLICT
         }
-        Some(i2) => {
+        NonFalsified::Two(i1, i2) => {
+            let w1 = checker.db[i1];
             let w2 = checker.db[i2];
+            checker.clause_in_watchlist[clause] = true;
+            checker.db.as_mut_slice().swap(head, i1);
             checker.db.as_mut_slice().swap(head + 1, i2);
+            watch_add(checker, mode, w1, clause);
             watch_add(checker, mode, w2, clause);
-        }
-    };
-    NO_CONFLICT
-}
-
-fn watches_add_forward(checker: &mut Checker, mode: Mode, clause: Clause) -> MaybeConflict {
-    log!(
-        checker,
-        2,
-        "initializing watches for {}",
-        checker.clause_copy(clause)
-    );
-    let head = checker.clause_range(clause).start;
-    match first_non_falsified(&checker, clause, head) {
-        Some(i1) => watches_add_with_first(checker, mode, clause, i1),
-        None => {
-            assign(checker, checker.db[head], Reason::Forced(clause));
-            CONFLICT
-        }
-    }
-}
-
-fn watches_add_backward(checker: &mut Checker, mode: Mode, clause: Clause) {
-    log!(
-        checker,
-        2,
-        "initializing watches for {}",
-        checker.clause_copy(clause)
-    );
-    let head = checker.clause_range(clause).start;
-    match first_non_falsified(&checker, clause, head) {
-        None => unreachable(),
-        Some(i1) => {
-            watches_add_with_first(checker, mode, clause, i1);
+            NO_CONFLICT
         }
     }
 }
@@ -846,10 +856,9 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     if already_satisfied {
         checker.satisfied_count += 1;
     } else {
-        watches_add_forward(checker, checker.mode_non_core(), clause)?;
+        watches_add(checker, Stage::Preprocessing, clause)?;
     }
-    propagate(checker)?;
-    NO_CONFLICT
+    propagate(checker)
 }
 
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
@@ -892,25 +901,24 @@ fn preprocess(checker: &mut Checker) -> bool {
                 if checker.config.skip_deletions {
                     // TODO this breaks
                     // benchmarks/rupee/modgen-n200-m90860q08c40-28046 -d
-                    // let is_unit = checker
-                    //     .clause_range(clause)
-                    //     .filter(|&i| !checker.assignment[-checker.db[i]])
-                    //     .count()
-                    //     == 1;
-                    // if !is_unit {
-                    checker.skipped_deletions += 1;
-                    if checker.clause_is_a_reason[clause] {
-                        checker.reason_deletions += 1;
-                        if checker.config.verbosity > 0 {
-                            warn!(
-                                "Ignoring deletion of (pseudo) unit clause {}",
-                                checker.clause_copy(clause)
-                            );
+                    let is_unit = checker
+                        .clause_range(clause)
+                        .filter(|&i| !checker.assignment[-checker.db[i]])
+                        .count()
+                        == 1;
+                    if !is_unit {
+                        checker.skipped_deletions += 1;
+                        if checker.clause_is_a_reason[clause] {
+                            checker.reason_deletions += 1;
+                            if checker.config.verbosity > 0 {
+                                warn!(
+                                    "Ignoring deletion of (pseudo) unit clause {}",
+                                    checker.clause_copy(clause)
+                                );
+                            }
                         }
-                    } else {
                         watches_remove(checker, checker.clause_mode(clause), clause);
                     }
-                // }
                 } else {
                     invariant!(!checker.clause_scheduled[clause]);
                     watches_remove(checker, checker.mode_non_core(), clause);
@@ -948,7 +956,6 @@ fn preprocess(checker: &mut Checker) -> bool {
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn verify(checker: &mut Checker) -> bool {
-    checker.stage = Stage::Verification;
     log!(checker, 1, "[verify]");
     defer_log!(checker, 1, "[verify] done\n");
     for i in (0..checker.proof_steps_until_conflict).rev() {
@@ -963,14 +970,14 @@ fn verify(checker: &mut Checker) -> bool {
                     if !checker.clause_is_a_reason[clause] {
                         // not actually deleted otherwise!
                         invariant!(checker.clause_mode(clause) == checker.mode_non_core());
-                        watches_add_backward(checker, checker.clause_mode(clause), clause);
+                        watches_add(checker, Stage::Verification, clause);
                     }
                 } else {
                     if checker.lemma_revision[clause] {
                         let mut revision = checker.revisions.pop();
                         revision_apply(checker, &mut revision);
                     }
-                    watches_add_backward(checker, checker.clause_mode(clause), clause);
+                    watches_add(checker, Stage::Verification, clause);
                 }
                 true
             }
