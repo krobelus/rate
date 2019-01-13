@@ -9,8 +9,8 @@ use crate::{
     memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
     parser::{Parser, CLAUSE_OFFSET, DB},
     watchlist::{
-        revision_apply, revision_create, watch_add, watch_invariants, watch_remove_at,
-        watches_find_and_remove, watches_remove, watchlist, Mode, Watchlist,
+        revision_apply, revision_create, watch_add, watch_invariants, watches_find_and_remove,
+        watches_remove, Mode, Watchlist,
     },
 };
 use ansi_term::Colour;
@@ -168,19 +168,12 @@ impl Checker {
     }
     pub fn clause_mode(&self, clause: Clause) -> Mode {
         if self.config.no_core_first {
-            Mode::Core
+            Mode::NonCore
         } else {
             match self.clause_scheduled[clause] {
                 true => Mode::Core,
                 false => Mode::NonCore,
             }
-        }
-    }
-    fn mode_non_core(&self) -> Mode {
-        if self.config.no_core_first {
-            Mode::Core
-        } else {
-            Mode::NonCore
         }
     }
 
@@ -310,73 +303,10 @@ pub fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeC
     }
 }
 
-fn propagate(checker: &mut Checker) -> MaybeConflict {
-    if checker.config.no_core_first {
-        propagate_no_core_first(checker)
-    } else {
-        propagate_core_first(checker)
-    }
-}
-
-fn propagate_no_core_first(checker: &mut Checker) -> MaybeConflict {
-    fn watches_align(
-        checker: &mut Checker,
-        mode: Mode,
-        literal: Literal,
-        position_in_watchlist: &mut usize,
-    ) -> MaybeConflict {
-        let clause = watchlist(checker, mode)[literal][*position_in_watchlist];
-        requires!(clause < checker.lemma);
-        let (w1, w2) = checker.clause_watches(clause);
-        if checker.assignment[w1] || checker.assignment[w2] {
-            return NO_CONFLICT;
-        }
-        let head = checker.clause_range(clause).start;
-        if literal == w1 {
-            checker.db[head] = checker.db[head + 1];
-        }
-        match first_non_falsified(checker, clause, head + 2) {
-            Some(offset) => {
-                let new = checker.db[offset];
-                checker.db[offset] = literal;
-                checker.db[head + 1] = new;
-                watch_remove_at(checker, mode, literal, *position_in_watchlist);
-                *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-                watch_add(checker, mode, new, clause);
-                NO_CONFLICT
-            }
-            None => {
-                checker.db[head + 1] = literal;
-                let unit = checker.db[head];
-                assign(checker, unit, Reason::Forced(clause))
-            }
-        }
-    }
-
-    fn propagate_literal(checker: &mut Checker, mode: Mode, literal: Literal) -> MaybeConflict {
-        requires!(checker.assignment[literal]);
-        requires!(checker.literal_reason[literal] != Reason::Forced(Clause::NEVER_READ));
-        let mut i = 0;
-        while i < watchlist(checker, mode)[-literal].len() {
-            watches_align(checker, mode, -literal, &mut i)?;
-            i = i.wrapping_add(1);
-        }
-        NO_CONFLICT
-    }
-
-    let mode = checker.mode_non_core();
-    while checker.processed < checker.assignment.len() {
-        let literal = checker.assignment.trace_at(checker.processed);
-        checker.processed += 1;
-        propagate_literal(checker, mode, literal)?;
-    }
-    NO_CONFLICT
-}
-
 // stolen from gratgen
-fn propagate_core_first(checker: &mut Checker) -> MaybeConflict {
+fn propagate(checker: &mut Checker) -> MaybeConflict {
     let mut processed_core = checker.processed;
-    let mut core_mode = true;
+    let mut core_mode = !checker.config.no_core_first;
     let mut noncore_watchlist_index = 0;
     loop {
         if core_mode {
@@ -520,11 +450,19 @@ macro_rules! preserve_assignment {
     }};
 }
 
+fn watchlist_filter_core(checker: &Checker) -> &Array<Literal, Watchlist> {
+    if checker.config.no_core_first {
+        &checker.watchlist_noncore
+    } else {
+        &checker.watchlist_core
+    }
+}
+
 fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Clause> {
     let mut candidates = Stack::new();
     for lit in Literal::all(checker.maxvar) {
-        for i in 0..checker.watchlist_core[lit].len() {
-            let clause = checker.watchlist_core[lit][i];
+        for i in 0..watchlist_filter_core(checker)[lit].len() {
+            let clause = watchlist_filter_core(checker)[lit][i];
             let want = if checker.config.no_core_first {
                 checker.clause_scheduled[clause]
             } else {
@@ -779,7 +717,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
     );
     let head = checker.clause_range(clause).start;
     let mode = match stage {
-        Stage::Preprocessing => checker.mode_non_core(),
+        Stage::Preprocessing => Mode::NonCore,
         Stage::Verification => checker.clause_mode(clause),
     };
     match first_two_non_falsified(checker, clause) {
@@ -899,8 +837,6 @@ fn preprocess(checker: &mut Checker) -> bool {
                     checker.clause_copy(clause)
                 );
                 if checker.config.skip_deletions {
-                    // TODO this breaks
-                    // benchmarks/rupee/modgen-n200-m90860q08c40-28046 -d
                     let is_unit = checker
                         .clause_range(clause)
                         .filter(|&i| !checker.assignment[-checker.db[i]])
@@ -921,7 +857,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                     }
                 } else {
                     invariant!(!checker.clause_scheduled[clause]);
-                    watches_remove(checker, checker.mode_non_core(), clause);
+                    watches_remove(checker, Mode::NonCore, clause);
                     if checker.clause_is_a_reason[clause] {
                         checker.reason_deletions += 1;
                         revision_create(checker, clause);
@@ -969,7 +905,7 @@ fn verify(checker: &mut Checker) -> bool {
                 if checker.config.skip_deletions {
                     if !checker.clause_is_a_reason[clause] {
                         // not actually deleted otherwise!
-                        invariant!(checker.clause_mode(clause) == checker.mode_non_core());
+                        invariant!(checker.clause_mode(clause) == Mode::NonCore);
                         watches_add(checker, Stage::Verification, clause);
                     }
                 } else {
