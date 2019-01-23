@@ -113,7 +113,8 @@ pub fn watches_find_and_remove(
             .filter(|&c| *c == clause)
             .count()
             <= 1,
-        "duplicate clause {} in watchlist of {}",checker.clause_copy(clause),
+        "duplicate clause {} in watchlist of {}",
+        checker.clause_copy(clause),
         lit
     );
     watchlist(checker, mode)[lit]

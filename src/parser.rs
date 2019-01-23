@@ -339,7 +339,7 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
                 line: line,
                 col: col,
                 why: "Failed to parse DIMACS header".to_string(),
-            })
+            });
         }
         Some((rest, (_maxvar, _num_clauses))) => rest,
     };
