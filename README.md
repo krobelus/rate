@@ -35,13 +35,6 @@ This can be run with `pytest test.py`. The requirements are:
 If you're in a hurry use `pytest test.py -k quick` to only run the tests on
 small input files.
 
-## Crate
-
-Currently we provide a reimplementation of Rate in C (see [crate.c](crate.c)).
-Note that it may be lagging behind in terms of features. Anyway, it is useful to
-us to catch some bugs and measure the performance impact of some language
-features. Build `./crate` by typing `make`.
-
 # Contributing
 
 We appreciate contributions. Please let us know if Rate behaves in a way that is
