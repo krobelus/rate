@@ -11,3 +11,4 @@ __pycache__
 /perf.data*
 /*.profile
 /flame-graph.html
+/.dir-locals.el
