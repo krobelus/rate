@@ -7,13 +7,9 @@ that it does not [ignore deletions of unit
 clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details) by
 default.
 
-**Note**: This is in a very early stage of development and many features are
-still missing.
-
 # Building
-Install [Rust](https://www.rust-lang.org/en-US/install.html) and switch to the
-nightly channel using [rustup](https://rustup.rs/).  Then you should be able to
-run Rate like this:
+Install [Rust](https://www.rust-lang.org/en-US/install.html). Then you should be
+able to run Rate like this:
 
 ```sh
 $ cargo run --release formula.cnf proof.drat
@@ -30,7 +26,7 @@ This can be run with `pytest test.py`. The requirements are:
 
 - `python3` (version 3.6 or above)
 - `pytest`
-- `drat-trim` and `rupee` need to be executable on your system.
+- `drat-trim`, `rupee`, and `gratgen` need to be executable on your system.
 
 If you're in a hurry use `pytest test.py -k quick` to only run the tests on
 small input files.
@@ -42,11 +38,11 @@ unexpected to you, or if you need some feature.
 
 # Caveats
 
-Please note that, Rate accepts proof that are technically not fully correct,
-We perform some transformations on the proof before actually checking the
-steps, mainly to improve performance, as do other checkers. So this might
-result in a proof that contains some invalid instructions being accepted, but
-this should only be possible for unsatisfiable formulas.
+Please note that Rate accepts proof that are technically not fully correct, We
+perform some transformations on the proof before actually checking its steps,
+mainly to improve performance, as do other checkers. This might result in a
+proof that contains invalid instructions being accepted, but this should only be
+possible for unsatisfiable formulas.
 
 Here are the transformations we do:
 - We discard any lemma or deletion after the first time the empty clause
