@@ -23,7 +23,6 @@ def build_release(commit_sha=None):
         return run(['./scripts/exec-in-version.sh',
                     commit_sha] + cargo_release)
     run(cargo_release)
-    run(['make'])
 
 
 def rate(commit_sha=None, *, flags=[]):
@@ -142,8 +141,7 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
             continue  # drat-trim uses binary mode here
         if name == 'benchmarks/crafted/falsified' and INITIAL_COMMIT in b[0]:
             continue  # does not skip unused lemmas
-        if ((INITIAL_COMMIT in b[0] or 'crate' in b[0])
-                and name in [
+        if (INITIAL_COMMIT in b[0] and name in [
                 'benchmarks/crafted/marked-environment',
         ]):
             print(
