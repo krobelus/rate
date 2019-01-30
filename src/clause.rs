@@ -7,9 +7,7 @@ use crate::{
     memory::{Offset, Slice, Stack},
 };
 use std::{
-    fmt, io,
-    io::Write,
-    ops,
+    fmt, ops,
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
@@ -90,12 +88,6 @@ impl<'a> ClauseCopy {
     }
     pub fn iter(&'a self) -> std::slice::Iter<'a, Literal> {
         self.into_iter()
-    }
-    pub fn dimacs(&self, f: &mut impl Write) -> io::Result<()> {
-        for literal in self {
-            write!(f, "{} ", literal)?;
-        }
-        write!(f, "0")
     }
 }
 

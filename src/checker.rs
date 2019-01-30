@@ -18,7 +18,13 @@ use ansi_term::Colour;
 use cpuprofiler::PROFILER;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
-use std::{cmp, fmt, fs::File, io, io::Write, ops};
+use std::{
+    cmp, fmt,
+    fs::File,
+    io,
+    io::{BufWriter, Write},
+    ops,
+};
 
 #[derive(Debug)]
 pub struct Checker {
@@ -958,9 +964,10 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
         });
 }
 
+#[cfg_attr(feature = "flame_it", flame)]
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.lrat_filename {
-        Some(filename) => File::create(filename)?,
+        Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
     let num_clauses = checker.lemma.as_offset() + checker.proof_steps_until_conflict;
@@ -978,11 +985,11 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     };
     let mut state = State::InDeletionChain;
     open_deletion_chain(checker, &mut file, checker.lemma - 1)?;
-    invariant!(checker.lrat_id == checker.clause_lrat_id[checker.lemma - 1]);
+    invariant!(checker.lrat_id == lrat_id(checker, checker.lemma - 1));
     // delete lemmas that were never used
     for clause in Clause::range(0, checker.lemma) {
         if !checker.clause_scheduled[clause] {
-            write!(file, "{} ", checker.clause_lrat_id[clause])?;
+            write!(file, "{} ", lrat_id(checker, clause))?;
             clause_deleted[clause] = true;
         }
     }
@@ -995,21 +1002,18 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                     if checker.clause_scheduled[lemma] {
                         checker.lrat_id += 1;
                         checker.clause_lrat_id[lemma] = checker.lrat_id;
-                        write!(file, "{} ", checker.clause_lrat_id[lemma])?;
-                        // NOTE this could optimised
-                        checker.clause_copy(lemma).dimacs(&mut file)?;
+                        write!(file, "{} ", lrat_id(checker, lemma))?;
+                        write_clause(checker, &mut file, lemma)?;
                         write!(file, " ")?;
                         for hint in &checker.lemma_lratlemma[lemma] {
                             match hint {
                                 &LRATLiteral::ResolutionCandidate(clause) => {
-                                    write!(file, "-{} ", checker.clause_lrat_id[clause])
+                                    write!(file, "-{} ", lrat_id(checker, clause))
                                 }
                                 &LRATLiteral::Unit(clause) => {
                                     invariant!(checker.clause_scheduled[clause]);
-                                    invariant!(
-                                        checker.clause_lrat_id[clause] != Clause::NEVER_READ
-                                    );
-                                    write!(file, "{} ", checker.clause_lrat_id[clause])
+                                    invariant!(lrat_id(checker, clause) != Clause::NEVER_READ);
+                                    write!(file, "{} ", lrat_id(checker, clause))
                                 }
                             }?;
                         }
@@ -1037,11 +1041,13 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                 }
                 ProofStep::Deletion(clause) => {
                     invariant!(
-                        (checker.clause_lrat_id[clause] == Clause::UNINITIALIZED)
+                        (lrat_id(checker, clause) == Clause::UNINITIALIZED)
                             == (clause >= checker.lemma && !checker.clause_scheduled[clause])
                     );
-                    if checker.clause_lrat_id[clause] != Clause::UNINITIALIZED {
-                        write_deletion(checker, &mut file, &mut clause_deleted, clause)?;
+                    if false {
+                        if lrat_id(checker, clause) != Clause::UNINITIALIZED {
+                            write_deletion(checker, &mut file, &mut clause_deleted, clause)?;
+                        }
                     }
                     i += 1;
                 }
@@ -1051,31 +1057,44 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     if state == State::InDeletionChain {
         close_deletion_chain(&mut file)?;
     }
-    fn open_deletion_chain(checker: &Checker, file: &mut File, lemma: Clause) -> io::Result<()> {
-        write!(file, "{} d ", checker.clause_lrat_id[lemma])
+    Ok(())
+}
+
+fn lrat_id(checker: &Checker, clause: Clause) -> Clause {
+    checker.clause_lrat_id[clause]
+}
+fn open_deletion_chain(checker: &Checker, file: &mut impl Write, lemma: Clause) -> io::Result<()> {
+    write!(file, "{} d ", checker.clause_lrat_id[lemma])
+}
+fn close_deletion_chain(file: &mut impl Write) -> io::Result<()> {
+    write!(file, "0\n")
+}
+fn write_deletion(
+    checker: &Checker,
+    file: &mut impl Write,
+    clause_deleted: &mut Array<Clause, bool>,
+    clause: Clause,
+) -> io::Result<()> {
+    if !clause_deleted[clause] {
+        clause_deleted[clause] = true;
+        write!(file, "{} ", checker.clause_lrat_id[clause])
+    } else {
+        Ok(())
     }
-    fn close_deletion_chain(file: &mut File) -> io::Result<()> {
-        write!(file, "0\n")
-    }
-    fn write_deletion(
-        checker: &Checker,
-        file: &mut File,
-        clause_deleted: &mut Array<Clause, bool>,
-        clause: Clause,
-    ) -> io::Result<()> {
-        if !clause_deleted[clause] {
-            clause_deleted[clause] = true;
-            write!(file, "{} ", checker.clause_lrat_id[clause])
-        } else {
-            Ok(())
+}
+
+fn write_clause(checker: &Checker, file: &mut impl Write, clause: Clause) -> io::Result<()> {
+    for &literal in checker.clause(clause) {
+        if literal != Literal::BOTTOM {
+            write!(file, "{} ", literal)?;
         }
     }
-    Ok(())
+    write!(file, "0")
 }
 
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     let mut file = match &checker.config.sick_filename {
-        Some(filename) => File::create(filename)?,
+        Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
 
@@ -1098,7 +1117,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     )?;
     write!(file, "{}\n", step)?;
     write!(file, "n ")?;
-    checker.clause_copy(lemma).dimacs(&mut file)?;
+    write_clause(checker, &mut file, lemma)?;
     write!(file, " ")?;
     for literal in Literal::all(checker.maxvar) {
         if assignment[literal] {
