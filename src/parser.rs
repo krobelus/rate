@@ -329,6 +329,7 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
     enum ClauseState {
         InLiteral,
         NotInLiteral,
+        Comment,
     }
     let mut line = 0;
     let mut col = 0;
@@ -358,6 +359,9 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
                     state = ClauseState::InLiteral;
                     start = i;
                 }
+                b'c' if col == 1 => {
+                    state = ClauseState::Comment;
+                }
                 _ if isspace(c) => (),
                 _ => return error(),
             },
@@ -377,6 +381,11 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
                 }
                 _ => return error(),
             },
+            ClauseState::Comment => {
+                if c == b'\n' {
+                    state = ClauseState::NotInLiteral;
+                }
+            }
         }
     }
     // handle missing newline at EOF
