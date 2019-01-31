@@ -172,8 +172,13 @@ impl Checker {
         self.clause_offset[clause.as_offset()] + PADDING_START
             ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
     }
-    pub fn clause_watches(&self, clause: Clause) -> (Literal, Literal) {
-        (self.clause(clause)[0], self.clause(clause)[1])
+    pub fn watches(&self, head: usize) -> [Literal; 2] {
+        [self.db[head], self.db[head + 1]]
+    }
+    pub fn head2clause(&self, head: usize) -> Clause {
+        let lower = self.db[head - PADDING_START];
+        let upper = self.db[head - PADDING_END + 1];
+        Clause((lower.encoding as usize) | (upper.encoding as usize) >> 32)
     }
     pub fn clause_mode(&self, clause: Clause) -> Mode {
         if self.config.no_core_first {
@@ -328,13 +333,12 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 
             let mut i = 0;
             while i < checker.watchlist_core[literal].len() {
-                let clause = checker.watchlist_core[literal][i];
-                let (mut w1, mut w2) = checker.clause_watches(clause);
+                let head = checker.watchlist_core[literal][i];
+                let [mut w1, mut w2] = checker.watches(head);
                 if checker.assignment[w1] || checker.assignment[w2] {
                     i += 1;
                     continue;
                 }
-                let head = checker.clause_range(clause).start;
                 if w1 == literal {
                     checker.db[head] = w2;
                     w1 = w2;
@@ -344,12 +348,12 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 invariant!(checker.assignment[-w2]);
                 invariant!(checker.db[head] == w1);
 
-                match first_non_falsified(checker, clause, head + 2) {
+                match first_non_falsified_raw(checker, head + 2) {
                     Some(wo) => {
                         checker.watchlist_core[literal].swap_remove(i);
                         let w = checker.db[wo];
                         invariant!(w != literal);
-                        watch_add(checker, Mode::Core, w, clause);
+                        watch_add(checker, Mode::Core, w, head);
                         checker.db[head + 1] = w;
                         checker.db[wo] = w2;
                         continue;
@@ -359,7 +363,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 
                 checker.db[head + 1] = w2;
 
-                assign(checker, w1, Reason::Forced(clause));
+                assign(checker, w1, Reason::Forced(checker.head2clause(head)));
                 if !checker.assignment[-w1] {
                     i += 1;
                     continue;
@@ -378,9 +382,8 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
             noncore_watchlist_index = 0;
 
             while i < checker.watchlist_noncore[literal].len() {
-                let clause = checker.watchlist_noncore[literal][i];
-                let head = checker.clause_range(clause).start;
-                let (mut w1, mut w2) = checker.clause_watches(clause);
+                let head = checker.watchlist_noncore[literal][i];
+                let [mut w1, mut w2] = checker.watches(head);
                 invariant!(w1 == literal || w2 == literal);
 
                 if checker.assignment[w1] || checker.assignment[w2] {
@@ -398,12 +401,12 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 invariant!(checker.assignment[-w2]);
                 invariant!(checker.db[head] == w1);
 
-                match first_non_falsified(checker, clause, head + 2) {
+                match first_non_falsified_raw(checker, head + 2) {
                     Some(wo) => {
                         checker.watchlist_noncore[literal].swap_remove(i);
                         let w = checker.db[wo];
                         invariant!(w != literal);
-                        watch_add(checker, Mode::NonCore, w, clause);
+                        watch_add(checker, Mode::NonCore, w, head);
                         checker.db[head + 1] = w;
                         checker.db[wo] = w2;
                         continue;
@@ -413,7 +416,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 
                 checker.db[head + 1] = w2;
 
-                assign(checker, w1, Reason::Forced(clause));
+                assign(checker, w1, Reason::Forced(checker.head2clause(head)));
                 if !checker.assignment[-w1] {
                     checker.processed -= 1;
                     noncore_watchlist_index = i + 1;
@@ -438,13 +441,14 @@ fn move_to_core(checker: &mut Checker, clause: Clause) {
         return;
     }
 
-    let (w1, w2) = checker.clause_watches(clause);
-    let d1 = watches_find_and_remove(checker, Mode::NonCore, w1, clause);
-    let d2 = watches_find_and_remove(checker, Mode::NonCore, w2, clause);
+    let head = checker.clause_range(clause).start;
+    let [w1, w2] = checker.watches(head);
+    let d1 = watches_find_and_remove(checker, Mode::NonCore, w1, head);
+    let d2 = watches_find_and_remove(checker, Mode::NonCore, w2, head);
     invariant!(d1 || d2);
 
-    watch_add(checker, Mode::Core, w1, clause);
-    watch_add(checker, Mode::Core, w2, clause);
+    watch_add(checker, Mode::Core, w1, head);
+    watch_add(checker, Mode::Core, w2, head);
 }
 
 macro_rules! preserve_assignment {
@@ -471,7 +475,8 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
     let mut candidates = Stack::new();
     for lit in Literal::all(checker.maxvar) {
         for i in 0..watchlist_filter_core(checker)[lit].len() {
-            let clause = watchlist_filter_core(checker)[lit][i];
+            let head = watchlist_filter_core(checker)[lit][i];
+            let clause = checker.head2clause(head);
             let want = if checker.config.no_core_first {
                 checker.clause_scheduled[clause]
             } else {
@@ -700,6 +705,16 @@ pub fn first_non_falsified(checker: &Checker, clause: Clause, start: usize) -> O
     (start..checker.clause_range(clause).end).find(|&i| !checker.assignment[-checker.db[i]])
 }
 
+pub fn first_non_falsified_raw(checker: &Checker, mut start: usize) -> Option<usize> {
+    while !checker.db[start].is_zero() {
+        if !checker.assignment[-checker.db[start]] {
+            return Some(start);
+        }
+        start += 1;
+    }
+    None
+}
+
 enum NonFalsified {
     None,
     One(usize),
@@ -759,8 +774,8 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
             checker.clause_in_watchlist[clause] = true;
             checker.db.as_mut_slice().swap(head, i1);
             checker.db.as_mut_slice().swap(head + 1, i2);
-            watch_add(checker, mode, w1, clause);
-            watch_add(checker, mode, w2, clause);
+            watch_add(checker, mode, w1, head);
+            watch_add(checker, mode, w2, head);
             NO_CONFLICT
         }
     }

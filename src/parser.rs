@@ -124,10 +124,10 @@ fn start_clause(parser: &mut Parser) -> Clause {
     parser.clause_offset.pop(); // pop sentinel
     let clause = parser.clause_offset.len();
     parser.clause_offset.push(parser.db.len());
-    let lower = (clause & 0x00000000ffffffff) as i32;
-    let upper = ((clause & 0xffffffff00000000) >> 32) as i32;
-    parser.db.push(Literal::new(lower));
-    parser.db.push(Literal::new(upper));
+    let lower = (clause & 0x00000000ffffffff) as u32;
+    let upper = ((clause & 0xffffffff00000000) >> 32) as u32;
+    parser.db.push(Literal::from_raw(lower));
+    parser.db.push(Literal::from_raw(upper));
     parser.clause_deleted_at.push(usize::max_value());
     Clause(clause)
 }
