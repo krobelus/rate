@@ -129,7 +129,7 @@ fn close_clause(parser: &mut Parser) -> Clause {
         end + 1
     } else {
         end
-    };
+    } + 1; // terminating 0
     let _sort_literally = |&literal: &Literal| literal.decode();
     let _sort_magnitude = |&literal: &Literal| literal.encoding;
     parser
@@ -137,6 +137,7 @@ fn close_clause(parser: &mut Parser) -> Clause {
         .as_mut_slice()
         .range(start, end)
         .sort_unstable_by_key(_sort_literally);
+    parser.db.push(Literal::new(0));
     parser.clause_offset.push(parser.db.len()); // sentinel
     clause
 }
@@ -657,15 +658,18 @@ p cnf 2 2
             .iter()
             .cloned()
             .collect();
-            assert_eq!(unsafe { &DB }, &literals!(1, 2, -2, -1, 1, 2, 3));
-            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 2, 4, 7, 7));
+            assert_eq!(
+                unsafe { &DB },
+                &literals!(1, 2, 0, -2, -1, 0, 1, 2, 3, 0, 0)
+            );
+            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 3, 6, 10, 11));
             assert_eq!(
                 parser,
                 Parser {
                     maxvar: Variable::new(3),
                     num_clauses: 4,
                     db: unsafe { &mut DB },
-                    current_clause_offset: 7,
+                    current_clause_offset: 11,
                     clause_offset: unsafe { &mut CLAUSE_OFFSET },
                     clause_ids: clause_ids,
                     clause_pivot: None,

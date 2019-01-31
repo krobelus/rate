@@ -169,7 +169,7 @@ impl Checker {
         ClauseCopy::new(clause, self.clause(clause))
     }
     pub fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause.as_offset()]..self.clause_offset[clause.as_offset() + 1]
+        self.clause_offset[clause.as_offset()]..self.clause_offset[clause.as_offset() + 1] - 1 // terminating 0
     }
     pub fn clause_watches(&self, clause: Clause) -> (Literal, Literal) {
         (self.clause(clause)[0], self.clause(clause)[1])
@@ -810,7 +810,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.proof_steps_until_conflict = steps_until_conflict;
     let clause = checker.lemma;
-    checker.clause_offset[clause.as_offset() + 1] = checker.clause_offset[clause.as_offset()];
+    checker.clause_offset[clause.as_offset() + 1] = checker.clause_offset[clause.as_offset()] + 1; // terminating 0
     invariant!(checker.clause(clause).empty());
     schedule(checker, clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::Lemma(clause);
