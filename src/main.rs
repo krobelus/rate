@@ -3,7 +3,8 @@
     alloc,
     ptr_wrapping_offset_from,
     raw_vec_internals,
-    const_vec_new
+    const_vec_new,
+    stmt_expr_attributes
 )]
 #[macro_use(defer)]
 extern crate scopeguard;

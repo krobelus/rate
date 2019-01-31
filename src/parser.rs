@@ -22,6 +22,10 @@ pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
 /// - clause id (usize), stored as 2x32bit LE
 /// - sequence of Literal
 /// - zero terminator Literal::new(0)
+
+pub const PADDING_START: usize = 2;
+pub const PADDING_END: usize = 1;
+
 pub static mut DB: Stack<Literal> = Stack { vec: Vec::new() };
 
 #[derive(Debug, PartialEq)]
@@ -52,7 +56,7 @@ impl Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
             db: unsafe { &mut DB },
-            current_clause_offset: 2, // clause id
+            current_clause_offset: 0,
             clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_pivot: if pivot_is_first_literal {
                 Some(Stack::new())
@@ -74,7 +78,8 @@ impl Parser {
         ClauseCopy::new(clause, self.clause(clause))
     }
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause.as_offset()]..self.clause_offset[clause.as_offset() + 1]
+        self.clause_offset[clause.as_offset()] + PADDING_START
+            ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
     }
 }
 
@@ -118,26 +123,25 @@ where
 fn start_clause(parser: &mut Parser) -> Clause {
     parser.clause_offset.pop(); // pop sentinel
     let clause = parser.clause_offset.len();
+    parser.clause_offset.push(parser.db.len());
     let lower = (clause & 0x00000000ffffffff) as i32;
     let upper = ((clause & 0xffffffff00000000) >> 32) as i32;
     parser.db.push(Literal::new(lower));
     parser.db.push(Literal::new(upper));
-    parser.clause_offset.push(parser.db.len());
     parser.clause_deleted_at.push(usize::max_value());
     Clause(clause)
 }
 
 fn close_clause(parser: &mut Parser) -> Clause {
     let clause = Clause(parser.clause_offset.len()) - 1;
-    let start = parser.current_clause_offset;
+    let start = parser.current_clause_offset + PADDING_START;
     let end = parser.db.len();
     let len = end - start;
-    parser.current_clause_offset = if len == 1 {
+    if len == 1 {
         parser.db.push(Literal::BOTTOM);
-        end + 1
-    } else {
-        end
-    } + 1; // terminating 0
+    }
+    parser.db.push(Literal::new(0));
+    parser.current_clause_offset = parser.db.len();
     let _sort_literally = |&literal: &Literal| literal.decode();
     let _sort_magnitude = |&literal: &Literal| literal.encoding;
     parser
@@ -145,15 +149,19 @@ fn close_clause(parser: &mut Parser) -> Clause {
         .as_mut_slice()
         .range(start, end)
         .sort_unstable_by_key(_sort_literally);
-    parser.db.push(Literal::new(0));
-    parser.clause_offset.push(parser.db.len()); // sentinel
+    parser.clause_offset.push(parser.current_clause_offset); // sentinel
     clause
 }
 
-fn pop_clause(parser: &mut Parser, previous_offset: usize) {
-    parser.current_clause_offset = previous_offset - 2;
-    parser.db.truncate(parser.current_clause_offset);
+fn pop_clause(parser: &mut Parser, prev_clause_offset: usize) {
+    parser.db.truncate(prev_clause_offset);
+    parser.current_clause_offset = prev_clause_offset;
+
+    parser.clause_offset.pop(); // sentinel
     parser.clause_offset.pop();
+    parser.clause_offset.push(prev_clause_offset);
+
+    parser.clause_deleted_at.pop();
 }
 
 fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
@@ -215,8 +223,8 @@ struct ClauseHashEq(Clause);
 impl Hash for ClauseHashEq {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         unsafe {
-            let start = CLAUSE_OFFSET[self.0.as_offset()];
-            let end = CLAUSE_OFFSET[self.0.as_offset() + 1];
+            let start = CLAUSE_OFFSET[self.0.as_offset()] + PADDING_START;
+            let end = CLAUSE_OFFSET[self.0.as_offset() + 1] - PADDING_END;
             compute_hash(DB.as_slice().range(start, end)).hash(hasher)
         }
     }
@@ -226,9 +234,9 @@ impl PartialEq for ClauseHashEq {
     fn eq(&self, other: &ClauseHashEq) -> bool {
         unsafe {
             invariant!(self.0.as_offset() + 1 < CLAUSE_OFFSET.len());
-            let start = CLAUSE_OFFSET[self.0.as_offset()];
-            let end = CLAUSE_OFFSET[self.0.as_offset() + 1];
-            let other_start = CLAUSE_OFFSET[other.0.as_offset()];
+            let start = CLAUSE_OFFSET[self.0.as_offset()] + PADDING_START;
+            let end = CLAUSE_OFFSET[self.0.as_offset() + 1] - PADDING_END;
+            let other_start = CLAUSE_OFFSET[other.0.as_offset()] + PADDING_START;
             for i in 0..end - start {
                 if other_start + i == DB.len() {
                     return false;
@@ -502,7 +510,11 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseErro
     };
     // Add empty clauses to the end of the proof.
     parser.num_clauses = parser.clause_offset.len();
-    let empty_clause = close_clause(parser);
+    let empty_clause = Clause(parser.clause_offset.len()) - 1;
+    parser.db.push(Literal::NEVER_READ);
+    parser.db.push(Literal::NEVER_READ);
+    parser.db.push(Literal::new(0));
+    parser.clause_offset.push(parser.db.len());
     parser.proof.push(ProofStep::Lemma(empty_clause));
     result
 }
@@ -531,7 +543,10 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
             LemmaPositionText::Start => match c {
                 b'\n' => head = true,
                 b' ' | b'\r' => (),
-                b'd' => state = LemmaPositionText::Deletion,
+                b'd' => {
+                    start_clause(parser);
+                    state = LemmaPositionText::Deletion
+                }
                 b'-' | b'0'..=b'9' => {
                     if head {
                         let clause = start_clause(parser);
@@ -671,25 +686,31 @@ p cnf 2 2
             let mut parser = sample_formula();
             parse_proof(&mut parser, Slice::new(b"1 2 3 0\nd 1 2 0"));
             let clause_ids = [
+                (ClauseHashEq(Clause(2)), stack!(Clause(2))),
                 (ClauseHashEq(Clause(0)), stack!()),
                 (ClauseHashEq(Clause(1)), stack!(Clause(1))),
-                (ClauseHashEq(Clause(2)), stack!(Clause(2))),
             ]
             .iter()
             .cloned()
             .collect();
             assert_eq!(
                 unsafe { &DB },
-                &literals!(0, 0, 1, 2, 0, 1, 0, -2, -1, 0, 2, 0, 1, 2, 3, 0, 0)
+                #[rustfmt::skip]
+                &literals!(
+                    0, 0, 1, 2, 0,
+                    1, 0, -2, -1, 0,
+                    2, 0, 1, 2, 3, 0,
+                    Literal::NEVER_READ.decode() , Literal::NEVER_READ.decode() , 0
+                )
             );
-            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(2, 7, 12, 16, 17));
+            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 5, 10, 16, 19));
             assert_eq!(
                 parser,
                 Parser {
                     maxvar: Variable::new(3),
                     num_clauses: 4,
                     db: unsafe { &mut DB },
-                    current_clause_offset: 19,
+                    current_clause_offset: 16,
                     clause_offset: unsafe { &mut CLAUSE_OFFSET },
                     clause_ids: clause_ids,
                     clause_pivot: None,

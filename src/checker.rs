@@ -7,7 +7,7 @@ use crate::{
     config::Config,
     literal::{Literal, Variable},
     memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
-    parser::{Parser, CLAUSE_OFFSET, DB},
+    parser::{Parser, CLAUSE_OFFSET, DB, PADDING_END, PADDING_START},
     watchlist::{
         revision_apply, revision_create, watch_add, watch_invariants, watches_find_and_remove,
         watches_remove, Mode, Watchlist,
@@ -169,7 +169,8 @@ impl Checker {
         ClauseCopy::new(clause, self.clause(clause))
     }
     pub fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause.as_offset()]..self.clause_offset[clause.as_offset() + 1] - 1 // terminating 0
+        self.clause_offset[clause.as_offset()] + PADDING_START
+            ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
     }
     pub fn clause_watches(&self, clause: Clause) -> (Literal, Literal) {
         (self.clause(clause)[0], self.clause(clause)[1])
@@ -810,7 +811,8 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.proof_steps_until_conflict = steps_until_conflict;
     let clause = checker.lemma;
-    checker.clause_offset[clause.as_offset() + 1] = checker.clause_offset[clause.as_offset()] + 1; // terminating 0
+    checker.clause_offset[clause.as_offset() + 1] =
+        checker.clause_offset[clause.as_offset()] + PADDING_START + PADDING_END;
     invariant!(checker.clause(clause).empty());
     schedule(checker, clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::Lemma(clause);
