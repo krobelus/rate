@@ -28,33 +28,39 @@ use std::{
 
 #[derive(Debug)]
 pub struct Checker {
+    pub db: &'static mut Stack<Literal>,
+    pub proof: Array<usize, ProofStep>,
+    pub config: Config,
+
     pub assignment: Assignment,
+
+    clause_offset: &'static mut Stack<usize>,
     clause_is_a_reason: Array<Clause, bool>,
     clause_lrat_id: Array<Clause, Clause>,
-    clause_offset: &'static mut Stack<usize>,
     pub clause_scheduled: Array<Clause, bool>,
     pub clause_deleted_at: Array<Clause, usize>,
     pub clause_in_watchlist: Array<Clause, bool>,
-    clause_pivot: Option<Array<Clause, Literal>>,
-    pub config: Config,
-    pub db: &'static mut Stack<Literal>,
-    implication_graph: StackMapping<Literal, bool>,
     lemma_lratlemma: Array<Clause, Stack<LRATLiteral>>,
     lemma_newly_marked_clauses: Array<Clause, Stack<Clause>>,
     pub lemma_revision: Array<Clause, bool>,
+
+    pub revisions: Stack<Revision>,
+
+    clause_pivot: Option<Array<Clause, Literal>>,
+
+    implication_graph: StackMapping<Literal, bool>,
     pub literal_reason: Array<Literal, Reason>,
-    lrat_id: Clause,
-    pub maxvar: Variable,
-    pub proof: Array<usize, ProofStep>,
-    lemma: Clause, // current lemma / first lemma of proof
-    proof_steps_until_conflict: usize,
     pub literal_is_in_cone: Array<Literal, bool>,
     pub literal_minimal_lifetime: Array<Literal, usize>,
-    pub revisions: Stack<Revision>,
-    soft_propagation: bool,
     pub watchlist_noncore: Array<Literal, Watchlist>,
     pub watchlist_core: Array<Literal, Watchlist>,
+
+    lrat_id: Clause,
+    pub maxvar: Variable,
+    lemma: Clause, // current lemma / first lemma of proof
+    proof_steps_until_conflict: usize,
     pub processed: usize,
+    soft_propagation: bool,
     rejection: Rejection,
 
     pub premise_length: usize,
