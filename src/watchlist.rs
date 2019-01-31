@@ -166,7 +166,7 @@ fn watchlist_revise(checker: &mut Checker, lit: Literal) {
         let mut i = 0;
         while i < watchlist(checker, mode)[lit].len() {
             let head = watchlist(checker, mode)[lit][i];
-            let clause = checker.head2clause(head);
+            let clause = checker.h2c(head);
             watches_revise(checker, mode, lit, clause, &mut i);
             i = i.wrapping_add(1);
         }
@@ -192,7 +192,7 @@ pub fn watches_revise(
     match first_non_falsified(checker, clause, head + 2) {
         None => {
             if !checker.assignment[lit] {
-                assign(checker, lit, Reason::Forced(clause));
+                assign(checker, lit, Reason::Forced(head));
             }
         }
         Some(offset) => {
@@ -217,7 +217,7 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal)
         .push(checker.assignment.position_in_trace(lit));
     match checker.literal_reason[lit] {
         Reason::Assumed => unreachable(),
-        Reason::Forced(clause) => revision.reason_clause.push(clause),
+        Reason::Forced(clause) => revision.reason_clause.push(checker.h2c(clause)),
     }
 }
 
@@ -225,7 +225,7 @@ fn is_in_cone(checker: &Checker, literal: Literal) -> bool {
     match checker.literal_reason[literal] {
         Reason::Assumed => unreachable(),
         Reason::Forced(clause) => checker
-            .clause(clause)
+            .clause(checker.h2c(clause))
             .iter()
             .any(|&lit| lit != literal && checker.literal_is_in_cone[-lit]),
     }
@@ -254,7 +254,7 @@ pub fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             literals_to_revise -= 1;
             literal = revision.cone[literals_to_revise];
             checker.literal_reason[literal] =
-                Reason::Forced(revision.reason_clause[literals_to_revise]);
+                Reason::Forced(checker.c2h(revision.reason_clause[literals_to_revise]));
             set_reason_flag(checker, literal, true);
         } else {
             literal = checker.assignment.trace_at(left_position);
@@ -292,7 +292,7 @@ fn watches_reset_list_at(
     position_in_watchlist: &mut usize,
 ) {
     let head = watchlist(checker, mode)[literal][*position_in_watchlist];
-    let clause = checker.head2clause(head);
+    let clause = checker.h2c(head);
     let [w1, w2] = checker.watches(head);
     if !checker.assignment[-w1] && !checker.assignment[-w2] {
         // watches are correct

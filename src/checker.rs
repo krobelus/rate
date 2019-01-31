@@ -82,10 +82,16 @@ struct Rejection {
     stable_assignment: Option<Assignment>,
 }
 
+// TODO
+// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// struct NewClause(usize);
+
+pub const NEVER_READ: usize = usize::max_value();
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
     Assumed,
-    Forced(Clause),
+    Forced(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -126,7 +132,7 @@ impl Checker {
             lemma_newly_marked_clauses: Array::new(Stack::new(), num_clauses),
             lemma_revision: Array::new(false, num_clauses),
             literal_reason: Array::new(
-                Reason::Forced(Clause::NEVER_READ),
+                Reason::Forced(NEVER_READ),
                 maxvar.array_size_for_literals(),
             ),
             lrat_id: Clause(0),
@@ -175,10 +181,13 @@ impl Checker {
     pub fn watches(&self, head: usize) -> [Literal; 2] {
         [self.db[head], self.db[head + 1]]
     }
-    pub fn head2clause(&self, head: usize) -> Clause {
+    pub fn h2c(&self, head: usize) -> Clause {
         let lower = self.db[head - PADDING_START];
         let upper = self.db[head - PADDING_END + 1];
         Clause((lower.encoding as usize) | (upper.encoding as usize) >> 32)
+    }
+    pub fn c2h(&self, clause: Clause) -> usize {
+        self.clause_range(clause).start
     }
     pub fn clause_mode(&self, clause: Clause) -> Mode {
         if self.config.no_core_first {
@@ -268,9 +277,9 @@ impl ops::Try for MaybeConflict {
 }
 
 impl Reason {
-    fn as_forced_unchecked(self) -> Clause {
+    fn as_forced_unchecked(self) -> usize {
         match self {
-            Reason::Forced(clause) => clause,
+            Reason::Forced(head) => head,
             Reason::Assumed => unreachable(),
         }
     }
@@ -286,7 +295,10 @@ fn schedule(checker: &mut Checker, clause: Clause) {
 
 pub fn set_reason_flag(checker: &mut Checker, lit: Literal, value: bool) {
     match checker.literal_reason[lit] {
-        Reason::Forced(clause) => checker.clause_is_a_reason[clause] = value,
+        Reason::Forced(head) => {
+            let clause = checker.h2c(head);
+            checker.clause_is_a_reason[clause] = value;
+        }
         Reason::Assumed => (),
     }
 }
@@ -300,9 +312,9 @@ pub fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeC
         set_reason_flag(checker, literal, true);
         if !checker.config.check_satisfied_lemmas {
             let reason_clause = reason.as_forced_unchecked();
-            let reason_lifetime = checker.clause_deleted_at[reason_clause];
+            let reason_lifetime = checker.clause_deleted_at[checker.h2c(reason_clause)];
             let reason_reason_lifetime = checker
-                .clause(reason_clause)
+                .clause(checker.h2c(reason_clause))
                 .iter()
                 .filter(|&reason_literal| *reason_literal != literal)
                 .map(|&reason_literal| checker.literal_minimal_lifetime[-reason_literal])
@@ -365,7 +377,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 
                 checker.db[head + 1] = w2;
 
-                assign(checker, w1, Reason::Forced(checker.head2clause(head)));
+                assign(checker, w1, Reason::Forced(head));
                 if !checker.assignment[-w1] {
                     i += 1;
                     continue;
@@ -418,7 +430,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 
                 checker.db[head + 1] = w2;
 
-                assign(checker, w1, Reason::Forced(checker.head2clause(head)));
+                assign(checker, w1, Reason::Forced(head));
                 if !checker.assignment[-w1] {
                     checker.processed -= 1;
                     noncore_watchlist_index = i + 1;
@@ -478,7 +490,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
     for lit in Literal::all(checker.maxvar) {
         for i in 0..watchlist_filter_core(checker)[lit].len() {
             let head = watchlist_filter_core(checker)[lit][i];
-            let clause = checker.head2clause(head);
+            let clause = checker.h2c(head);
             let want = if checker.config.no_core_first {
                 checker.clause_scheduled[clause]
             } else {
@@ -552,7 +564,8 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: &Stack<Clau
                     watch_invariants(checker);
                     // During the RUP check, -pivot was an assumption.  We need to change the
                     // reason to the clause we are resolving with to appease LRAT checkers.
-                    checker.literal_reason[-pivot] = Reason::Forced(resolution_candidate);
+                    checker.literal_reason[-pivot] =
+                        Reason::Forced(checker.c2h(resolution_candidate));
                     log!(
                         checker,
                         2,
@@ -659,9 +672,9 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
         match checker.literal_reason[pivot] {
             Reason::Assumed => {}
             Reason::Forced(clause) => {
-                move_to_core(checker, clause);
-                schedule(checker, clause);
-                for offset in checker.clause_range(clause) {
+                move_to_core(checker, checker.h2c(clause));
+                schedule(checker, checker.h2c(clause));
+                for offset in checker.clause_range(checker.h2c(clause)) {
                     let lit = checker.db[offset];
                     if lit != pivot
                         && !checker.implication_graph[-lit]
@@ -677,7 +690,7 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
     // We might be able to eliminate this by using checker.implication_graph instead.
     let mut reason_literals = BoundedStack::with_capacity(checker.implication_graph.len());
     for &literal in &checker.implication_graph {
-        let reason_clause = checker.literal_reason[literal].as_forced_unchecked();
+        let reason_clause = checker.h2c(checker.literal_reason[literal].as_forced_unchecked());
         invariant!(reason_clause < lemma);
         reason_literals.push(literal);
     }
@@ -690,9 +703,10 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
             3,
             "{}:\t{}",
             literal,
-            checker.clause_copy(reason_clause)
+            checker.clause_copy(checker.h2c(reason_clause))
         );
-        checker.lemma_lratlemma[lemma].push(LRATLiteral::Unit(reason_clause));
+        let clause = checker.h2c(reason_clause);
+        checker.lemma_lratlemma[lemma].push(LRATLiteral::Unit(clause));
     }
     checker.implication_graph.clear();
 }
@@ -749,7 +763,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
     match first_two_non_falsified(checker, clause) {
         NonFalsified::None => match stage {
             Stage::Preprocessing => {
-                assign(checker, checker.db[head], Reason::Forced(clause));
+                assign(checker, checker.db[head], Reason::Forced(head));
                 CONFLICT
             }
             Stage::Verification => unreachable(),
@@ -757,7 +771,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
         NonFalsified::One(i1) => {
             let w1 = checker.db[i1];
             if !checker.assignment[w1] {
-                let conflict = assign(checker, w1, Reason::Forced(clause));
+                let conflict = assign(checker, w1, Reason::Forced(head));
                 invariant!(conflict == NO_CONFLICT);
             }
             if !checker.config.skip_deletions {
@@ -1171,11 +1185,11 @@ fn assignment_invariants(checker: &Checker) {
     for &literal in checker.assignment.into_iter() {
         match checker.literal_reason[literal] {
             Reason::Forced(clause) => invariant!(
-                clause < checker.lemma,
+                checker.h2c(clause) < checker.lemma,
                 "current lemma is {}, but literal {} is assigned because of lemma {} in {}",
                 checker.lemma,
                 literal,
-                checker.clause_copy(clause),
+                checker.clause_copy(checker.h2c(clause)),
                 checker.assignment
             ),
             Reason::Assumed => (),
