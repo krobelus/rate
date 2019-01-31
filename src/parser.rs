@@ -18,6 +18,10 @@ use std::{
 };
 
 pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
+/// format: clause are stored sequentially, using:
+/// - clause id (usize), stored as 2x32bit LE
+/// - sequence of Literal
+/// - zero terminator Literal::new(0)
 pub static mut DB: Stack<Literal> = Stack { vec: Vec::new() };
 
 #[derive(Debug, PartialEq)]
@@ -48,7 +52,7 @@ impl Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
             db: unsafe { &mut DB },
-            current_clause_offset: 0,
+            current_clause_offset: 2, // clause id
             clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_pivot: if pivot_is_first_literal {
                 Some(Stack::new())
@@ -114,6 +118,10 @@ where
 fn start_clause(parser: &mut Parser) -> Clause {
     parser.clause_offset.pop(); // pop sentinel
     let clause = parser.clause_offset.len();
+    let lower = (clause & 0x00000000ffffffff) as i32;
+    let upper = ((clause & 0xffffffff00000000) >> 32) as i32;
+    parser.db.push(Literal::new(lower));
+    parser.db.push(Literal::new(upper));
     parser.clause_offset.push(parser.db.len());
     parser.clause_deleted_at.push(usize::max_value());
     Clause(clause)
@@ -143,8 +151,8 @@ fn close_clause(parser: &mut Parser) -> Clause {
 }
 
 fn pop_clause(parser: &mut Parser, previous_offset: usize) {
-    parser.current_clause_offset = previous_offset;
-    parser.db.truncate(previous_offset);
+    parser.current_clause_offset = previous_offset - 2;
+    parser.db.truncate(parser.current_clause_offset);
     parser.clause_offset.pop();
 }
 
@@ -616,6 +624,18 @@ impl Display for ParseError {
     }
 }
 
+#[allow(dead_code)]
+fn print_db() {
+    println!(
+        "DB: [{}]",
+        (unsafe { &DB })
+            .iter()
+            .map(|&l| format!("{}", l))
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -660,16 +680,16 @@ p cnf 2 2
             .collect();
             assert_eq!(
                 unsafe { &DB },
-                &literals!(1, 2, 0, -2, -1, 0, 1, 2, 3, 0, 0)
+                &literals!(0, 0, 1, 2, 0, 1, 0, -2, -1, 0, 2, 0, 1, 2, 3, 0, 0)
             );
-            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 3, 6, 10, 11));
+            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(2, 7, 12, 16, 17));
             assert_eq!(
                 parser,
                 Parser {
                     maxvar: Variable::new(3),
                     num_clauses: 4,
                     db: unsafe { &mut DB },
-                    current_clause_offset: 11,
+                    current_clause_offset: 19,
                     clause_offset: unsafe { &mut CLAUSE_OFFSET },
                     clause_ids: clause_ids,
                     clause_pivot: None,
