@@ -280,11 +280,9 @@ fn watches_reset(checker: &mut Checker, revision: &Revision) {
 }
 
 fn watches_reset_list(checker: &mut Checker, literal: Literal) {
-    checker.watch_reset_list_count += 1;
     for &mode in &[Mode::Core, Mode::NonCore] {
         let mut i = 0;
         while i < watchlist(checker, mode)[literal].len() {
-            checker.watch_reset_count += 1;
             watches_reset_list_at(checker, mode, literal, &mut i);
             i = i.wrapping_add(1);
         }

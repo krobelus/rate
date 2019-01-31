@@ -87,17 +87,15 @@ fn main() {
         "c Elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
     );
-    echo!("c nf {}", checker.premise_length);
-    echo!("c np {}", checker.proof.size());
-    echo!("c sc {}", checker.satisfied_count);
-    echo!("c nu {}", checker.rup_introductions);
-    echo!("c nr {}", checker.rat_introductions);
-    echo!("c dc {}", checker.clause_deletions);
-    echo!("c ds {}", checker.skipped_deletions);
-    echo!("c dr {}", checker.reason_deletions);
-    echo!("c ac {}", checker.assign_count);
-    echo!("c rl {}", checker.watch_reset_list_count);
-    echo!("c wr {}", checker.watch_reset_count);
+    echo!("c premise-clauses: {}", checker.premise_length);
+    echo!("c proof-steps: {}", checker.proof.size());
+    echo!("c skipped-tautologies: {}", checker.satisfied_count);
+    echo!("c rup-introductions: {}", checker.rup_introductions);
+    echo!("c rat-introductions: {}", checker.rat_introductions);
+    echo!("c clause-deletions: {}", checker.clause_deletions);
+    // echo!("c skipped-deletions {}", checker.skipped_deletions);
+    echo!("c reason-deletions: {}", checker.reason_deletions);
+    echo!("c assignment-count: {}", checker.assign_count);
     echo!("s {}", if ok { "ACCEPTED" } else { "REJECTED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();

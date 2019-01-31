@@ -65,8 +65,6 @@ pub struct Checker {
     pub reason_deletions: usize,
 
     pub assign_count: usize,
-    pub watch_reset_count: usize,
-    pub watch_reset_list_count: usize,
     pub satisfied_count: usize,
 }
 
@@ -145,8 +143,6 @@ impl Checker {
             skipped_deletions: 0,
             reason_deletions: 0,
             assign_count: 0,
-            watch_reset_count: 0,
-            watch_reset_list_count: 0,
             satisfied_count: 0,
         };
         checker.literal_reason[Literal::TOP] = Reason::Assumed;
@@ -842,30 +838,30 @@ fn preprocess(checker: &mut Checker) -> bool {
                     "[preprocess] del {}",
                     checker.clause_copy(clause)
                 );
+                if checker.clause_is_a_reason[clause] {
+                    checker.reason_deletions += 1;
+                }
                 if checker.config.skip_deletions {
                     let is_unit = checker
                         .clause_range(clause)
                         .filter(|&i| !checker.assignment[-checker.db[i]])
                         .count()
                         == 1;
-                    if !is_unit {
+                    if is_unit {
                         checker.skipped_deletions += 1;
-                        if checker.clause_is_a_reason[clause] {
-                            checker.reason_deletions += 1;
-                            if checker.config.verbosity > 0 {
-                                warn!(
-                                    "Ignoring deletion of (pseudo) unit clause {}",
-                                    checker.clause_copy(clause)
-                                );
-                            }
+                        if checker.config.verbosity > 0 {
+                            warn!(
+                                "Ignoring deletion of (pseudo) unit clause {}",
+                                checker.clause_copy(clause)
+                            );
                         }
+                    } else {
                         watches_remove(checker, checker.clause_mode(clause), clause);
                     }
                 } else {
                     invariant!(!checker.clause_scheduled[clause]);
                     watches_remove(checker, Mode::NonCore, clause);
                     if checker.clause_is_a_reason[clause] {
-                        checker.reason_deletions += 1;
                         revision_create(checker, clause);
                     }
                 }
