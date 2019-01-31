@@ -298,17 +298,19 @@ pub fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeC
     checker.assignment.push(literal);
     if !checker.soft_propagation {
         set_reason_flag(checker, literal, true);
-        let reason_clause = reason.as_forced_unchecked();
-        let reason_lifetime = checker.clause_deleted_at[reason_clause];
-        let reason_reason_lifetime = checker
-            .clause(reason_clause)
-            .iter()
-            .filter(|&reason_literal| *reason_literal != literal)
-            .map(|&reason_literal| checker.literal_minimal_lifetime[-reason_literal])
-            .min()
-            .unwrap_or(usize::max_value());
-        checker.literal_minimal_lifetime[literal] =
-            cmp::min(reason_lifetime, reason_reason_lifetime);
+        if !checker.config.check_satisfied_lemmas {
+            let reason_clause = reason.as_forced_unchecked();
+            let reason_lifetime = checker.clause_deleted_at[reason_clause];
+            let reason_reason_lifetime = checker
+                .clause(reason_clause)
+                .iter()
+                .filter(|&reason_literal| *reason_literal != literal)
+                .map(|&reason_literal| checker.literal_minimal_lifetime[-reason_literal])
+                .min()
+                .unwrap_or(usize::max_value());
+            checker.literal_minimal_lifetime[literal] =
+                cmp::min(reason_lifetime, reason_reason_lifetime);
+        }
     }
     if checker.assignment[-literal] {
         CONFLICT
@@ -815,7 +817,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     } else {
         clause_is_satisfied_until_its_deletion(checker, clause)
     };
-    if already_satisfied {
+    if !checker.config.check_satisfied_lemmas && already_satisfied {
         checker.satisfied_count += 1;
     } else {
         watches_add(checker, Stage::Preprocessing, clause)?;

@@ -60,6 +60,8 @@ fn main() {
          .help("When checking for RAT, only try the first literal as pivot."))
     .arg(Arg::with_name("NO_CORE_FIRST").short("u").long("no-core-first")
          .help("Disable core first unit propagation."))
+    .arg(Arg::with_name("CHECK_SATISFIED_LEMMAS").short("s").long("check-satisfied-lemmas")
+             .help("Do not skip lemmas that are satisfied by the partial UP-model."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
          .help("Try to be compatible with drat-trim.\nThis implies --skip-deletions and --noncore-rat-candidates"))

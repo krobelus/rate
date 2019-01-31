@@ -8,6 +8,7 @@ pub struct Config {
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
     pub no_core_first: bool,
+    pub check_satisfied_lemmas: bool,
     pub verbosity: u64,
     pub formula_filename: String,
     pub proof_filename: String,
@@ -109,6 +110,7 @@ impl Config {
             unmarked_rat_candidates: !drat_trim && matches.is_present("UNMARKED_RAT_CANDIDATES"),
             pivot_is_first_literal: rupee || matches.is_present("ASSUME_PIVOT_IS_FIRST"),
             no_core_first: matches.is_present("NO_CORE_FIRST"),
+            check_satisfied_lemmas: matches.is_present("CHECK_SATISFIED_LEMMAS"),
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {
                     warn!("verbosity can be at most 3");
