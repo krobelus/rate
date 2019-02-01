@@ -492,13 +492,13 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
     candidates
 }
 
-fn rup(checker: &mut Checker, clause: Clause, pivot: Literal) -> bool {
+fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> bool {
     assignment_invariants(checker);
     requires!(checker.processed == checker.assignment.len());
     let mut conflict_literal = None;
     for offset in checker.clause_range(clause) {
         let unit = checker.db[offset];
-        if unit == Literal::BOTTOM || unit == -pivot {
+        if unit == Literal::BOTTOM || pivot.map_or(false, |pivot| unit == -pivot) {
             continue;
         }
         if !checker.assignment[-unit] {
@@ -553,7 +553,7 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: &Stack<Clau
                     );
                     checker.lemma_lratlemma[lemma]
                         .push(LRATLiteral::ResolutionCandidate(resolution_candidate));
-                    let ok = rup(checker, resolution_candidate, pivot);
+                    let ok = rup(checker, resolution_candidate, Some(pivot));
                     if !ok {
                         checker.rejection.pivot = Some(pivot);
                         checker.rejection.resolved_with = Some(resolution_candidate);
@@ -580,7 +580,7 @@ fn check_inference(checker: &mut Checker) -> bool {
             }
             && preserve_assignment!(
                 checker,
-                rup(checker, lemma, pivot) && {
+                rup(checker, lemma, None) && {
                     checker.rup_introductions += 1;
                     true
                 } || {
