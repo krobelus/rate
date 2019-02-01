@@ -1073,10 +1073,8 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                         (lrat_id(checker, clause) == Clause::UNINITIALIZED)
                             == (clause >= checker.lemma && !checker.clause_scheduled[clause])
                     );
-                    if false {
-                        if lrat_id(checker, clause) != Clause::UNINITIALIZED {
-                            write_deletion(checker, &mut file, &mut clause_deleted, clause)?;
-                        }
+                    if lrat_id(checker, clause) != Clause::UNINITIALIZED {
+                        write_deletion(checker, &mut file, &mut clause_deleted, clause)?;
                     }
                     i += 1;
                 }
