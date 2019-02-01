@@ -17,7 +17,6 @@ use std::{
     io, ops, panic, str,
 };
 
-pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
 /// format: clause are stored sequentially, using:
 /// - clause id (usize), stored as 2x32bit LE
 /// - sequence of Literal
@@ -26,7 +25,8 @@ pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
 pub const PADDING_START: usize = 2;
 pub const PADDING_END: usize = 1;
 
-pub static mut DB: Stack<Literal> = Stack { vec: Vec::new() };
+pub static mut CLAUSE_DATABASE: Stack<Literal> = Stack { vec: Vec::new() };
+pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
@@ -55,7 +55,7 @@ impl Parser {
         Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
-            db: unsafe { &mut DB },
+            db: unsafe { &mut CLAUSE_DATABASE },
             current_clause_offset: 0,
             clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_pivot: if pivot_is_first_literal {
@@ -70,16 +70,16 @@ impl Parser {
         }
     }
     // TODO consolidate
+    fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
+        self.clause_offset[clause.as_offset()] + PADDING_START
+            ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
+    }
     fn clause(&self, clause: Clause) -> Slice<Literal> {
         let range = self.clause_range(clause);
         self.db.as_slice().range(range.start, range.end)
     }
     fn clause_copy(&self, clause: Clause) -> ClauseCopy {
         ClauseCopy::new(clause, self.clause(clause))
-    }
-    fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause.as_offset()] + PADDING_START
-            ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
     }
 }
 
@@ -225,7 +225,7 @@ impl Hash for ClauseHashEq {
         unsafe {
             let start = CLAUSE_OFFSET[self.0.as_offset()] + PADDING_START;
             let end = CLAUSE_OFFSET[self.0.as_offset() + 1] - PADDING_END;
-            compute_hash(DB.as_slice().range(start, end)).hash(hasher)
+            compute_hash(CLAUSE_DATABASE.as_slice().range(start, end)).hash(hasher)
         }
     }
 }
@@ -238,10 +238,10 @@ impl PartialEq for ClauseHashEq {
             let end = CLAUSE_OFFSET[self.0.as_offset() + 1] - PADDING_END;
             let other_start = CLAUSE_OFFSET[other.0.as_offset()] + PADDING_START;
             for i in 0..end - start {
-                if other_start + i == DB.len() {
+                if other_start + i == CLAUSE_DATABASE.len() {
                     return false;
                 }
-                if DB[start + i] != DB[other_start + i] {
+                if CLAUSE_DATABASE[start + i] != CLAUSE_DATABASE[other_start + i] {
                     return false;
                 }
             }
@@ -642,8 +642,8 @@ impl Display for ParseError {
 #[allow(dead_code)]
 fn print_db() {
     println!(
-        "DB: [{}]",
-        (unsafe { &DB })
+        "CLAUSE_DATABASE: [{}]",
+        (unsafe { &CLAUSE_DATABASE })
             .iter()
             .map(|&l| format!("{}", l))
             .collect::<Vec<_>>()
@@ -693,14 +693,20 @@ p cnf 2 2
             .iter()
             .cloned()
             .collect();
+            fn lit(x: i32) -> Literal {
+                Literal::new(x)
+            }
+            fn raw(x: u32) -> Literal {
+                Literal::from_raw(x)
+            }
             assert_eq!(
-                unsafe { &DB },
+                unsafe { &CLAUSE_DATABASE },
                 #[rustfmt::skip]
-                &literals!(
-                    0, 0, 1, 2, 0,
-                    1, 0, -2, -1, 0,
-                    2, 0, 1, 2, 3, 0,
-                    Literal::NEVER_READ.decode() , Literal::NEVER_READ.decode() , 0
+                &stack!(
+                    raw(0), raw(0), lit(1), lit(2), lit(0),
+                    raw(1), raw(0), lit(-2), lit(-1), lit(0),
+                    raw(2), raw(0), lit(1), lit(2), lit(3), lit(0),
+                    Literal::NEVER_READ, Literal::NEVER_READ, lit(0)
                 )
             );
             assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 5, 10, 16, 19));
@@ -709,7 +715,7 @@ p cnf 2 2
                 Parser {
                     maxvar: Variable::new(3),
                     num_clauses: 4,
-                    db: unsafe { &mut DB },
+                    db: unsafe { &mut CLAUSE_DATABASE },
                     current_clause_offset: 16,
                     clause_offset: unsafe { &mut CLAUSE_OFFSET },
                     clause_ids: clause_ids,
@@ -737,7 +743,7 @@ p cnf 2 2
     fn reset_globals() {
         unsafe {
             CLAUSE_OFFSET.clear();
-            DB.clear();
+            CLAUSE_DATABASE.clear();
         }
     }
 }

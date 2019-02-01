@@ -7,7 +7,7 @@ use crate::{
     config::Config,
     literal::{Literal, Variable},
     memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
-    parser::{Parser, CLAUSE_OFFSET, DB, PADDING_END, PADDING_START},
+    parser::{Parser, CLAUSE_OFFSET, PADDING_END, PADDING_START},
     watchlist::{
         revision_apply, revision_create, watch_add, watch_invariants, watches_find_and_remove,
         watches_remove, Mode, Watchlist,
@@ -82,12 +82,6 @@ struct Rejection {
     stable_assignment: Option<Assignment>,
 }
 
-// TODO
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// struct NewClause(usize);
-
-pub const NEVER_READ: usize = usize::max_value();
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
     Assumed,
@@ -121,7 +115,7 @@ impl Checker {
             clause_in_watchlist: Array::new(false, num_clauses),
             clause_pivot: parser.clause_pivot.map(Array::from),
             config: config,
-            db: unsafe { &mut DB },
+            db: parser.db,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -132,7 +126,7 @@ impl Checker {
             lemma_newly_marked_clauses: Array::new(Stack::new(), num_clauses),
             lemma_revision: Array::new(false, num_clauses),
             literal_reason: Array::new(
-                Reason::Forced(NEVER_READ),
+                Reason::Forced(usize::max_value()),
                 maxvar.array_size_for_literals(),
             ),
             lrat_id: Clause(0),
@@ -777,9 +771,9 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
             if !checker.config.skip_deletions {
                 checker.clause_in_watchlist[clause] = true;
                 checker.db.as_mut_slice().swap(head, i1);
-                watch_add(checker, mode, w1, clause);
+                watch_add(checker, mode, w1, head);
                 if stage == Stage::Verification {
-                    watch_add(checker, mode, checker.db[head + 1], clause);
+                    watch_add(checker, mode, checker.db[head + 1], head);
                 }
             }
             NO_CONFLICT
