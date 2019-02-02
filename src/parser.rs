@@ -36,7 +36,7 @@ pub struct Parser {
     pub current_clause_offset: usize,
     pub clause_offset: &'static mut Stack<usize>,
     clause_ids: HashMap<ClauseHashEq, Stack<Clause>>,
-    pub clause_pivot: Option<Stack<Literal>>,
+    pub clause_pivot: Stack<Literal>,
     pub clause_deleted_at: Stack<usize>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
@@ -50,7 +50,7 @@ struct ParseError {
 }
 
 impl Parser {
-    pub fn new(pivot_is_first_literal: bool) -> Parser {
+    pub fn new() -> Parser {
         unsafe { CLAUSE_OFFSET.push(0) }; // sentinel
         Parser {
             maxvar: Variable::new(0),
@@ -58,11 +58,7 @@ impl Parser {
             db: unsafe { &mut CLAUSE_DATABASE },
             current_clause_offset: 0,
             clause_offset: unsafe { &mut CLAUSE_OFFSET },
-            clause_pivot: if pivot_is_first_literal {
-                Some(Stack::new())
-            } else {
-                None
-            },
+            clause_pivot: Stack::new(),
             clause_deleted_at: Stack::new(),
             proof_start: Clause(0),
             proof: Stack::new(),
@@ -84,12 +80,8 @@ impl Parser {
 }
 
 #[cfg_attr(feature = "flame_it", flame)]
-pub fn parse_files<'a>(
-    formula_file: &str,
-    proof_file: &str,
-    pivot_is_first_literal: bool,
-) -> Parser {
-    let mut parser = Parser::new(pivot_is_first_literal);
+pub fn parse_files<'a>(formula_file: &str, proof_file: &str) -> Parser {
+    let mut parser = Parser::new();
     parse_formula(&mut parser, read_or_die(formula_file).as_slice())
         .map(|err| die!("error parsing formula at line {} col {}", err.line, err.col));
     parse_proof(&mut parser, read_or_die(proof_file).as_slice())
@@ -387,10 +379,7 @@ fn parse_formula<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseEr
                 _ if isspace(c) => {
                     if head {
                         start_clause(&mut *parser);
-                        parser
-                            .clause_pivot
-                            .as_mut()
-                            .map(|pivots| pivots.push(Literal::NEVER_READ));
+                        parser.clause_pivot.push(Literal::NEVER_READ);
                     }
                     let literal = add_literal_ascii(&mut *parser, input.range(start, i));
                     head = literal.is_zero();
@@ -462,10 +451,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
             LemmaPositionBinary::Lemma => match number_binary(input) {
                 (input, literal) => {
                     if head {
-                        parser
-                            .clause_pivot
-                            .as_mut()
-                            .map(|pivots| pivots.push(literal));
+                        parser.clause_pivot.push(literal);
                         head = false;
                     }
                     add_literal(parser, literal);
@@ -561,10 +547,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
                 _ if isspace(c) => {
                     let literal = add_literal_ascii(&mut *parser, input.range(start, i));
                     if head {
-                        parser
-                            .clause_pivot
-                            .as_mut()
-                            .map(|pivots| pivots.push(literal));
+                        parser.clause_pivot.push(literal);
                     }
                     head = literal.is_zero();
                     state = if head {
@@ -665,7 +648,7 @@ mod tests {
     }
 
     fn sample_formula() -> Parser {
-        let mut parser = Parser::new(false);
+        let mut parser = Parser::new();
         parse_formula(
             &mut parser,
             Slice::new(
@@ -719,7 +702,7 @@ p cnf 2 2
                     current_clause_offset: 16,
                     clause_offset: unsafe { &mut CLAUSE_OFFSET },
                     clause_ids: clause_ids,
-                    clause_pivot: None,
+                    clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                     clause_deleted_at: stack!(1, usize::max_value(), usize::max_value()),
                     proof_start: Clause(2),
                     proof: stack![

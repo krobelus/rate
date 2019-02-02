@@ -72,7 +72,7 @@ pub fn watch_remove_at(
 ) {
     log!(
         checker,
-        3,
+        4,
         "watchlist[{}] del [{}]: {}",
         lit,
         position_in_watchlist,
@@ -82,13 +82,13 @@ pub fn watch_remove_at(
 }
 
 pub fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) {
-    log!(checker, 3, "watchlist[{}] add {}", lit, head);
+    log!(checker, 4, "watchlist[{}] add {}", lit, head);
     watchlist_mut(checker, mode)[lit].push(head)
 }
 
 pub fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
     let head = checker.clause_range(clause).start;
-    log!(checker, 2, "removing watches for [@{}]", head);
+    log!(checker, 4, "removing watches for [@{}]", head);
     let [w1, w2] = checker.watches(head);
     watches_find_and_remove(checker, mode, w1, head);
     watches_find_and_remove(checker, mode, w2, head);
@@ -246,7 +246,7 @@ pub fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     checker.assignment.resize_trace(right_position);
     checker.processed = right_position;
     // Re-introduce the assignments that were induce by the deleted unit,
-    // starting from the ones with the highest offset in the trace.
+    // starting from the ones with the highest offset in the trail.
     while literals_to_revise > 0 {
         right_position -= 1;
         let literal;

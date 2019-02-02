@@ -110,8 +110,10 @@ def accepts(checker, name):
 @timed
 def lrat_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
-    ok = b's ACCEPTED\n' in stdout or (
-        'lrat-check' in checker[0] and b'c VERIFIED' in stdout)
+    ok = (('lratcheck' in checker[0] and b's ACCEPTED\n' in stdout)
+          or ('lrat-check' in checker[0] and b'c VERIFIED' in stdout)
+          or ('lrat-check-acl2' in checker[0] and b's VERIFIED' in stdout)
+          )
     if not ok:
         print(str(stdout, 'utf8'))
     return ok
@@ -158,27 +160,32 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
 
 def double_check(
         drat_checker,
-        lrat_checker=['lratcheck'],
+        lrat_checker=['lrat-check-acl2'],
         *,
         instances=all_inputs()):
     build_release()
     [ensure_executable(command) for command in (drat_checker, lrat_checker)]
+    sick = not(any('skip-deletion' in arg for arg in drat_checker))
     for name in instances:
         args = [
             f'{name}.cnf',
             f'{name}.drat',
             '-L',
-            f'{name}.lrat',
-            '--recheck',
-            f'{name}.sick']
+            f'{name}.lrat']
+        if sick:
+            args += ['--recheck', f'{name}.sick']
         if accepts(drat_checker + args, name):
             if name == 'benchmarks/crafted/bottom' and 'lrat-check' in lrat_checker[0]:
                 continue  # infinite loop
             if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[0]:
                 continue  # rejects tautological formulas
+            if name == 'benchmarks/crafted/tautological' and 'lrat-check-acl2' in lrat_checker[0]:
+                continue  # reports "Invalid formula!"
+            if name == 'benchmarks/crafted/bottom' and 'lrat-check-acl2' in lrat_checker[0]:
+                continue  # not sure how to do that
             assert lrat_checker_accepts(
                 lrat_checker + [args[0], args[3]], name)
-        else:
+        elif sick:
             # TODO hack sickcheck to handle some edge cases
             if name == 'benchmarks/crafted/empty':
                 continue
@@ -190,7 +197,7 @@ def double_check(
                 ['sickcheck'] + args[:2] + [args[-1]], name)
 
 
-def test_quick():
+def test_quick_default():
     double_check(
         rate(
             flags=['--assume-pivot-is-first']),
@@ -205,16 +212,29 @@ def test_quick_no_core_first():
         instances=small_inputs())
 
 
-def test_with_lrat_check():
-    double_check(rate(
-        flags=['--assume-pivot-is-first']), ['lrat-check'])
-
-
-def test_with_lratcheck():
+def test_quick_skip_deletions():
     double_check(
         rate(
-            flags=['--assume-pivot-is-first']),
-        ['lratcheck'])
+            flags=['--assume-pivot-is-first',
+                   '--skip-deletions']),
+        instances=small_inputs())
+
+
+def test_full():
+    double_check(rate(
+        flags=['--assume-pivot-is-first']))
+
+
+# def test_with_lrat_check():
+#     double_check(rate(
+#         flags=['--assume-pivot-is-first']), ['lrat-check'])
+
+
+# def test_with_lratcheck():
+#     double_check(
+#         rate(
+#             flags=['--assume-pivot-is-first', '--lratcheck-compat']),
+#         ['lratcheck'])
 
 
 def test_acceptance_initial_commit():

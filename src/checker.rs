@@ -32,21 +32,14 @@ pub struct Checker {
     pub proof: Array<usize, ProofStep>,
     pub config: Config,
 
+    pub maxvar: Variable,
     pub assignment: Assignment,
-
-    clause_offset: &'static mut Stack<usize>,
-    clause_is_a_reason: Array<Clause, bool>,
-    clause_lrat_id: Array<Clause, Clause>,
-    pub clause_scheduled: Array<Clause, bool>,
-    pub clause_deleted_at: Array<Clause, usize>,
-    pub clause_in_watchlist: Array<Clause, bool>,
-    lemma_lratlemma: Array<Clause, Stack<LRATLiteral>>,
-    lemma_newly_marked_clauses: Array<Clause, Stack<Clause>>,
-    pub lemma_revision: Array<Clause, bool>,
-
-    pub revisions: Stack<Revision>,
-
-    clause_pivot: Option<Array<Clause, Literal>>,
+    pub processed: usize,
+    lemma: Clause, // current lemma / first lemma of proof
+    proof_steps_until_conflict: usize,
+    soft_propagation: bool,
+    conflict_literal: Literal,
+    rejection: Rejection,
 
     implication_graph: StackMapping<Literal, bool>,
     pub literal_reason: Array<Literal, Reason>,
@@ -55,13 +48,24 @@ pub struct Checker {
     pub watchlist_noncore: Array<Literal, Watchlist>,
     pub watchlist_core: Array<Literal, Watchlist>,
 
+    clause_offset: &'static mut Stack<usize>,
+    clause_is_a_reason: Array<Clause, bool>,
+    pub clause_scheduled: Array<Clause, bool>,
+    pub clause_deleted_at: Array<Clause, usize>,
+    clause_deletion_ignored: Array<Clause, bool>,
+    clause_pivot: Array<Clause, Literal>,
+    pub clause_in_watchlist: Array<Clause, bool>,
+    lemma_newly_marked_clauses: Array<Clause, Stack<Clause>>,
+    pub lemma_revision: Array<Clause, bool>,
+
+    pub revisions: Stack<Revision>,
+
+    lrat: Stack<LRATLiteral>,
+    clause_lrat_offset: Array<Clause, usize>,
+    clause_lrat_id: Array<Clause, Clause>,
+    dependencies: Stack<LRATDependency>,
     lrat_id: Clause,
-    pub maxvar: Variable,
-    lemma: Clause, // current lemma / first lemma of proof
-    proof_steps_until_conflict: usize,
-    pub processed: usize,
-    soft_propagation: bool,
-    rejection: Rejection,
+    prerat_clauses: StackMapping<Clause, bool>, // Linear lookup should be fine here as well.
 
     pub premise_length: usize,
     pub rup_introductions: usize,
@@ -76,6 +80,7 @@ pub struct Checker {
 
 #[derive(Debug)]
 struct Rejection {
+    lemma: Stack<Literal>,
     failed_proof_step: usize,
     pivot: Option<Literal>,
     resolved_with: Option<Clause>,
@@ -89,9 +94,17 @@ pub enum Reason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum LRATDependency {
+    Unit(Clause),
+    ForcedUnit(Clause),
+    ResolutionCandidate(Clause),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum LRATLiteral {
     ResolutionCandidate(Clause),
-    Unit(Clause),
+    Hint(Clause),
+    Zero,
 }
 
 #[derive(Debug)]
@@ -112,17 +125,19 @@ impl Checker {
             clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_scheduled: Array::new(false, num_clauses),
             clause_deleted_at: Array::from(parser.clause_deleted_at),
+            clause_deletion_ignored: Array::new(false, num_clauses),
             clause_in_watchlist: Array::new(false, num_clauses),
-            clause_pivot: parser.clause_pivot.map(Array::from),
+            clause_pivot: Array::from(parser.clause_pivot),
+            dependencies: Stack::new(),
             config: config,
             db: parser.db,
             soft_propagation: false,
+            conflict_literal: Literal::NEVER_READ,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
                 maxvar.array_size_for_literals(),
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
-            lemma_lratlemma: Array::new(Stack::new(), num_clauses),
             lemma_newly_marked_clauses: Array::new(Stack::new(), num_clauses),
             lemma_revision: Array::new(false, num_clauses),
             literal_reason: Array::new(
@@ -130,6 +145,13 @@ impl Checker {
                 maxvar.array_size_for_literals(),
             ),
             lrat_id: Clause(0),
+            clause_lrat_offset: Array::new(usize::max_value(), num_clauses),
+            lrat: Stack::new(),
+            prerat_clauses: StackMapping::with_array_value_size_stack_size(
+                false,
+                num_clauses,
+                cmp::min(num_clauses, maxvar.array_size_for_literals()),
+            ),
             maxvar: maxvar,
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
@@ -209,11 +231,19 @@ impl Checker {
         }
         result
     }
+    pub fn closing_empty_clause(&self) -> Clause {
+        requires!(self.proof_steps_until_conflict != usize::max_value());
+        match self.proof[self.proof_steps_until_conflict] {
+            ProofStep::Lemma(empty_clause) => empty_clause,
+            ProofStep::Deletion(_) => unreachable(),
+        }
+    }
 }
 
 impl Rejection {
     fn new() -> Rejection {
         Rejection {
+            lemma: Stack::new(),
             failed_proof_step: usize::max_value(),
             pivot: None,
             resolved_with: None,
@@ -322,6 +352,16 @@ pub fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeC
         CONFLICT
     } else {
         NO_CONFLICT
+    }
+}
+
+fn propagate_set_conflict_literal(checker: &mut Checker) -> MaybeConflict {
+    match propagate(checker) {
+        NO_CONFLICT => NO_CONFLICT,
+        CONFLICT => {
+            checker.conflict_literal = checker.assignment.peek();
+            CONFLICT
+        }
     }
 }
 
@@ -506,40 +546,101 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
     candidates
 }
 
-fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> bool {
+fn check_inference(checker: &mut Checker) -> bool {
+    checker.soft_propagation = true;
+    let ok = preserve_assignment!(checker, rup_or_rat(checker));
+    checker.soft_propagation = false;
+    ok
+}
+
+fn rup_or_rat(checker: &mut Checker) -> bool {
+    checker.dependencies.clear();
     assignment_invariants(checker);
     requires!(checker.processed == checker.assignment.len());
-    let mut conflict_literal = None;
-    for offset in checker.clause_range(clause) {
-        let unit = checker.db[offset];
-        if unit == Literal::BOTTOM || pivot.map_or(false, |pivot| unit == -pivot) {
-            continue;
-        }
-        if !checker.assignment[-unit] {
-            if assign(checker, -unit, Reason::Assumed) == CONFLICT && conflict_literal.is_none() {
-                conflict_literal = Some(-unit);
-            }
-        }
+    let trace_length_forced = checker.assignment.len();
+    let lemma = checker.lemma;
+    if rup(checker, lemma, None) == CONFLICT {
+        checker.rup_introductions += 1;
+        extract_dependencies(checker, None);
+        write_dependencies_for_lrat(checker, lemma, false);
+        return true;
     }
-    match conflict_literal {
-        Some(literal) => {
-            extract_dependencies(checker, literal);
+    match rat_pivot_index(checker, trace_length_forced) {
+        Some(pivot_index) => {
+            // Make pivot the first literal in the LRAT proof.
+            let head = checker.clause_range(lemma).start;
+            checker.db.as_mut_slice().swap(head, head + pivot_index);
             true
         }
         None => {
-            if propagate(checker) == CONFLICT {
-                extract_dependencies_for_last_literal(checker);
-                true
-            } else {
-                false
-            }
+            echo!("c RAT check failed for {}", checker.clause_copy(lemma));
+            false
         }
     }
 }
 
-fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: &Stack<Clause>) -> bool {
-    assignment_invariants(checker);
-    checker.rat_introductions += 1;
+// NOTE: lratcheck/sickcheck might require us to first assign all units before
+// returning.
+fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeConflict {
+    for offset in checker.clause_range(clause) {
+        let unit = checker.db[offset];
+        if pivot.map_or(false, |pivot| unit == -pivot) {
+            continue;
+        }
+        if !checker.assignment[-unit] {
+            invariant!(unit != Literal::BOTTOM);
+            if assign(checker, -unit, Reason::Assumed) == CONFLICT {
+                checker.conflict_literal = -unit;
+                return CONFLICT;
+            }
+        }
+    }
+    propagate_set_conflict_literal(checker)
+}
+
+fn rat_pivot_index(checker: &mut Checker, trace_length_forced: usize) -> Option<usize> {
+    let lemma = checker.lemma;
+    let pivot = checker.clause_pivot[lemma];
+
+    let pivot_falsified = checker.assignment.position_in_trace(-pivot) < trace_length_forced;
+    if pivot_falsified {
+        echo!(
+            "c RAT check on {} failed due to falsified pivot {}",
+            checker.clause_copy(lemma),
+            pivot
+        );
+        checker.rejection.pivot = Some(pivot);
+        let resolution_candidates = collect_resolution_candidates(checker, pivot);
+        invariant!(
+            !resolution_candidates.empty()
+                || (checker.config.skip_deletions && checker.clause_is_a_reason[lemma])
+        );
+        if !resolution_candidates.empty() {
+            checker.rejection.resolved_with = Some(resolution_candidates[0]);
+        }
+        checker.rejection.stable_assignment = Some(checker.assignment.clone());
+        return None;
+    }
+
+    let pivot_index = checker
+        .clause(lemma)
+        .iter()
+        .position(|&literal| literal == pivot)
+        .unwrap();
+
+    if rat_on_pivot(checker, pivot) {
+        return Some(pivot_index);
+    }
+    if checker.config.pivot_is_first_literal {
+        return None;
+    }
+    checker.clause_range(lemma).position(|offset| {
+        let pivot = checker.db[offset];
+        pivot != Literal::BOTTOM && rat_on_pivot(checker, pivot)
+    })
+}
+
+fn rat_on_pivot(checker: &mut Checker, pivot: Literal) -> bool {
     let lemma = checker.lemma;
     log!(
         checker,
@@ -549,6 +650,19 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: &Stack<Clau
         pivot,
         checker.assignment
     );
+    invariant!(checker.assignment[-pivot]);
+    let resolution_candidates = collect_resolution_candidates(checker, pivot);
+    rat(checker, pivot, resolution_candidates) && {
+        checker.rat_introductions += 1;
+        write_dependencies_for_lrat(checker, lemma, true);
+        true
+    }
+}
+
+fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Clause>) -> bool {
+    assignment_invariants(checker);
+    checker.dependencies.clear();
+    let trail_length_before_rat = checker.assignment.len();
     resolution_candidates.iter().all(|&resolution_candidate| {
         preserve_assignment!(
             checker,
@@ -556,98 +670,44 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: &Stack<Clau
                 && !checker.clause_scheduled[resolution_candidate])
                 || {
                     watch_invariants(checker);
-                    // During the RUP check, -pivot was an assumption.  We need to change the
-                    // reason to the clause we are resolving with to appease LRAT checkers.
-                    checker.literal_reason[-pivot] =
-                        Reason::Forced(checker.c2h(resolution_candidate));
+                    // During the RUP check, -pivot was an assumption. ACL2
+                    // lrat-check does use this semantics, while lratcheck
+                    // expects that -pivot was the result of propagating the
+                    // resolution candidate.
+                    if checker.config.lratcheck_compat {
+                        checker.literal_reason[-pivot] =
+                            Reason::Forced(checker.c2h(resolution_candidate));
+                    }
                     log!(
                         checker,
                         2,
                         "Resolving with {}",
                         checker.clause_copy(resolution_candidate)
                     );
-                    checker.lemma_lratlemma[lemma]
-                        .push(LRATLiteral::ResolutionCandidate(resolution_candidate));
-                    let ok = rup(checker, resolution_candidate, Some(pivot));
-                    if !ok {
+                    if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
                         checker.rejection.pivot = Some(pivot);
                         checker.rejection.resolved_with = Some(resolution_candidate);
                         checker.rejection.stable_assignment = Some(checker.assignment.clone());
+                        false
+                    } else {
+                        checker
+                            .dependencies
+                            .push(LRATDependency::ResolutionCandidate(resolution_candidate));
+                        extract_dependencies(checker, Some(trail_length_before_rat));
+                        true
                     }
-                    ok
                 }
         )
     })
 }
 
-fn check_inference(checker: &mut Checker) -> bool {
+fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<usize>) {
     let lemma = checker.lemma;
-    checker.soft_propagation = true;
-    let copy = checker.clause_copy(lemma);
-    let trace_length = checker.assignment.len();
-    let pivot_index = copy.iter().position(|&pivot| {
-        watch_invariants(checker);
-        checker.lemma_lratlemma[lemma].clear();
-        pivot != Literal::BOTTOM
-            && match &checker.clause_pivot {
-                None => true,
-                Some(pivots) => pivots[lemma] == pivot,
-            }
-            && preserve_assignment!(
-                checker,
-                rup(checker, lemma, None) && {
-                    checker.rup_introductions += 1;
-                    true
-                } || {
-                    invariant!(checker.assignment[-pivot]);
-                    let pivot_falsified =
-                        checker.assignment.position_in_trace(-pivot) < trace_length;
-                    let resolution_candidates = collect_resolution_candidates(checker, pivot);
-                    if pivot_falsified {
-                        echo!(
-                            "c RAT check on {} failed due to falsified pivot {}",
-                            checker.clause_copy(lemma),
-                            pivot
-                        );
-                        checker.rejection.pivot = Some(pivot);
-                        invariant!(
-                            !resolution_candidates.empty()
-                                || (checker.config.skip_deletions
-                                    && checker.clause_is_a_reason[lemma])
-                        );
-                        if !resolution_candidates.empty() {
-                            checker.rejection.resolved_with = Some(resolution_candidates[0]);
-                        }
-                        checker.rejection.stable_assignment = Some(checker.assignment.clone());
-                        false
-                    } else {
-                        rat(checker, pivot, &resolution_candidates)
-                    }
-                }
-            )
-    });
-    checker.soft_propagation = false;
-    if let Some(i) = pivot_index {
-        // Make pivot the first literal in the LRAT proof.
-        let head = checker.clause_range(lemma).start;
-        checker.db.as_mut_slice().swap(head, head + i);
-        true
-    } else {
-        echo!("c RAT check failed for {}", checker.clause_copy(lemma));
-        false
-    }
-}
-
-fn extract_dependencies_for_last_literal(checker: &mut Checker) {
-    let last_assigned = checker.assignment.peek();
-    extract_dependencies(checker, last_assigned)
-}
-
-fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
-    let lemma = checker.lemma;
-    assignment_invariants(checker);
-    requires!(checker.assignment[conflict_literal]);
-    requires!(checker.assignment[-conflict_literal]);
+    let conflict_literal = checker.conflict_literal;
+    requires!(
+        conflict_literal == Literal::TOP
+            || (checker.assignment[conflict_literal] && checker.assignment[-conflict_literal])
+    );
     requires!(checker.implication_graph.empty());
     fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
         match checker.literal_reason[literal] {
@@ -657,14 +717,17 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
             }
         }
     }
-    add_cause_of_conflict(checker, conflict_literal);
-    add_cause_of_conflict(checker, -conflict_literal);
+
+    if conflict_literal != Literal::TOP {
+        add_cause_of_conflict(checker, conflict_literal);
+        add_cause_of_conflict(checker, -conflict_literal);
+    }
     let mut i = 0;
     while i < checker.implication_graph.len() {
         let pivot = checker.implication_graph.stack_at(i);
         invariant!(checker.assignment[pivot]);
         match checker.literal_reason[pivot] {
-            Reason::Assumed => {}
+            Reason::Assumed => (),
             Reason::Forced(clause) => {
                 move_to_core(checker, checker.h2c(clause));
                 schedule(checker, checker.h2c(clause));
@@ -690,6 +753,7 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
     }
     reason_literals.sort_unstable_by_key(|&literal| checker.assignment.position_in_trace(literal));
     log!(checker, 3, "Resolution chain:");
+
     for &literal in &reason_literals {
         let reason_clause = checker.literal_reason[literal].as_forced_unchecked();
         log!(
@@ -700,9 +764,76 @@ fn extract_dependencies(checker: &mut Checker, conflict_literal: Literal) {
             checker.clause_copy(checker.h2c(reason_clause))
         );
         let clause = checker.h2c(reason_clause);
-        checker.lemma_lratlemma[lemma].push(LRATLiteral::Unit(clause));
+        // For lratcheck, we also need to give hints for real unit clauses
+        // This should not be done for ACL2 lrat-check where units are
+        // implicitly propagated at the beginning of a RAT check.
+        // TODO accomodate for lratcheck
+        let position_in_trace = checker.assignment.position_in_trace(literal);
+        // add_dependency(checker, clause, position_in_trace);
+        checker.dependencies.push(match trail_length_before_rat {
+            Some(trail_length) => {
+                if position_in_trace < trail_length {
+                    LRATDependency::ForcedUnit(clause)
+                } else {
+                    LRATDependency::Unit(clause)
+                }
+            }
+            None => LRATDependency::Unit(clause),
+        })
     }
     checker.implication_graph.clear();
+}
+
+fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, is_rat: bool) {
+    if checker.config.lrat_filename.is_none() {
+        return;
+    }
+    write_dependencies_for_lrat_aux(checker, clause, is_rat);
+    checker.lrat.push(LRATLiteral::Zero);
+}
+
+fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_check: bool) {
+    checker.clause_lrat_offset[clause] = checker.lrat.len();
+
+    if !rat_check {
+        for dependency in &checker.dependencies {
+            checker.lrat.push(match dependency {
+                &LRATDependency::Unit(clause) => LRATLiteral::Hint(clause),
+                &LRATDependency::ForcedUnit(clause) => LRATLiteral::Hint(clause),
+                _ => unreachable(),
+            })
+        }
+        return;
+    }
+
+    for i in 0..checker.dependencies.len() {
+        match checker.dependencies[i] {
+            LRATDependency::Unit(_) => continue,
+            _ => (),
+        }
+        for j in (0..i + 1).rev() {
+            let clause = match checker.dependencies[j] {
+                LRATDependency::Unit(_) => continue,
+                LRATDependency::ForcedUnit(clause) => clause,
+                LRATDependency::ResolutionCandidate(_) => break,
+            };
+            if !checker.prerat_clauses[clause] {
+                checker.prerat_clauses.push(clause, true);
+                checker.lrat.push(LRATLiteral::Hint(clause));
+            }
+        }
+    }
+    checker.prerat_clauses.clear();
+    for dependency in &checker.dependencies {
+        checker.lrat.push(match dependency {
+            &LRATDependency::Unit(clause) => LRATLiteral::Hint(clause),
+            &LRATDependency::ForcedUnit(_) => continue,
+            &LRATDependency::ResolutionCandidate(clause) => {
+                LRATLiteral::ResolutionCandidate(clause)
+            }
+        });
+    }
+    checker.lrat.push(LRATLiteral::Zero);
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -830,17 +961,21 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     } else {
         watches_add(checker, Stage::Preprocessing, clause)?;
     }
-    propagate(checker)
+    propagate_set_conflict_literal(checker)
 }
 
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.proof_steps_until_conflict = steps_until_conflict;
-    let clause = checker.lemma;
-    checker.clause_offset[clause.as_offset() + 1] =
-        checker.clause_offset[clause.as_offset()] + PADDING_START + PADDING_END;
-    invariant!(checker.clause(clause).empty());
-    schedule(checker, clause);
-    checker.proof[checker.proof_steps_until_conflict] = ProofStep::Lemma(clause);
+    let empty_clause = checker.lemma;
+    checker.clause_offset[empty_clause.as_offset() + 1] =
+        checker.clause_offset[empty_clause.as_offset()] + PADDING_START + PADDING_END;
+    invariant!(checker.clause(empty_clause).empty());
+    checker.conflict_literal = checker.assignment.peek();
+    invariant!((checker.maxvar == Variable(0)) == (checker.conflict_literal == Literal::TOP));
+    extract_dependencies(checker, None);
+    write_dependencies_for_lrat(checker, empty_clause, false);
+    schedule(checker, empty_clause);
+    checker.proof[checker.proof_steps_until_conflict] = ProofStep::Lemma(empty_clause);
     true
 }
 
@@ -853,7 +988,6 @@ fn preprocess(checker: &mut Checker) -> bool {
             return close_proof(checker, 0);
         }
         if add_premise(checker, clause) == CONFLICT {
-            extract_dependencies_for_last_literal(checker);
             return close_proof(checker, 0);
         }
     }
@@ -881,6 +1015,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                         .count()
                         == 1;
                     if is_unit {
+                        checker.clause_deletion_ignored[clause] = true;
                         checker.skipped_deletions += 1;
                         if checker.config.verbosity > 0 {
                             warn!(
@@ -901,15 +1036,13 @@ fn preprocess(checker: &mut Checker) -> bool {
             }
             ProofStep::Lemma(clause) => {
                 invariant!(clause == checker.lemma);
-                let conflict_claimed = checker.clause(clause).empty();
-                if conflict_claimed {
+                if checker.clause(clause).empty() {
                     warn!("conflict claimed but not detected");
                     checker.rejection.failed_proof_step = i;
                     return false;
                 }
                 checker.lemma += 1;
                 if add_premise(checker, clause) == CONFLICT {
-                    extract_dependencies_for_last_literal(checker);
                     return close_proof(checker, i + 1);
                 }
             }
@@ -959,6 +1092,7 @@ fn verify(checker: &mut Checker) -> bool {
                 watches_remove(checker, checker.clause_mode(lemma), lemma);
                 unpropagate_unit(checker, lemma);
                 if checker.clause_scheduled[lemma] {
+                    move_falsified_literals_to_end(checker, lemma);
                     log!(checker, 1, "[verify] add {}", checker.clause_copy(lemma));
                     check_inference(checker)
                 } else {
@@ -993,13 +1127,53 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
         });
 }
 
+/// sortSize in drat-trim
+fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
+    let head = checker.clause_range(clause).start;
+    let mut effective_end = head;
+    checker.rejection.lemma.clear();
+    for offset in checker.clause_range(clause) {
+        let literal = checker.db[offset];
+        checker.rejection.lemma.push(literal);
+        if checker.config.skip_deletions && !checker.config.check_satisfied_lemmas {
+            invariant!(!checker.assignment[literal]);
+        }
+        if !checker.assignment[-literal] {
+            // if not falsified
+            checker.db[offset] = checker.db[effective_end];
+            checker.db[effective_end] = literal;
+            effective_end += 1;
+        }
+    }
+    // Sick witness would be incorrect because of this modification.
+    // That's why we copy it to checker.rejection.lemma.
+    for offset in effective_end..checker.clause_range(clause).end {
+        checker.db[offset] = Literal::BOTTOM;
+    }
+    effective_end - head
+}
+
+fn write_lemmas(checker: &Checker) -> io::Result<()> {
+    let mut file = match &checker.config.lemmas_filename {
+        Some(filename) => BufWriter::new(File::create(filename)?),
+        None => return Ok(()),
+    };
+    for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
+        if checker.clause_scheduled[lemma] {
+            write_clause(&mut file, checker.clause(lemma).iter())?;
+            write!(file, "\n")?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg_attr(feature = "flame_it", flame)]
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.lrat_filename {
         Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
-    let num_clauses = checker.lemma.as_offset() + checker.proof_steps_until_conflict;
+    let num_clauses = checker.closing_empty_clause().as_offset() + 1;
     let mut clause_deleted = Array::new(false, num_clauses);
     let empty_clause_as_premise =
         Clause::range(0, checker.lemma).any(|clause| checker.clause(clause).empty());
@@ -1032,19 +1206,23 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                         checker.lrat_id += 1;
                         checker.clause_lrat_id[lemma] = checker.lrat_id;
                         write!(file, "{} ", lrat_id(checker, lemma))?;
-                        write_clause(checker, &mut file, lemma)?;
+                        write_clause(&mut file, checker.clause(lemma).iter())?;
                         write!(file, " ")?;
-                        for hint in &checker.lemma_lratlemma[lemma] {
-                            match hint {
-                                &LRATLiteral::ResolutionCandidate(clause) => {
+                        invariant!(checker.clause_lrat_offset[lemma] != usize::max_value());
+                        let mut i = checker.clause_lrat_offset[lemma];
+                        while checker.lrat[i] != LRATLiteral::Zero {
+                            match checker.lrat[i] {
+                                LRATLiteral::ResolutionCandidate(clause) => {
                                     write!(file, "-{} ", lrat_id(checker, clause))
                                 }
-                                &LRATLiteral::Unit(clause) => {
+                                LRATLiteral::Hint(clause) => {
                                     invariant!(checker.clause_scheduled[clause]);
                                     invariant!(lrat_id(checker, clause) != Clause::NEVER_READ);
                                     write!(file, "{} ", lrat_id(checker, clause))
                                 }
+                                _ => unreachable(),
                             }?;
+                            i += 1;
                         }
                         write!(file, "0\n")?;
                         open_deletion_chain(checker, &mut file, lemma)?;
@@ -1102,7 +1280,7 @@ fn write_deletion(
     clause_deleted: &mut Array<Clause, bool>,
     clause: Clause,
 ) -> io::Result<()> {
-    if !clause_deleted[clause] {
+    if !clause_deleted[clause] && !checker.clause_deletion_ignored[clause] {
         clause_deleted[clause] = true;
         write!(file, "{} ", checker.clause_lrat_id[clause])
     } else {
@@ -1110,8 +1288,11 @@ fn write_deletion(
     }
 }
 
-fn write_clause(checker: &Checker, file: &mut impl Write, clause: Clause) -> io::Result<()> {
-    for &literal in checker.clause(clause) {
+fn write_clause<'a, T>(file: &mut impl Write, clause: T) -> io::Result<()>
+where
+    T: Iterator<Item = &'a Literal>,
+{
+    for &literal in clause {
         if literal != Literal::BOTTOM {
             write!(file, "{} ", literal)?;
         }
@@ -1125,7 +1306,6 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         None => return Ok(()),
     };
 
-    let lemma = checker.lemma;
     let step = checker.rejection.failed_proof_step + checker.premise_length + 1;
     let assignment = if let Some(stable) = &checker.rejection.stable_assignment {
         stable
@@ -1144,7 +1324,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     )?;
     write!(file, "{}\n", step)?;
     write!(file, "n ")?;
-    write_clause(checker, &mut file, lemma)?;
+    write_clause(&mut file, checker.rejection.lemma.iter())?;
     write!(file, " ")?;
     for literal in Literal::all(checker.maxvar) {
         if assignment[literal] {
@@ -1154,10 +1334,8 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     write!(file, "0\n")?;
     write!(file, "r ")?;
     if let Some(resolved_with) = checker.rejection.resolved_with {
-        for &literal in checker.clause(resolved_with) {
-            write!(file, "{} ", literal)?;
-        }
-        write!(file, "0 ")?;
+        write_clause(&mut file, checker.clause(resolved_with).iter())?;
+        write!(file, " ")?;
         for literal in Literal::all(checker.maxvar) {
             if assignment[literal] {
                 write!(file, "{} ", literal)?;
@@ -1208,6 +1386,7 @@ pub fn check(checker: &mut Checker) -> bool {
     #[cfg(feature = "profile_it")]
     PROFILER.lock().unwrap().stop().expect("failed to stop");
     if ok {
+        write_lemmas(checker).expect("Failed to write lemmas.");
         write_lrat_certificate(checker).expect("Failed to write LRAT certificate.");
     } else {
         write_sick_witness(checker).expect("Failed to write incorrectness witness.")

@@ -33,11 +33,7 @@ use crate::{
 };
 
 fn run_checker(config: Config) -> (bool, Checker) {
-    let parser = parse_files(
-        &config.formula_filename,
-        &config.proof_filename,
-        config.pivot_is_first_literal,
-    );
+    let parser = parse_files(&config.formula_filename, &config.proof_filename);
 
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
@@ -61,17 +57,20 @@ fn main() {
     .arg(Arg::with_name("NO_CORE_FIRST").short("u").long("no-core-first")
          .help("Disable core first unit propagation."))
     .arg(Arg::with_name("CHECK_SATISFIED_LEMMAS").short("s").long("check-satisfied-lemmas")
-             .help("Do not skip lemmas that are satisfied by the partial UP-model."))
+         .help("Do not skip lemmas that are satisfied by the partial UP-model."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
          .help("Try to be compatible with drat-trim.\nThis implies --skip-deletions and --noncore-rat-candidates"))
     .arg(Arg::with_name("RUPEE").long("--rupee")
          .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
-
+    .arg(Arg::with_name("LRATCHECK_COMPAT").long("--lratcheck-compat")
+         .help("Try output LRAT suitable for lratcheck (as opposed to the verified lrat-check)"))
+    .arg(Arg::with_name("LEMMAS_FILE").takes_value(true).short("l").long("lemmas")
+         .help("Write the core lemmas to this file."))
     .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat")
          .help("Write the core lemmas as LRAT certificate to this file."))
-        .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
-             .help("Write the recheck incorrectness witness."))
+    .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
+         .help("Write the recheck incorrectness witness."))
 
     ;
     if !config::DISABLE_CHECKS_AND_LOGGING {

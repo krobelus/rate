@@ -2,30 +2,30 @@
 
 set -u
 
-name=`dirname "$1"`/`basename "$1" .`
+name=`dirname "$1"`/`basename "$1" | sed 's/\.[^.]*$//'`
+shift
 
-cargo run --release "$name".{cnf,drat} -L "$name".lrat -i "$name".sick --assume-pivot-is-first && {
-  echo
-  echo LRAT PROOF
-  cat "$name".lrat
-  echo
-  echo lratcheck
-  lratcheck "$name".{cnf,lrat}
-  echo
-  echo lrat-check
-  exec lrat-check "$name".{cnf,lrat}
-} || {
-  echo
-  echo SICK WITNESS
-  cat "$name".sick
-  echo sickcheck
-  sickcheck "$name".{cnf,drat,sick}
-  sickcheck "$name".{cnf,drat,sick} | grep -qE '(^e|REJECTED)' && {
-    echo
-    echo RUPEE
-    rupee "$name".{cnf,drat} -i rupee.sick
-    echo SICK WITNESS
-    cat rupee.sick
-    exec sickcheck "$name".{cnf,drat} rupee.sick
-  }
+rate="cargo run --release -- $name.cnf $name.drat --assume-pivot-is-first $@"
+
+output="$($rate -L "$name".lrat -i "$name".sick)"
+echo "$output" | grep -q '^s ACCEPTED$' && {
+  exec lrat-check-acl2 "$name".{cnf,lrat}
 }
+
+echo "$output" | grep -q '^s REJECTED$' && {
+    echo SICK witness
+    cat "$name".sick
+    echo sickcheck
+    sickcheck_output="$(sickcheck "$name".{cnf,drat,sick})"
+    echo "$sickcheck_output"
+    echo "$sickcheck_output" | grep -qE '(^e|REJECTED)' && {
+        echo
+        echo RUPEE
+        rupee "$name".{cnf,drat} -i rupee.sick
+        echo SICK WITNESS
+        cat rupee.sick
+        exec sickcheck "$name".{cnf,drat} rupee.sick
+    } || exit 1
+}
+
+echo "$output"
