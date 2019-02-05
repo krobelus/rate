@@ -3,11 +3,12 @@
 use crate::{
     assignment::Assignment,
     clause::{Clause, ClauseCopy, ProofStep},
+    clausedatabase::ClauseDatabase,
     config::unreachable,
     config::Config,
     literal::{Literal, Variable},
     memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
-    parser::{Parser, CLAUSE_OFFSET, PADDING_END, PADDING_START},
+    parser::Parser,
 };
 use ansi_term::Colour;
 #[cfg(feature = "flame_it")]
@@ -33,7 +34,7 @@ pub fn check(checker: &mut Checker) -> bool {
 
 #[derive(Debug)]
 pub struct Checker {
-    db: &'static mut Stack<Literal>,
+    db: ClauseDatabase<'static>,
     pub proof: Array<usize, ProofStep>,
     config: Config,
 
@@ -52,7 +53,6 @@ pub struct Checker {
     watchlist_noncore: Array<Literal, Watchlist>,
     watchlist_core: Array<Literal, Watchlist>,
 
-    clause_offset: &'static mut Stack<usize>,
     clause_is_a_reason: Array<Clause, bool>,
     clause_scheduled: Array<Clause, bool>,
     clause_deleted_at: Array<Clause, usize>,
@@ -122,11 +122,12 @@ impl Checker {
     pub fn new(parser: Parser, config: Config) -> Checker {
         let num_clauses = parser.num_clauses;
         let maxvar = parser.maxvar;
+        let assignment = Assignment::new(maxvar);
         let mut checker = Checker {
-            assignment: Assignment::new(maxvar),
+            processed: assignment.len(),
+            assignment: assignment,
             clause_is_a_reason: Array::new(false, num_clauses),
             clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
-            clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_scheduled: Array::new(false, num_clauses),
             clause_deleted_at: Array::from(parser.clause_deleted_at),
             clause_deletion_ignored: Array::new(false, num_clauses),
@@ -134,7 +135,7 @@ impl Checker {
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
             config: config,
-            db: parser.db,
+            db: ClauseDatabase::new(parser.db, parser.clause_offset),
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -164,7 +165,6 @@ impl Checker {
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
-            processed: 1, // skip Literal::TOP
             rejection: Rejection::new(),
 
             premise_length: parser.proof_start.as_offset(),
@@ -187,26 +187,22 @@ impl Checker {
         checker
     }
     fn clause(&self, clause: Clause) -> Slice<Literal> {
-        let range = self.clause_range(clause);
-        self.db.as_slice().range(range.start, range.end)
+        self.db.clause(clause)
     }
     fn clause_copy(&self, clause: Clause) -> ClauseCopy {
-        ClauseCopy::new(clause, self.clause(clause))
+        self.db.clause_copy(clause)
     }
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause.as_offset()] + PADDING_START
-            ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
+        self.db.clause_range(clause)
     }
     fn watches(&self, head: usize) -> [Literal; 2] {
-        [self.db[head], self.db[head + 1]]
+        self.db.watches(head)
     }
     fn h2c(&self, head: usize) -> Clause {
-        let lower = self.db[head - PADDING_START];
-        let upper = self.db[head - PADDING_END + 1];
-        Clause((lower.encoding as usize) | (upper.encoding as usize) >> 32)
+        self.db.h2c(head)
     }
     fn c2h(&self, clause: Clause) -> usize {
-        self.clause_range(clause).start
+        self.db.c2h(clause)
     }
     fn clause_mode(&self, clause: Clause) -> Mode {
         if self.config.no_core_first {
@@ -562,7 +558,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         Some(pivot_index) => {
             // Make pivot the first literal in the LRAT proof.
             let head = checker.clause_range(lemma).start;
-            checker.db.as_mut_slice().swap(head, head + pivot_index);
+            checker.db.swap(head, head + pivot_index);
             true
         }
         None => {
@@ -891,7 +887,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
             }
             if !checker.config.skip_unit_deletions {
                 checker.clause_in_watchlist[clause] = true;
-                checker.db.as_mut_slice().swap(head, i1);
+                checker.db.swap(head, i1);
                 watch_add(checker, mode, w1, head);
                 if stage == Stage::Verification {
                     watch_add(checker, mode, checker.db[head + 1], head);
@@ -903,8 +899,8 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
             let w1 = checker.db[i1];
             let w2 = checker.db[i2];
             checker.clause_in_watchlist[clause] = true;
-            checker.db.as_mut_slice().swap(head, i1);
-            checker.db.as_mut_slice().swap(head + 1, i2);
+            checker.db.swap(head, i1);
+            checker.db.swap(head + 1, i2);
             watch_add(checker, mode, w1, head);
             watch_add(checker, mode, w2, head);
             NO_CONFLICT
@@ -957,8 +953,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.proof_steps_until_conflict = steps_until_conflict;
     let empty_clause = checker.lemma;
-    checker.clause_offset[empty_clause.as_offset() + 1] =
-        checker.clause_offset[empty_clause.as_offset()] + PADDING_START + PADDING_END;
+    checker.db.make_clause_empty(empty_clause);
     invariant!(checker.clause(empty_clause).empty());
     invariant!((checker.maxvar == Variable(0)) == (checker.assignment.peek() == Literal::TOP));
     extract_dependencies(checker, None);
@@ -1545,7 +1540,7 @@ fn watches_revise(
         }
         Some(offset) => {
             let new_literal = checker.db[offset];
-            checker.db.as_mut_slice().swap(my_offset, offset);
+            checker.db.swap(my_offset, offset);
             watch_remove_at(checker, mode, lit, *position_in_watchlist);
             *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
             invariant!(mode == checker.clause_mode(clause));
@@ -1649,7 +1644,7 @@ fn watches_reset_list_at(
     let head = checker.clause_range(clause).start;
     if literal != w1 {
         requires!(literal == w2);
-        checker.db.as_mut_slice().swap(head, head + 1);
+        checker.db.swap(head, head + 1);
     }
     let other_lit = checker.db[head + 1];
     let offset = head;

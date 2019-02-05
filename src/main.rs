@@ -19,6 +19,7 @@ mod config;
 mod assignment;
 mod checker;
 mod clause;
+mod clausedatabase;
 mod literal;
 mod memory;
 mod parser;
