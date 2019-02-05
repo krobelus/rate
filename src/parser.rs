@@ -167,7 +167,7 @@ fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
             .or_insert(Stack::new())
             .push(clause);
     } else {
-        parser.maxvar = cmp::max(parser.maxvar, literal.var());
+        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
         parser.db.push(literal);
     }
 }

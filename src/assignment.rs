@@ -10,6 +10,8 @@ use crate::{
 };
 use std::{fmt, fmt::Display, ops::Index};
 
+/// An assignment comprising a mapping plus a trail (stack of literals).
+///
 /// Note that [`Literal::TOP`] is always assigned.
 ///
 /// It is valid to assign both a literal and its negation - this is how we detect

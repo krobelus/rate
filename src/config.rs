@@ -1,4 +1,4 @@
-//! Compile-time and runtime configuration, plus macros
+//! Compile time and run time configuration
 
 use atty::{self, Stream};
 use clap::ArgMatches;
