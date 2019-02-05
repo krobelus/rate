@@ -20,11 +20,7 @@ impl Clause {
         (start.as_offset()..end.as_offset()).map(Clause)
     }
 
-    #[cfg(feature = "fast")]
-    pub const NEVER_READ: Clause = Clause(0);
-    #[cfg(not(feature = "fast"))]
     pub const NEVER_READ: Clause = Clause(usize::max_value());
-
     pub const DOES_NOT_EXIST: Clause = Clause(usize::max_value());
     pub const UNINITIALIZED: Clause = Clause(usize::max_value());
 }

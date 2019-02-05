@@ -63,10 +63,7 @@ impl Literal {
     /// Encoded as 1.
     pub const BOTTOM: Literal = Literal { encoding: 1 };
 
-    #[cfg(feature = "fast")]
-    pub const NEVER_READ: Literal = Literal { encoding: 0 };
     /// Sentinel value of  `u32::max_value()` to detect errors.
-    #[cfg(not(feature = "fast"))]
     pub const NEVER_READ: Literal = Literal {
         encoding: u32::max_value(),
     };
