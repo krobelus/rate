@@ -14,8 +14,6 @@ use crate::{
     },
 };
 use ansi_term::Colour;
-#[cfg(feature = "profile_it")]
-use cpuprofiler::PROFILER;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
 use std::{
@@ -1376,20 +1374,12 @@ fn implies(a: bool, b: bool) -> bool {
 }
 
 pub fn check(checker: &mut Checker) -> bool {
-    #[cfg(feature = "profile_it")]
-    PROFILER
-        .lock()
-        .unwrap()
-        .start("check.profile")
-        .expect("failed to start");
-    let ok = preprocess(checker) && verify(checker);
-    #[cfg(feature = "profile_it")]
-    PROFILER.lock().unwrap().stop().expect("failed to stop");
-    if ok {
+    preprocess(checker) && verify(checker) && {
         write_lemmas(checker).expect("Failed to write lemmas.");
         write_lrat_certificate(checker).expect("Failed to write LRAT certificate.");
-    } else {
-        write_sick_witness(checker).expect("Failed to write incorrectness witness.")
+        true
+    } || {
+        write_sick_witness(checker).expect("Failed to write incorrectness witness.");
+        false
     }
-    ok
 }

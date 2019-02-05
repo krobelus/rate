@@ -15,14 +15,12 @@ scopeguard = "0.3.3"
 multimap = "0.4.0"
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.3", optional = true }
-cpuprofiler = { version = "0.0.3", optional = true }
 atty = "0.2"
 
 [features]
 default = []
 fast = []
 flame_it = ["flame", "flamer"]
-profile_it = ["cpuprofiler"]
 
 [profile.release]
 panic = "abort"
