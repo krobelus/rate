@@ -43,7 +43,6 @@ pub struct Checker {
     lemma: Clause, // current lemma / first lemma of proof
     proof_steps_until_conflict: usize,
     soft_propagation: bool,
-    conflict_literal: Literal,
     rejection: Rejection,
 
     implication_graph: StackMapping<Literal, bool>,
@@ -137,7 +136,6 @@ impl Checker {
             config: config,
             db: parser.db,
             soft_propagation: false,
-            conflict_literal: Literal::NEVER_READ,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
                 maxvar.array_size_for_literals(),
@@ -357,16 +355,6 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
         CONFLICT
     } else {
         NO_CONFLICT
-    }
-}
-
-fn propagate_set_conflict_literal(checker: &mut Checker) -> MaybeConflict {
-    match propagate(checker) {
-        NO_CONFLICT => NO_CONFLICT,
-        CONFLICT => {
-            checker.conflict_literal = checker.assignment.peek();
-            CONFLICT
-        }
     }
 }
 
@@ -594,13 +582,10 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
         }
         if !checker.assignment[-unit] {
             invariant!(unit != Literal::BOTTOM);
-            if assign(checker, -unit, Reason::Assumed) == CONFLICT {
-                checker.conflict_literal = -unit;
-                return CONFLICT;
-            }
+            assign(checker, -unit, Reason::Assumed)?;
         }
     }
-    propagate_set_conflict_literal(checker)
+    propagate(checker)
 }
 
 fn rat_pivot_index(checker: &mut Checker, trace_length_forced: usize) -> Option<usize> {
@@ -708,7 +693,7 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
 
 fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<usize>) {
     let lemma = checker.lemma;
-    let conflict_literal = checker.conflict_literal;
+    let conflict_literal = checker.assignment.peek();
     requires!(
         conflict_literal == Literal::TOP
             || (checker.assignment[conflict_literal] && checker.assignment[-conflict_literal])
@@ -966,7 +951,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     } else {
         watches_add(checker, Stage::Preprocessing, clause)?;
     }
-    propagate_set_conflict_literal(checker)
+    propagate(checker)
 }
 
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
@@ -975,8 +960,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.clause_offset[empty_clause.as_offset() + 1] =
         checker.clause_offset[empty_clause.as_offset()] + PADDING_START + PADDING_END;
     invariant!(checker.clause(empty_clause).empty());
-    checker.conflict_literal = checker.assignment.peek();
-    invariant!((checker.maxvar == Variable(0)) == (checker.conflict_literal == Literal::TOP));
+    invariant!((checker.maxvar == Variable(0)) == (checker.assignment.peek() == Literal::TOP));
     extract_dependencies(checker, None);
     write_dependencies_for_lrat(checker, empty_clause, false);
     schedule(checker, empty_clause);
