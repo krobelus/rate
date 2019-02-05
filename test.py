@@ -164,7 +164,7 @@ def double_check(
         instances=all_inputs()):
     build_release()
     [ensure_executable(command) for command in (drat_checker, lrat_checker)]
-    sick = not(any('skip-deletion' in arg for arg in drat_checker))
+    sick = not(any('--skip-unit-deletions' in arg for arg in drat_checker))
     for name in instances:
         args = [
             f'{name}.cnf',
@@ -211,11 +211,11 @@ def test_quick_no_core_first():
         instances=small_inputs())
 
 
-def test_quick_skip_deletions():
+def test_quick_skip_unit_deletions():
     double_check(
         rate(
             flags=['--assume-pivot-is-first',
-                   '--skip-deletions']),
+                   '--skip-unit-deletions']),
         instances=small_inputs())
 
 
@@ -254,4 +254,4 @@ def test_acceptance_rupee():
 
 
 def test_acceptance_gratgen():
-    compare_acceptance(rate(flags=['--skip-deletions']), ['gratgen'])
+    compare_acceptance(rate(flags=['--skip-unit-deletions']), ['gratgen'])

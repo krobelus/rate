@@ -50,7 +50,7 @@ fn main() {
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
     .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT format"))
 
-    .arg(Arg::with_name("SKIP_DELETIONS").short("d").long("skip-deletions")
+    .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
          .help("Ignore deletion of unit clauses."))
     .arg(Arg::with_name("UNMARKED_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
          .help("Do not ignore RAT candidates that are not part of the core."))
@@ -62,7 +62,7 @@ fn main() {
          .help("Do not skip lemmas that are satisfied by the partial UP-model."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
-         .help("Try to be compatible with drat-trim.\nThis implies --skip-deletions and --noncore-rat-candidates"))
+         .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions and --noncore-rat-candidates"))
     .arg(Arg::with_name("RUPEE").long("--rupee")
          .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
     .arg(Arg::with_name("LRATCHECK_COMPAT").long("--lratcheck-compat")

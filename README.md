@@ -53,7 +53,7 @@ Here are the transformations we do:
 - Clauses and lemmas that are not part of the reason for the conflict are not
   considered as resolution candidates for the RAT check. The reason why this
   is sound is a bit tricky.
-- If `--skip-deletions` is specified, then deletions of clauses that are unit
+- If `--skip-unit-deletions` is specified, then deletions of clauses that are unit
   with respect to the current assignment are ignored, as in drat-trim.
 - RAT checks are done upon every possible pivot and not just the first literal
   in a clause.

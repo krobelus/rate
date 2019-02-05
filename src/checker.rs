@@ -603,7 +603,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
         let resolution_candidates = collect_resolution_candidates(checker, pivot);
         invariant!(
             !resolution_candidates.empty()
-                || (checker.config.skip_deletions && checker.clause_is_a_reason[lemma])
+                || (checker.config.skip_unit_deletions && checker.clause_is_a_reason[lemma])
         );
         if !resolution_candidates.empty() {
             checker.rejection.resolved_with = Some(resolution_candidates[0]);
@@ -889,7 +889,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
                 let conflict = assign(checker, w1, Reason::Forced(head));
                 invariant!(conflict == NO_CONFLICT);
             }
-            if !checker.config.skip_deletions {
+            if !checker.config.skip_unit_deletions {
                 checker.clause_in_watchlist[clause] = true;
                 checker.db.as_mut_slice().swap(head, i1);
                 watch_add(checker, mode, w1, head);
@@ -941,7 +941,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
         "[preprocess] add {}",
         checker.clause_copy(clause)
     );
-    let already_satisfied = if checker.config.skip_deletions {
+    let already_satisfied = if checker.config.skip_unit_deletions {
         clause_is_satisfied(checker, clause)
     } else {
         clause_is_satisfied_until_its_deletion(checker, clause)
@@ -997,7 +997,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                 if checker.clause_is_a_reason[clause] {
                     checker.reason_deletions += 1;
                 }
-                if checker.config.skip_deletions {
+                if checker.config.skip_unit_deletions {
                     let is_unit = checker
                         .clause_range(clause)
                         .filter(|&i| !checker.assignment[-checker.db[i]])
@@ -1059,7 +1059,7 @@ fn verify(checker: &mut Checker) -> bool {
                     continue;
                 }
                 log!(checker, 1, "[verify] del {}", checker.clause_copy(clause));
-                if checker.config.skip_deletions {
+                if checker.config.skip_unit_deletions {
                     if !checker.clause_is_a_reason[clause] {
                         // not actually deleted otherwise!
                         invariant!(checker.clause_mode(clause) == Mode::NonCore);
@@ -1124,7 +1124,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
     for offset in checker.clause_range(clause) {
         let literal = checker.db[offset];
         checker.rejection.lemma.push(literal);
-        if checker.config.skip_deletions && !checker.config.check_satisfied_lemmas {
+        if checker.config.skip_unit_deletions && !checker.config.check_satisfied_lemmas {
             invariant!(!checker.assignment[literal]);
         }
         if !checker.assignment[-literal] {

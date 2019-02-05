@@ -5,7 +5,7 @@ use clap::ArgMatches;
 
 #[derive(Debug)]
 pub struct Config {
-    pub skip_deletions: bool,
+    pub skip_unit_deletions: bool,
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
     pub no_core_first: bool,
@@ -125,7 +125,7 @@ impl Config {
     pub fn new(matches: ArgMatches) -> Config {
         let drat_trim = matches.is_present("DRAT_TRIM");
         let rupee = matches.is_present("RUPEE");
-        let skip_deletions = matches.is_present("SKIP_DELETIONS");
+        let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
         let check_satisfied_lemmas = matches.is_present("CHECK_SATISFIED_LEMMAS");
@@ -135,13 +135,13 @@ impl Config {
         if lratcheck_compat {
             warn!("option --lratcheck-compat is most likely broken.");
         }
-        if skip_deletions && sick_filename.is_some() {
+        if skip_unit_deletions && sick_filename.is_some() {
             warn!(
-                "--recheck can produce an incorrect SICK witness when used along --skip-deletions."
+                "--recheck can produce an incorrect SICK witness when used along --skip-unit-deletions."
             );
         }
-        if rupee && skip_deletions {
-            incompatible_options("--rupee --skip-deletions");
+        if rupee && skip_unit_deletions {
+            incompatible_options("--rupee --skip-unit-deletions");
         }
         if drat_trim && unmarked_rat_candidates {
             incompatible_options("--drat-trim --unmarked_rat_candidates");
@@ -153,7 +153,7 @@ impl Config {
             incompatible_options("--drat-trim --lratcheck_compat");
         }
         Config {
-            skip_deletions: drat_trim || skip_deletions,
+            skip_unit_deletions: drat_trim || skip_unit_deletions,
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_core_first: matches.is_present("NO_CORE_FIRST"),
