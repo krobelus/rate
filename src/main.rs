@@ -75,7 +75,7 @@ fn main() {
          .help("Write the recheck incorrectness witness."))
 
     ;
-    if !config::DISABLE_CHECKS_AND_LOGGING {
+    if !config::ENABLE_LOGGING {
         app = app.arg(
             Arg::with_name("v")
                 .short("v")

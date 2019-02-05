@@ -1,6 +1,6 @@
 //! Non-owning view of contiguous, like std::slice
 
-use crate::{config::BOUNDS_CHECKING, memory::Stack};
+use crate::{config::ENABLE_BOUNDS_CHECKING, memory::Stack};
 
 use std::{
     ops::{Index, IndexMut},
@@ -82,7 +82,7 @@ impl<'a, T: Copy> SliceMut<'a, T> {
 impl<'a, T> Index<usize> for Slice<'a, T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        if BOUNDS_CHECKING {
+        if ENABLE_BOUNDS_CHECKING {
             &self.slice[offset]
         } else {
             unsafe { self.slice.get_unchecked(offset) }
@@ -93,7 +93,7 @@ impl<'a, T> Index<usize> for Slice<'a, T> {
 impl<'a, T> Index<usize> for SliceMut<'a, T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        if BOUNDS_CHECKING {
+        if ENABLE_BOUNDS_CHECKING {
             &self.slice[offset]
         } else {
             unsafe { &self.slice.get_unchecked(offset) }
@@ -102,7 +102,7 @@ impl<'a, T> Index<usize> for SliceMut<'a, T> {
 }
 impl<'a, T> IndexMut<usize> for SliceMut<'a, T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
-        if BOUNDS_CHECKING {
+        if ENABLE_BOUNDS_CHECKING {
             &mut self.slice[offset]
         } else {
             unsafe { self.slice.get_unchecked_mut(offset) }

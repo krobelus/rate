@@ -1338,7 +1338,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
 }
 
 fn assignment_invariants(checker: &Checker) {
-    if !crate::config::COSTLY_INVARIANT_CHECKING {
+    if !crate::config::ENABLE_EXPENSIVE_ASSERTIONS {
         return;
     }
     for &literal in checker.assignment.into_iter() {
@@ -1377,7 +1377,7 @@ fn is_assigned(checker: &Checker, lit: Literal) -> bool {
 }
 
 fn watch_invariants(checker: &Checker) {
-    if crate::config::COSTLY_INVARIANT_CHECKING {
+    if crate::config::ENABLE_EXPENSIVE_ASSERTIONS {
         // each watch points to a clause that is neither falsified nor satisfied
         for &mode in &[Mode::Core, Mode::NonCore] {
             for lit in Literal::all(checker.maxvar) {

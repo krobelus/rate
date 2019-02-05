@@ -19,7 +19,6 @@ atty = "0.2"
 
 [features]
 default = []
-fast = []
 flame_it = ["flame", "flamer"]
 
 [profile.release]

@@ -3,6 +3,7 @@
 use atty::{self, Stream};
 use clap::ArgMatches;
 
+/// Parsed arguments.
 #[derive(Debug)]
 pub struct Config {
     pub skip_unit_deletions: bool,
@@ -19,30 +20,30 @@ pub struct Config {
     pub sick_filename: Option<String>,
 }
 
-pub const DISABLE_CHECKS_AND_LOGGING: bool = cfg!(feature = "fast");
+/// Whether to do bounds checking when accessing array elements.
+pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug);
+/// Add command line flag `-v`.
+pub const ENABLE_LOGGING: bool = cfg!(debug);
+/// Enable runtime invariant checks.
+pub const ENABLE_ASSERTIONS: bool = cfg!(debug);
+/// Enable expensive runtime invariant checks.
+pub const ENABLE_EXPENSIVE_ASSERTIONS: bool = cfg!(debug);
 
-macro_rules! enabled {
-    ($ok:expr) => {
-        $ok && !DISABLE_CHECKS_AND_LOGGING
-    };
+/// Check whether we are writing to a terminal.
+pub fn is_a_tty() -> bool {
+    atty::is(Stream::Stdout)
 }
 
-pub const BOUNDS_CHECKING: bool = enabled!(true);
-pub const ASSERTIONS: bool = enabled!(true);
-pub const LOGGING: bool = enabled!(true);
-pub const COSTLY_INVARIANT_CHECKING: bool = enabled!(cfg!(debug));
-
-// print to stdout
+// Print to stdout.
 macro_rules! echo {
     ($($arg:tt)*) => ({
         println!($($arg)*);
     })
 }
 
-// print based on verbosity level
 macro_rules! _log {
     ($verbosity:expr, $level:expr, $($arg:tt)*) => {
-        if crate::config::LOGGING && $level <= $verbosity
+        if crate::config::ENABLE_LOGGING && $level <= $verbosity
         {
             print!($($arg)*);
             print!("\n");
@@ -50,13 +51,15 @@ macro_rules! _log {
     };
 }
 
+// Print based on verbosity level
 macro_rules! log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
         _log!($checker.config.verbosity, $level, $($arg)*)
     };
 }
 
-// Trace upon scope exit without borrowing
+// Print upon scope exit.
+// We need this macro to avoid borrowing $checker.
 macro_rules! defer_log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
         let verbosity = $checker.config.verbosity;
@@ -64,10 +67,6 @@ macro_rules! defer_log {
             _log!(verbosity, $level, $($arg)*)
             );
     }
-}
-
-pub fn is_a_tty() -> bool {
-    atty::is(Stream::Stdout)
 }
 
 // Print in red.
@@ -83,6 +82,7 @@ macro_rules! warn {
     })
 }
 
+// Report a fatal error and exit.
 macro_rules! die {
     ($($arg:tt)*) => ({
         let style = if crate::config::is_a_tty() {
@@ -96,17 +96,21 @@ macro_rules! die {
     })
 }
 
+// Native assertions cannot be disabled, that's why why prefer to use this
+// macro.
+#[macro_export]
 macro_rules! invariant {
     ($($arg:tt)*) => ({
-        if crate::config::ASSERTIONS {
+        if crate::config::ENABLE_ASSERTIONS {
             assert!($($arg)*);
         }
     })
 }
 
+// Preconditions should use this instead of an invariant.
 macro_rules! requires {
     ($($arg:tt)*) => ({
-        if crate::config::ASSERTIONS {
+        if crate::config::ENABLE_ASSERTIONS {
             assert!($($arg)*);
         }
     })
@@ -161,7 +165,7 @@ impl Config {
             lratcheck_compat: lratcheck_compat,
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {
-                    warn!("verbosity can be at most 3");
+                    warn!("verbosity can be at most 4");
                     4
                 }
                 i => i,

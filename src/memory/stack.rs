@@ -1,7 +1,7 @@
 //! A stack, much like std::vec::Vec.
 
 use crate::{
-    config::BOUNDS_CHECKING,
+    config::ENABLE_BOUNDS_CHECKING,
     memory::{Slice, SliceMut},
 };
 use std::ops::{Index, IndexMut};
@@ -103,7 +103,7 @@ impl<T> Stack<T> {
 impl<T> Index<usize> for Stack<T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        if BOUNDS_CHECKING {
+        if ENABLE_BOUNDS_CHECKING {
             &self.vec[offset]
         } else {
             unsafe { self.vec.get_unchecked(offset) }
@@ -113,7 +113,7 @@ impl<T> Index<usize> for Stack<T> {
 
 impl<T> IndexMut<usize> for Stack<T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
-        if BOUNDS_CHECKING {
+        if ENABLE_BOUNDS_CHECKING {
             &mut self.vec[offset]
         } else {
             unsafe { self.vec.get_unchecked_mut(offset) }
