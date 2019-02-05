@@ -1,5 +1,5 @@
 use crate::{
-    clause::{Clause, ClauseCopy},
+    clause::Clause,
     literal::Literal,
     memory::{Offset, Slice, Stack},
     parser::{PADDING_END, PADDING_START},
@@ -7,10 +7,10 @@ use crate::{
 
 use std::ops::{Index, IndexMut, Range};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ClauseDatabase<'a> {
-    data: &'a mut Stack<Literal>,
-    offset: &'a mut Stack<usize>,
+    pub data: &'a mut Stack<Literal>,
+    pub offset: &'a mut Stack<usize>,
 }
 
 impl<'a> ClauseDatabase<'a> {
@@ -20,6 +20,17 @@ impl<'a> ClauseDatabase<'a> {
             offset: offset,
         }
     }
+    pub fn clause_to_string(&self, clause: Clause) -> String {
+        format!(
+            "[{}]{} 0",
+            clause,
+            self.clause(clause)
+                .iter()
+                .map(|&literal| format!(" {}", literal))
+                .collect::<Vec<_>>()
+                .join("")
+        )
+    }
     pub fn clause(&self, clause: Clause) -> Slice<Literal> {
         let range = self.clause_range(clause);
         self.data.as_slice().range(range.start, range.end)
@@ -28,6 +39,9 @@ impl<'a> ClauseDatabase<'a> {
         self.offset[clause.as_offset()] + PADDING_START
             ..self.offset[clause.as_offset() + 1] - PADDING_END
     }
+    pub fn watches(&self, head: usize) -> [Literal; 2] {
+        [self[head], self[head + 1]]
+    }
     pub fn clause2offset(&self, clause: Clause) -> usize {
         self.clause_range(clause).start
     }
@@ -35,12 +49,6 @@ impl<'a> ClauseDatabase<'a> {
         let lower = self[head - PADDING_START];
         let upper = self[head - PADDING_START + 1];
         Clause((lower.encoding as usize) | (upper.encoding as usize) >> 32)
-    }
-    pub fn clause_copy(&self, clause: Clause) -> ClauseCopy {
-        ClauseCopy::new(clause, self.clause(clause))
-    }
-    pub fn watches(&self, head: usize) -> [Literal; 2] {
-        [self[head], self[head + 1]]
     }
     pub fn swap(&mut self, a: usize, b: usize) {
         self.data.as_mut_slice().swap(a, b);

@@ -1,7 +1,8 @@
 //! DIMACS and DRAT parser
 
 use crate::{
-    clause::{Clause, ClauseCopy, ProofStep},
+    clause::{Clause, ProofStep},
+    clausedatabase::ClauseDatabase,
     literal::{Literal, Variable},
     memory::{Offset, Slice, Stack},
 };
@@ -14,7 +15,7 @@ use std::{
     fmt::{Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
-    io, ops, panic, str,
+    io, panic, str,
 };
 
 /// format: clause are stored sequentially, using:
@@ -32,9 +33,8 @@ pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
 pub struct Parser {
     pub maxvar: Variable,
     pub num_clauses: usize,
-    pub db: &'static mut Stack<Literal>,
+    pub db: ClauseDatabase<'static>,
     pub current_clause_offset: usize,
-    pub clause_offset: &'static mut Stack<usize>,
     clause_ids: HashMap<ClauseHashEq, Stack<Clause>>,
     pub clause_pivot: Stack<Literal>,
     pub clause_deleted_at: Stack<usize>,
@@ -55,27 +55,14 @@ impl Parser {
         Parser {
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
-            db: unsafe { &mut CLAUSE_DATABASE },
+            db: unsafe { ClauseDatabase::new(&mut CLAUSE_DATABASE, &mut CLAUSE_OFFSET) },
             current_clause_offset: 0,
-            clause_offset: unsafe { &mut CLAUSE_OFFSET },
             clause_pivot: Stack::new(),
             clause_deleted_at: Stack::new(),
             proof_start: Clause(0),
             proof: Stack::new(),
             clause_ids: HashMap::new(),
         }
-    }
-    // TODO consolidate
-    fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        self.clause_offset[clause.as_offset()] + PADDING_START
-            ..self.clause_offset[clause.as_offset() + 1] - PADDING_END
-    }
-    fn clause(&self, clause: Clause) -> Slice<Literal> {
-        let range = self.clause_range(clause);
-        self.db.as_slice().range(range.start, range.end)
-    }
-    fn clause_copy(&self, clause: Clause) -> ClauseCopy {
-        ClauseCopy::new(clause, self.clause(clause))
     }
 }
 
@@ -113,45 +100,46 @@ where
 }
 
 fn start_clause(parser: &mut Parser) -> Clause {
-    parser.clause_offset.pop(); // pop sentinel
-    let clause = parser.clause_offset.len();
-    parser.clause_offset.push(parser.db.len());
+    parser.db.offset.pop(); // pop sentinel
+    let clause = parser.db.offset.len();
+    parser.db.offset.push(parser.db.data.len());
     let lower = (clause & 0x00000000ffffffff) as u32;
     let upper = ((clause & 0xffffffff00000000) >> 32) as u32;
-    parser.db.push(Literal::from_raw(lower));
-    parser.db.push(Literal::from_raw(upper));
+    parser.db.data.push(Literal::from_raw(lower));
+    parser.db.data.push(Literal::from_raw(upper));
     parser.clause_deleted_at.push(usize::max_value());
     Clause(clause)
 }
 
 fn close_clause(parser: &mut Parser) -> Clause {
-    let clause = Clause(parser.clause_offset.len()) - 1;
+    let clause = Clause(parser.db.offset.len()) - 1;
     let start = parser.current_clause_offset + PADDING_START;
-    let end = parser.db.len();
+    let end = parser.db.data.len();
     let len = end - start;
     if len == 1 {
-        parser.db.push(Literal::BOTTOM);
+        parser.db.data.push(Literal::BOTTOM);
     }
-    parser.db.push(Literal::new(0));
-    parser.current_clause_offset = parser.db.len();
+    parser.db.data.push(Literal::new(0));
+    parser.current_clause_offset = parser.db.data.len();
     let _sort_literally = |&literal: &Literal| literal.decode();
     let _sort_magnitude = |&literal: &Literal| literal.encoding;
     parser
         .db
+        .data
         .as_mut_slice()
         .range(start, end)
         .sort_unstable_by_key(_sort_literally);
-    parser.clause_offset.push(parser.current_clause_offset); // sentinel
+    parser.db.offset.push(parser.current_clause_offset); // sentinel
     clause
 }
 
 fn pop_clause(parser: &mut Parser, prev_clause_offset: usize) {
-    parser.db.truncate(prev_clause_offset);
+    parser.db.data.truncate(prev_clause_offset);
     parser.current_clause_offset = prev_clause_offset;
 
-    parser.clause_offset.pop(); // sentinel
-    parser.clause_offset.pop();
-    parser.clause_offset.push(prev_clause_offset);
+    parser.db.offset.pop(); // sentinel
+    parser.db.offset.pop();
+    parser.db.offset.push(prev_clause_offset);
 
     parser.clause_deleted_at.pop();
 }
@@ -168,7 +156,7 @@ fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
             .push(clause);
     } else {
         parser.maxvar = cmp::max(parser.maxvar, literal.variable());
-        parser.db.push(literal);
+        parser.db.data.push(literal);
     }
 }
 
@@ -186,7 +174,7 @@ fn add_deletion(parser: &mut Parser, literal: Literal) -> Literal {
             None => {
                 warn!(
                     "Deleted clause is not present in the formula: {}",
-                    parser.clause_copy(clause)
+                    parser.db.clause_to_string(clause)
                 );
                 // need this for sickcheck
                 parser
@@ -200,7 +188,7 @@ fn add_deletion(parser: &mut Parser, literal: Literal) -> Literal {
         }
         pop_clause(parser, prev);
     } else {
-        parser.db.push(literal);
+        parser.db.data.push(literal);
     }
     literal
 }
@@ -475,7 +463,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
 }
 
 fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseError> {
-    parser.proof_start = Clause(parser.clause_offset.len() - 1);
+    parser.proof_start = Clause(parser.db.offset.len() - 1);
 
     let mut binary = false;
 
@@ -495,12 +483,12 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseErro
         parse_proof_text(parser, input)
     };
     // Add empty clauses to the end of the proof.
-    parser.num_clauses = parser.clause_offset.len();
-    let empty_clause = Clause(parser.clause_offset.len()) - 1;
-    parser.db.push(Literal::NEVER_READ);
-    parser.db.push(Literal::NEVER_READ);
-    parser.db.push(Literal::new(0));
-    parser.clause_offset.push(parser.db.len());
+    parser.num_clauses = parser.db.offset.len();
+    let empty_clause = Clause(parser.db.offset.len()) - 1;
+    parser.db.data.push(Literal::NEVER_READ);
+    parser.db.data.push(Literal::NEVER_READ);
+    parser.db.data.push(Literal::new(0));
+    parser.db.offset.push(parser.db.data.len());
     parser.proof.push(ProofStep::Lemma(empty_clause));
     result
 }
@@ -669,9 +657,9 @@ p cnf 2 2
             let mut parser = sample_formula();
             parse_proof(&mut parser, Slice::new(b"1 2 3 0\nd 1 2 0"));
             let clause_ids = [
+                (ClauseHashEq(Clause(1)), stack!(Clause(1))),
                 (ClauseHashEq(Clause(2)), stack!(Clause(2))),
                 (ClauseHashEq(Clause(0)), stack!()),
-                (ClauseHashEq(Clause(1)), stack!(Clause(1))),
             ]
             .iter()
             .cloned()
@@ -698,9 +686,8 @@ p cnf 2 2
                 Parser {
                     maxvar: Variable::new(3),
                     num_clauses: 4,
-                    db: unsafe { &mut CLAUSE_DATABASE },
+                    db: unsafe { ClauseDatabase::new(&mut CLAUSE_DATABASE, &mut CLAUSE_OFFSET) },
                     current_clause_offset: 16,
-                    clause_offset: unsafe { &mut CLAUSE_OFFSET },
                     clause_ids: clause_ids,
                     clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                     clause_deleted_at: stack!(1, usize::max_value(), usize::max_value()),

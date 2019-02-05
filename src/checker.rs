@@ -2,7 +2,7 @@
 
 use crate::{
     assignment::Assignment,
-    clause::{Clause, ClauseCopy, ProofStep},
+    clause::{Clause, ProofStep},
     clausedatabase::ClauseDatabase,
     config::unreachable,
     config::Config,
@@ -135,7 +135,7 @@ impl Checker {
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
             config: config,
-            db: ClauseDatabase::new(parser.db, parser.clause_offset),
+            db: parser.db,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -186,11 +186,11 @@ impl Checker {
         }
         checker
     }
+    fn clause_to_string(&self, clause: Clause) -> String {
+        self.db.clause_to_string(clause)
+    }
     fn clause(&self, clause: Clause) -> Slice<Literal> {
         self.db.clause(clause)
-    }
-    fn clause_copy(&self, clause: Clause) -> ClauseCopy {
-        self.db.clause_copy(clause)
     }
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
         self.db.clause_range(clause)
@@ -562,7 +562,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             true
         }
         None => {
-            echo!("c RAT check failed for {}", checker.clause_copy(lemma));
+            echo!("c RAT check failed for {}", checker.clause_to_string(lemma));
             false
         }
     }
@@ -592,7 +592,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
     if pivot_falsified {
         echo!(
             "c RAT check on {} failed due to falsified pivot {}",
-            checker.clause_copy(lemma),
+            checker.clause_to_string(lemma),
             pivot
         );
         checker.rejection.pivot = Some(pivot);
@@ -632,7 +632,7 @@ fn rat_on_pivot(checker: &mut Checker, pivot: Literal) -> bool {
         checker,
         2,
         "RAT check on {} with pivot {}, {}",
-        checker.clause_copy(lemma),
+        checker.clause_to_string(lemma),
         pivot,
         checker.assignment
     );
@@ -668,7 +668,7 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
                         checker,
                         2,
                         "Resolving with {}",
-                        checker.clause_copy(resolution_candidate)
+                        checker.clause_to_string(resolution_candidate)
                     );
                     if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
                         checker.rejection.pivot = Some(pivot);
@@ -748,7 +748,7 @@ fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<u
             3,
             "{}:\t{}",
             literal,
-            checker.clause_copy(checker.offset2clause(reason_clause))
+            checker.clause_to_string(checker.offset2clause(reason_clause))
         );
         let clause = checker.offset2clause(reason_clause);
         // For lratcheck, we also need to give hints for real unit clauses
@@ -865,7 +865,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
         checker,
         2,
         "initializing watches for {}",
-        checker.clause_copy(clause)
+        checker.clause_to_string(clause)
     );
     let head = checker.clause_range(clause).start;
     let mode = match stage {
@@ -936,7 +936,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
         checker,
         1,
         "[preprocess] add {}",
-        checker.clause_copy(clause)
+        checker.clause_to_string(clause)
     );
     let already_satisfied = if checker.config.skip_unit_deletions {
         clause_is_satisfied(checker, clause)
@@ -988,7 +988,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                     checker,
                     1,
                     "[preprocess] del {}",
-                    checker.clause_copy(clause)
+                    checker.clause_to_string(clause)
                 );
                 if checker.clause_is_a_reason[clause] {
                     checker.reason_deletions += 1;
@@ -1005,7 +1005,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                         if checker.config.verbosity > 0 {
                             warn!(
                                 "Ignoring deletion of (pseudo) unit clause {}",
-                                checker.clause_copy(clause)
+                                checker.clause_to_string(clause)
                             );
                         }
                     } else {
@@ -1054,7 +1054,12 @@ fn verify(checker: &mut Checker) -> bool {
                 if clause == Clause::DOES_NOT_EXIST {
                     continue;
                 }
-                log!(checker, 1, "[verify] del {}", checker.clause_copy(clause));
+                log!(
+                    checker,
+                    1,
+                    "[verify] del {}",
+                    checker.clause_to_string(clause)
+                );
                 if checker.config.skip_unit_deletions {
                     if !checker.clause_is_a_reason[clause] {
                         // not actually deleted otherwise!
@@ -1078,10 +1083,20 @@ fn verify(checker: &mut Checker) -> bool {
                 unpropagate_unit(checker, lemma);
                 if checker.clause_scheduled[lemma] {
                     move_falsified_literals_to_end(checker, lemma);
-                    log!(checker, 1, "[verify] add {}", checker.clause_copy(lemma));
+                    log!(
+                        checker,
+                        1,
+                        "[verify] add {}",
+                        checker.clause_to_string(lemma)
+                    );
                     check_inference(checker)
                 } else {
-                    log!(checker, 2, "[verify] skip {}", checker.clause_copy(lemma));
+                    log!(
+                        checker,
+                        2,
+                        "[verify] skip {}",
+                        checker.clause_to_string(lemma)
+                    );
                     true
                 }
             }
@@ -1344,7 +1359,7 @@ fn assignment_invariants(checker: &Checker) {
                 "current lemma is {}, but literal {} is assigned because of lemma {} in {}",
                 checker.lemma,
                 literal,
-                checker.clause_copy(checker.offset2clause(clause)),
+                checker.clause_to_string(checker.offset2clause(clause)),
                 checker.assignment
             ),
             Reason::Assumed => (),

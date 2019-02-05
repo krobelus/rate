@@ -2,12 +2,9 @@
 
 use derive_more::Add;
 
-use crate::{
-    literal::Literal,
-    memory::{Offset, Slice, Stack},
-};
+use crate::memory::Offset;
 use std::{
-    fmt, ops,
+    fmt,
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
@@ -67,52 +64,4 @@ impl fmt::Display for Clause {
 pub enum ProofStep {
     Lemma(Clause),
     Deletion(Clause),
-}
-
-#[derive(Debug)]
-pub struct ClauseCopy {
-    pub id: Clause,
-    pub literals: Stack<Literal>,
-}
-
-impl<'a> ClauseCopy {
-    pub fn new(id: Clause, literals: Slice<Literal>) -> ClauseCopy {
-        ClauseCopy {
-            id: id,
-            literals: literals.to_stack(),
-        }
-    }
-    pub fn iter(&'a self) -> std::slice::Iter<'a, Literal> {
-        self.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a ClauseCopy {
-    type Item = &'a Literal;
-    type IntoIter = std::slice::Iter<'a, Literal>;
-    fn into_iter(self) -> Self::IntoIter {
-        // unit clauses are padded with Literal::BOTTOM
-        if !self.literals.empty() && self.literals[1] == Literal::BOTTOM {
-            self.literals.as_slice().range(0, 1).into_iter()
-        } else {
-            self.literals.into_iter()
-        }
-    }
-}
-
-impl fmt::Display for ClauseCopy {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}] ", self.id)?;
-        for &literal in self {
-            write!(f, "{} ", literal)?;
-        }
-        write!(f, "0")
-    }
-}
-
-impl ops::Index<usize> for ClauseCopy {
-    type Output = Literal;
-    fn index(&self, offset: usize) -> &Literal {
-        &self.literals[offset]
-    }
 }
