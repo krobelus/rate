@@ -1,3 +1,5 @@
+//! Non-owning view of contiguous, like std::slice
+
 use crate::{config::BOUNDS_CHECKING, memory::Stack};
 
 use std::{

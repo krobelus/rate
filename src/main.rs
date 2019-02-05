@@ -1,3 +1,6 @@
+//! Rate is a proof checker for DRAT proofs which are commonly used to certify
+//! unsatisfiability of SAT formulas.
+
 #![feature(
     try_trait,
     alloc,
@@ -6,9 +9,9 @@
     const_vec_new,
     stmt_expr_attributes
 )]
+
 #[macro_use(defer)]
 extern crate scopeguard;
-
 extern crate alloc;
 
 #[macro_use]

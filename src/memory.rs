@@ -1,12 +1,17 @@
-//! Customized data structures.
+//! Data structures.
 //!
-//! Currently they mostly behave the same as standard vectors and slices, with
-//! these exceptions:
+//! Currently they mostly behave the same as standard vectors and slices. Some
+//! differences include:
 //!
-//! - Custom type for indexing as first template argument in `Array<I, T>`.
-//! - Bounds checking can be disabled to some extent (work in progress).
-//! - If we know a good upper bound for a stack we prefer to use
-//! `BoundedStack<T>` or `StackMapping<Key, T>` as they never allocate after being constructed.
+//! - The first template argument in `Array<I, T>` and `StackMapping<I, T>`
+//!   requires to specify a type that will be used for indexing. This prevents
+//!   us from accidentally using an index of the wrong type.
+//!
+//! - Bounds checking can be disabled.
+//!
+//! If we know a good upper bound for the size of a stack we prefer to use
+//! `BoundedStack<T>` or `StackMapping<Key, T>` as they never allocate after
+//! being constructed.
 
 mod array;
 mod boundedstack;
@@ -22,7 +27,7 @@ pub use crate::memory::{
     stackmapping::StackMapping,
 };
 
-/// Trait for types that can be used as index in an array.
+/// Trait for index-like types
 pub trait Offset {
     fn as_offset(self) -> usize;
 }

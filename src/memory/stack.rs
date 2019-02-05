@@ -1,3 +1,5 @@
+//! A stack, much like std::vec::Vec.
+
 use crate::{
     config::BOUNDS_CHECKING,
     memory::{Slice, SliceMut},

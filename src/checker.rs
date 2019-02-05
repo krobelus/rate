@@ -1,4 +1,4 @@
-//! Proof checking
+//! Proof checking logic.
 
 use crate::{
     assignment::Assignment,
@@ -114,7 +114,7 @@ enum LRATLiteral {
 #[derive(Debug)]
 struct Revision {
     cone: Stack<Literal>,
-    position_in_trace: Stack<usize>,
+    position_in_trail: Stack<usize>,
     reason_clause: Stack<Clause>,
 }
 
@@ -262,7 +262,7 @@ impl fmt::Display for Revision {
             write!(
                 f,
                 "\t#{}: {} [{}]\n",
-                self.position_in_trace[i], literal, self.reason_clause[i]
+                self.position_in_trail[i], literal, self.reason_clause[i]
             )?;
         }
         write!(f, "")
@@ -369,7 +369,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 core_mode = false;
                 continue;
             }
-            let literal = -checker.assignment.trace_at(processed_core);
+            let literal = -checker.assignment.trail_at(processed_core);
             processed_core += 1;
 
             let mut i = 0;
@@ -416,7 +416,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
             if checker.processed == checker.assignment.len() {
                 return NO_CONFLICT;
             }
-            let literal = -checker.assignment.trace_at(checker.processed);
+            let literal = -checker.assignment.trail_at(checker.processed);
             checker.processed += 1;
 
             let mut i = noncore_watchlist_index;
@@ -494,12 +494,12 @@ fn move_to_core(checker: &mut Checker, clause: Clause) {
 
 macro_rules! preserve_assignment {
     ($checker:expr, $computation:expr) => {{
-        let trace_length = $checker.assignment.len();
+        let trail_length = $checker.assignment.len();
         let result = $computation;
-        while $checker.assignment.len() > trace_length {
+        while $checker.assignment.len() > trail_length {
             $checker.assignment.pop();
         }
-        $checker.processed = trace_length;
+        $checker.processed = trail_length;
         result
     }};
 }
@@ -550,7 +550,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
     assignment_invariants(checker);
     requires!(checker.processed == checker.assignment.len());
-    let trace_length_forced = checker.assignment.len();
+    let trail_length_forced = checker.assignment.len();
     let lemma = checker.lemma;
     if rup(checker, lemma, None) == CONFLICT {
         checker.rup_introductions += 1;
@@ -558,7 +558,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         write_dependencies_for_lrat(checker, lemma, false);
         return true;
     }
-    match rat_pivot_index(checker, trace_length_forced) {
+    match rat_pivot_index(checker, trail_length_forced) {
         Some(pivot_index) => {
             // Make pivot the first literal in the LRAT proof.
             let head = checker.clause_range(lemma).start;
@@ -588,11 +588,11 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
     propagate(checker)
 }
 
-fn rat_pivot_index(checker: &mut Checker, trace_length_forced: usize) -> Option<usize> {
+fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<usize> {
     let lemma = checker.lemma;
     let pivot = checker.clause_pivot[lemma];
 
-    let pivot_falsified = checker.assignment.position_in_trace(-pivot) < trace_length_forced;
+    let pivot_falsified = checker.assignment.position_in_trail(-pivot) < trail_length_forced;
     if pivot_falsified {
         echo!(
             "c RAT check on {} failed due to falsified pivot {}",
@@ -741,7 +741,7 @@ fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<u
         invariant!(reason_clause < lemma);
         reason_literals.push(literal);
     }
-    reason_literals.sort_unstable_by_key(|&literal| checker.assignment.position_in_trace(literal));
+    reason_literals.sort_unstable_by_key(|&literal| checker.assignment.position_in_trail(literal));
     log!(checker, 3, "Resolution chain:");
 
     for &literal in &reason_literals {
@@ -758,11 +758,11 @@ fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<u
         // This should not be done for ACL2 lrat-check where units are
         // implicitly propagated at the beginning of a RAT check.
         // TODO accomodate for lratcheck
-        let position_in_trace = checker.assignment.position_in_trace(literal);
-        // add_dependency(checker, clause, position_in_trace);
+        let position_in_trail = checker.assignment.position_in_trail(literal);
+        // add_dependency(checker, clause, position_in_trail);
         checker.dependencies.push(match trail_length_before_rat {
             Some(trail_length) => {
-                if position_in_trace < trail_length {
+                if position_in_trail < trail_length {
                     LRATDependency::ForcedUnit(clause)
                 } else {
                     LRATDependency::Unit(clause)
@@ -1107,12 +1107,12 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
         .find(|&offset| checker.assignment[checker.db[offset]])
         .map(|offset| {
             let unit = checker.db[offset];
-            let trace_length = checker.assignment.position_in_trace(unit);
-            while checker.assignment.len() > trace_length {
+            let trail_length = checker.assignment.position_in_trail(unit);
+            while checker.assignment.len() > trail_length {
                 let lit = checker.assignment.pop();
                 set_reason_flag(checker, lit, true);
             }
-            checker.processed = trace_length;
+            checker.processed = trail_length;
         });
 }
 
@@ -1355,8 +1355,8 @@ fn assignment_invariants(checker: &Checker) {
         }
     }
     for position in 0..checker.assignment.len() {
-        let literal = checker.assignment.trace_at(position);
-        invariant!(position == checker.assignment.position_in_trace(literal));
+        let literal = checker.assignment.trail_at(position);
+        invariant!(position == checker.assignment.position_in_trail(literal));
     }
 }
 
@@ -1476,17 +1476,17 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         .iter()
         .find(|&lit| checker.assignment[*lit])
         .unwrap();
-    let unit_position = checker.assignment.position_in_trace(unit);
+    let unit_position = checker.assignment.position_in_trail(unit);
     checker.lemma_revision[clause] = true;
     let mut revision = Revision {
         cone: Stack::new(),
-        position_in_trace: Stack::new(),
+        position_in_trail: Stack::new(),
         reason_clause: Stack::new(),
     };
     add_to_revision(checker, &mut revision, unit);
     let mut next_position_to_overwrite = unit_position;
     for position in unit_position + 1..checker.assignment.len() {
-        let lit = checker.assignment.trace_at(position);
+        let lit = checker.assignment.trail_at(position);
         if is_in_cone(checker, lit) {
             add_to_revision(checker, &mut revision, lit);
         } else {
@@ -1496,7 +1496,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
             next_position_to_overwrite += 1;
         }
     }
-    checker.assignment.resize_trace(next_position_to_overwrite);
+    checker.assignment.resize_trail(next_position_to_overwrite);
     checker.processed = next_position_to_overwrite;
     for &literal in &revision.cone {
         watchlist_revise(checker, literal);
@@ -1561,8 +1561,8 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal)
     revision.cone.push(lit);
     checker.literal_is_in_cone[lit] = true;
     revision
-        .position_in_trace
-        .push(checker.assignment.position_in_trace(lit));
+        .position_in_trail
+        .push(checker.assignment.position_in_trail(lit));
     match checker.literal_reason[lit] {
         Reason::Assumed => unreachable(),
         Reason::Forced(clause) => revision.reason_clause.push(checker.h2c(clause)),
@@ -1591,21 +1591,21 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     log!(checker, 1, "Applying {}{}", revision, checker.assignment);
     let mut right_position = checker.assignment.len() + introductions;
     let mut left_position = right_position - 1 - literals_to_revise;
-    checker.assignment.resize_trace(right_position);
+    checker.assignment.resize_trail(right_position);
     checker.processed = right_position;
     // Re-introduce the assignments that were induce by the deleted unit,
     // starting from the ones with the highest offset in the trail.
     while literals_to_revise > 0 {
         right_position -= 1;
         let literal;
-        if right_position == revision.position_in_trace[literals_to_revise - 1] {
+        if right_position == revision.position_in_trail[literals_to_revise - 1] {
             literals_to_revise -= 1;
             literal = revision.cone[literals_to_revise];
             checker.literal_reason[literal] =
                 Reason::Forced(checker.c2h(revision.reason_clause[literals_to_revise]));
             set_reason_flag(checker, literal, true);
         } else {
-            literal = checker.assignment.trace_at(left_position);
+            literal = checker.assignment.trail_at(left_position);
             left_position -= 1;
         }
         checker
@@ -1731,9 +1731,9 @@ fn watch_find<'a>(
     while *offset < end {
         let literal = checker.db[*offset];
         if checker.assignment[-literal] {
-            let position_in_trace = checker.assignment.position_in_trace(-literal);
-            if position_in_trace > *best_position {
-                *best_position = position_in_trace;
+            let position_in_trail = checker.assignment.position_in_trail(-literal);
+            if position_in_trail > *best_position {
+                *best_position = position_in_trail;
                 *best_false = *offset;
             }
             *offset += 1;

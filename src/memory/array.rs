@@ -1,3 +1,5 @@
+//! A dynamic array.
+
 use crate::memory::{Offset, Stack};
 use alloc::raw_vec::RawVec;
 use std::{
