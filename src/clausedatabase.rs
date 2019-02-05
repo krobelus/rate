@@ -24,23 +24,23 @@ impl<'a> ClauseDatabase<'a> {
         let range = self.clause_range(clause);
         self.data.as_slice().range(range.start, range.end)
     }
-    pub fn clause_copy(&self, clause: Clause) -> ClauseCopy {
-        ClauseCopy::new(clause, self.clause(clause))
-    }
     pub fn clause_range(&self, clause: Clause) -> Range<usize> {
         self.offset[clause.as_offset()] + PADDING_START
             ..self.offset[clause.as_offset() + 1] - PADDING_END
     }
-    pub fn watches(&self, head: usize) -> [Literal; 2] {
-        [self[head], self[head + 1]]
+    pub fn clause2offset(&self, clause: Clause) -> usize {
+        self.clause_range(clause).start
     }
-    pub fn h2c(&self, head: usize) -> Clause {
+    pub fn offset2clause(&self, head: usize) -> Clause {
         let lower = self[head - PADDING_START];
-        let upper = self[head - PADDING_END + 1];
+        let upper = self[head - PADDING_START + 1];
         Clause((lower.encoding as usize) | (upper.encoding as usize) >> 32)
     }
-    pub fn c2h(&self, clause: Clause) -> usize {
-        self.clause_range(clause).start
+    pub fn clause_copy(&self, clause: Clause) -> ClauseCopy {
+        ClauseCopy::new(clause, self.clause(clause))
+    }
+    pub fn watches(&self, head: usize) -> [Literal; 2] {
+        [self[head], self[head + 1]]
     }
     pub fn swap(&mut self, a: usize, b: usize) {
         self.data.as_mut_slice().swap(a, b);
