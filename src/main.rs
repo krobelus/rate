@@ -19,7 +19,6 @@ mod clause;
 mod literal;
 mod memory;
 mod parser;
-mod watchlist;
 
 use clap::Arg;
 #[cfg(feature = "flame_it")]

@@ -136,7 +136,9 @@ impl Config {
             warn!("option --lratcheck-compat is most likely broken.");
         }
         if skip_deletions && sick_filename.is_some() {
-            warn!("--recheck can produce an incorrect SICK witness when used along --skip-deletions.");
+            warn!(
+                "--recheck can produce an incorrect SICK witness when used along --skip-deletions."
+            );
         }
         if rupee && skip_deletions {
             incompatible_options("--rupee --skip-deletions");
