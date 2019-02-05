@@ -8,11 +8,11 @@ shift
 rate="cargo run --release -- $name.cnf $name.drat --assume-pivot-is-first $@"
 
 output="$($rate -L "$name".lrat -i "$name".sick)"
-echo "$output" | grep -q '^s ACCEPTED$' && {
+echo "$output" | grep -q '^s VERIFIED$' && {
   exec lrat-check-acl2 "$name".{cnf,lrat}
 }
 
-echo "$output" | grep -q '^s REJECTED$' && {
+echo "$output" | grep -q '^s NOT VERIFIED$' && {
     echo SICK witness
     cat "$name".sick
     echo sickcheck

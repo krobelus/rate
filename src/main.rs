@@ -97,7 +97,7 @@ fn main() {
     // echo!("c skipped-deletions {}", checker.skipped_deletions);
     echo!("c reason-deletions: {}", checker.reason_deletions);
     echo!("c assignment-count: {}", checker.assign_count);
-    echo!("s {}", if ok { "ACCEPTED" } else { "REJECTED" });
+    echo!("s {}", if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
     process::exit(if ok { 0 } else { 1 });

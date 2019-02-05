@@ -97,11 +97,11 @@ def accepts(checker, name):
     'we take name here to see the benchmark name as a test fails'
     # n.b. this assumes that the DIMACS and DRAT files do not change!
     stdout, stderr = process_expansion_cached(tuple(checker))
-    accepted = b's ACCEPTED\n' in stdout or (
-        'drat-trim' in checker[0] and b's VERIFIED' in stdout) or (
+    accepted = b's VERIFIED\n' in stdout or (
+        ('rupee' in checker[0] or INITIAL_COMMIT in checker[0]) and b's ACCEPTED' in stdout) or (
         'gratgen' in checker[0] and b's VERIFIED' in stderr)
-    rejected = b's REJECTED\n' in stdout or (
-        'drat-trim' in checker[0] and b's NOT VERIFIED' in stdout) or (
+    rejected = b's NOT VERIFIED\n' in stdout or (
+        ('rupee' in checker[0] or INITIAL_COMMIT in checker[0]) and b's REJECTED' in stdout) or (
         'gratgen' in checker[0] and b's VERIFIED' not in stderr)
     assert accepted != rejected
     return accepted
@@ -112,7 +112,6 @@ def lrat_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
     ok = (('lratcheck' in checker[0] and b's ACCEPTED\n' in stdout)
           or ('lrat-check' in checker[0] and b'c VERIFIED' in stdout)
-          or ('lrat-check-acl2' in checker[0] and b's VERIFIED' in stdout)
           )
     if not ok:
         print(str(stdout, 'utf8'))
@@ -160,7 +159,7 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
 
 def double_check(
         drat_checker,
-        lrat_checker=['lrat-check-acl2'],
+        lrat_checker=['lrat-check'],
         *,
         instances=all_inputs()):
     build_release()
@@ -179,9 +178,9 @@ def double_check(
                 continue  # infinite loop
             if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[0]:
                 continue  # rejects tautological formulas
-            if name == 'benchmarks/crafted/tautological' and 'lrat-check-acl2' in lrat_checker[0]:
-                continue  # reports "Invalid formula!"
-            if name == 'benchmarks/crafted/bottom' and 'lrat-check-acl2' in lrat_checker[0]:
+            # if name == 'benchmarks/crafted/tautological' and 'lrat-check' in lrat_checker[0]:
+            #     continue  # reports "Invalid formula!"
+            if name == 'benchmarks/crafted/bottom' and 'lrat-check' in lrat_checker[0]:
                 continue  # not sure how to do that
             assert lrat_checker_accepts(
                 lrat_checker + [args[0], args[3]], name)
