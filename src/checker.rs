@@ -74,7 +74,7 @@ pub struct Checker {
     pub premise_length: usize,
     pub rup_introductions: usize,
     pub rat_introductions: usize,
-    pub clause_deletions: usize,
+    pub deletions: usize,
     pub skipped_deletions: usize,
     pub reason_deletions: usize,
 
@@ -170,7 +170,7 @@ impl Checker {
             premise_length: parser.proof_start.as_offset(),
             rup_introductions: 0,
             rat_introductions: 0,
-            clause_deletions: 0,
+            deletions: 0,
             skipped_deletions: 0,
             reason_deletions: 0,
             assign_count: 0,
@@ -983,7 +983,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                 if clause == Clause::DOES_NOT_EXIST {
                     continue;
                 }
-                checker.clause_deletions += 1;
+                checker.deletions += 1;
                 log!(
                     checker,
                     1,

@@ -37,7 +37,6 @@ use crate::{
 
 fn run_checker(config: Config) -> (bool, Checker) {
     let parser = parse_files(&config.formula_filename, &config.proof_filename);
-
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
     (ok, checker)
@@ -97,8 +96,8 @@ fn main() {
     echo!("c skipped-tautologies: {}", checker.satisfied_count);
     echo!("c rup-introductions: {}", checker.rup_introductions);
     echo!("c rat-introductions: {}", checker.rat_introductions);
-    echo!("c clause-deletions: {}", checker.clause_deletions);
-    // echo!("c skipped-deletions {}", checker.skipped_deletions);
+    echo!("c deletions: {}", checker.deletions);
+    echo!("c skipped-deletions {}", checker.skipped_deletions);
     echo!("c reason-deletions: {}", checker.reason_deletions);
     echo!("c assignment-count: {}", checker.assign_count);
     echo!("s {}", if ok { "VERIFIED" } else { "NOT VERIFIED" });
