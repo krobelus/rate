@@ -144,7 +144,7 @@ fn pop_clause(parser: &mut Parser, prev_clause_offset: usize) {
     parser.clause_deleted_at.pop();
 }
 
-fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
+fn add_literal<'r>(parser: &'r mut Parser, literal: Literal) {
     if literal.is_zero() {
         let clause = close_clause(parser);
         // TODO we could handle duplicate literals here
@@ -160,7 +160,7 @@ fn add_literal<'a, 'r>(parser: &'r mut Parser, literal: Literal) {
     }
 }
 
-fn add_literal_ascii<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Literal {
+fn add_literal_ascii<'r>(parser: &'r mut Parser, input: Slice<u8>) -> Literal {
     let literal = Literal::new(convert_ascii::<i32>(input));
     add_literal(parser, literal);
     literal
@@ -494,7 +494,7 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseErro
 }
 
 fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<ParseError> {
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq, Eq)]
     enum LemmaPositionText {
         Start,
         LemmaLiteral,
@@ -578,15 +578,35 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
             },
         };
     }
-    match state {
+    let state = match state {
         LemmaPositionText::LemmaLiteral => {
-            add_literal_ascii(parser, input.range(start, input.len()));
+            let literal = add_literal_ascii(parser, input.range(start, input.len()));
+            if literal.is_zero() {
+                LemmaPositionText::Start
+            } else {
+                LemmaPositionText::PostLemmaLiteral
+            }
         }
         LemmaPositionText::DeletionLiteral => {
-            add_deletion_ascii(parser, input.range(start, input.len()));
+            let literal = add_deletion_ascii(parser, input.range(start, input.len()));
+            if literal.is_zero() {
+                LemmaPositionText::Start
+            } else {
+                LemmaPositionText::PostLemmaLiteral
+            }
         }
-        _ => (),
-    }
+        _ => state,
+    };
+    let state = match state {
+        LemmaPositionText::PostLemmaLiteral => {
+            // Some solvers don't terminate the last clause in the proof with a
+            // zero, so we add it here.
+            add_literal(parser, Literal::new(0));
+            LemmaPositionText::Start
+        }
+        _ => state,
+    };
+    invariant!(state == LemmaPositionText::Start);
     None
 }
 

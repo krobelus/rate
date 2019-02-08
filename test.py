@@ -136,15 +136,21 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
         if 'rupee' in b[0]:
             if name == 'benchmarks/crafted/bottom':
                 continue  # different result
+            if name in (
+                'benchmarks/crafted/missing-last-zero',
+                    'benchmarks/crafted/missing-last-zero2'):
+                continue  # rupee rejects the proof
             if name == 'benchmarks/rupee/trick':
                 continue  # different result
         if name == 'benchmarks/crafted/faux-conflict' and 'drat-trim' in b[0]:
             continue  # drat-trim uses binary mode here
         if name == 'benchmarks/crafted/falsified' and INITIAL_COMMIT in b[0]:
             continue  # does not skip unused lemmas
-        if (INITIAL_COMMIT in b[0] and name in [
+        if (INITIAL_COMMIT in b[0] and name in (
                 'benchmarks/crafted/marked-environment',
-        ]):
+                'benchmarks/crafted/missing-last-zero',
+                'benchmarks/crafted/missing-last-zero2',
+        )):
             print(
                 f'skipping {name} as {b[0]} checks all RAT candidates (not just core)')
             continue
@@ -191,6 +197,10 @@ def double_check(
             if name == 'benchmarks/crafted/multi-delete':
                 continue
             if name == 'benchmarks/crafted/no-conflict':
+                continue
+            if name in (
+                'benchmarks/crafted/missing-last-zero',
+                    'benchmarks/crafted/missing-last-zero2'):
                 continue
             assert sick_checker_accepts(
                 ['sickcheck'] + args[:2] + [args[-1]], name)
