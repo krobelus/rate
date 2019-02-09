@@ -26,6 +26,7 @@ impl<'a> ClauseDatabase<'a> {
             clause,
             self.clause(clause)
                 .iter()
+                .filter(|&literal| *literal != Literal::BOTTOM)
                 .map(|&literal| format!(" {}", literal))
                 .collect::<Vec<_>>()
                 .join("")
