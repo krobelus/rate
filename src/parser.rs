@@ -115,12 +115,6 @@ fn close_clause(parser: &mut Parser) -> Clause {
     let clause = Clause(parser.db.offset.len()) - 1;
     let start = parser.current_clause_offset + PADDING_START;
     let end = parser.db.data.len();
-    let len = end - start;
-    if len == 1 {
-        parser.db.data.push(Literal::BOTTOM);
-    }
-    parser.db.data.push(Literal::new(0));
-    parser.current_clause_offset = parser.db.data.len();
     let _sort_literally = |&literal: &Literal| literal.decode();
     let _sort_magnitude = |&literal: &Literal| literal.encoding;
     parser
@@ -129,7 +123,29 @@ fn close_clause(parser: &mut Parser) -> Clause {
         .as_mut_slice()
         .range(start, end)
         .sort_unstable_by_key(_sort_literally);
+    let mut duplicate = false;
+    let mut length = 0;
+    for i in start..end {
+        if i + 1 < end && parser.db[i] == parser.db[i + 1] {
+            duplicate = true;
+        } else {
+            parser.db[start + length] = parser.db[i];
+            length += 1;
+        }
+    }
+    parser.db.data.truncate(start + length);
+    if length == 1 {
+        parser.db.data.push(Literal::BOTTOM);
+    }
+    parser.db.data.push(Literal::new(0));
+    parser.current_clause_offset = parser.db.data.len();
     parser.db.offset.push(parser.current_clause_offset); // sentinel
+    if duplicate {
+        warn!(
+            "Removed duplicate literals in {}",
+            parser.db.clause_to_string(clause)
+        );
+    }
     clause
 }
 
@@ -147,7 +163,6 @@ fn pop_clause(parser: &mut Parser, prev_clause_offset: usize) {
 fn add_literal<'r>(parser: &'r mut Parser, literal: Literal) {
     if literal.is_zero() {
         let clause = close_clause(parser);
-        // TODO we could handle duplicate literals here
         let key = ClauseHashEq(clause);
         parser
             .clause_ids
