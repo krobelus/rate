@@ -21,13 +21,13 @@ pub struct Config {
 }
 
 /// Whether to do bounds checking when accessing array elements.
-pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug);
+pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug_assertions);
 /// Add command line flag `-v`.
-pub const ENABLE_LOGGING: bool = cfg!(debug);
+pub const ENABLE_LOGGING: bool = cfg!(debug_assertions);
 /// Enable runtime invariant checks.
-pub const ENABLE_ASSERTIONS: bool = cfg!(debug);
+pub const ENABLE_ASSERTIONS: bool = cfg!(debug_assertions);
 /// Enable expensive runtime invariant checks.
-pub const ENABLE_EXPENSIVE_ASSERTIONS: bool = cfg!(debug);
+pub const ENABLE_EXPENSIVE_ASSERTIONS: bool = cfg!(debug_assertions);
 
 /// Check whether we are writing to a terminal.
 pub fn is_a_tty() -> bool {
