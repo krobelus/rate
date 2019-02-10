@@ -59,7 +59,7 @@ impl Parser {
             current_clause_offset: 0,
             clause_pivot: Stack::new(),
             clause_deleted_at: Stack::new(),
-            proof_start: Clause(0),
+            proof_start: Clause::new(0),
             proof: Stack::new(),
             clause_ids: HashMap::new(),
         }
@@ -101,18 +101,18 @@ where
 
 fn start_clause(parser: &mut Parser) -> Clause {
     parser.db.offset.pop(); // pop sentinel
-    let clause = parser.db.offset.len();
+    let clause = parser.db.offset.len() as u64;
     parser.db.offset.push(parser.db.data.len());
     let lower = (clause & 0x00000000ffffffff) as u32;
     let upper = ((clause & 0xffffffff00000000) >> 32) as u32;
     parser.db.data.push(Literal::from_raw(lower));
     parser.db.data.push(Literal::from_raw(upper));
     parser.clause_deleted_at.push(usize::max_value());
-    Clause(clause)
+    Clause::new(clause)
 }
 
 fn close_clause(parser: &mut Parser) -> Clause {
-    let clause = Clause(parser.db.offset.len()) - 1;
+    let clause = Clause::new(parser.db.offset.len() as u64) - 1;
     let start = parser.current_clause_offset + PADDING_START;
     let end = parser.db.data.len();
     let _sort_literally = |&literal: &Literal| literal.decode();
@@ -194,11 +194,11 @@ fn add_deletion(parser: &mut Parser, literal: Literal) -> Literal {
                 // need this for sickcheck
                 parser
                     .proof
-                    .push(ProofStep::Deletion(Clause::DOES_NOT_EXIST))
+                    .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
             }
             Some(clause) => {
                 parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
-                parser.proof.push(ProofStep::Deletion(clause))
+                parser.proof.push(ProofStep::deletion(clause))
             }
         }
         pop_clause(parser, prev);
@@ -447,7 +447,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
                     state = LemmaPositionBinary::Lemma;
                     let clause = start_clause(&mut parser);
                     head = true;
-                    parser.proof.push(ProofStep::Lemma(clause));
+                    parser.proof.push(ProofStep::lemma(clause));
                 }
                 input
             }
@@ -478,7 +478,7 @@ fn parse_proof_binary<'a, 'r>(mut parser: &'r mut Parser, mut input: Slice<u8>) 
 }
 
 fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseError> {
-    parser.proof_start = Clause(parser.db.offset.len() - 1);
+    parser.proof_start = Clause::new(parser.db.offset.len() as u64 - 1);
 
     let mut binary = false;
 
@@ -499,12 +499,12 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseErro
     };
     // Add empty clauses to the end of the proof.
     parser.num_clauses = parser.db.offset.len();
-    let empty_clause = Clause(parser.db.offset.len()) - 1;
+    let empty_clause = Clause::new(parser.db.offset.len() as u64) - 1;
     parser.db.data.push(Literal::NEVER_READ);
     parser.db.data.push(Literal::NEVER_READ);
     parser.db.data.push(Literal::new(0));
     parser.db.offset.push(parser.db.data.len());
-    parser.proof.push(ProofStep::Lemma(empty_clause));
+    parser.proof.push(ProofStep::lemma(empty_clause));
     result
 }
 
@@ -539,7 +539,7 @@ fn parse_proof_text<'a, 'r>(parser: &'r mut Parser, input: Slice<u8>) -> Option<
                 b'-' | b'0'..=b'9' => {
                     if head {
                         let clause = start_clause(parser);
-                        parser.proof.push(ProofStep::Lemma(clause));
+                        parser.proof.push(ProofStep::lemma(clause));
                     }
                     state = LemmaPositionText::LemmaLiteral;
                     start = i;
@@ -692,9 +692,9 @@ p cnf 2 2
             let mut parser = sample_formula();
             parse_proof(&mut parser, Slice::new(b"1 2 3 0\nd 1 2 0"));
             let clause_ids = [
-                (ClauseHashEq(Clause(1)), stack!(Clause(1))),
-                (ClauseHashEq(Clause(2)), stack!(Clause(2))),
-                (ClauseHashEq(Clause(0)), stack!()),
+                (ClauseHashEq(Clause::new(1)), stack!(Clause::new(1))),
+                (ClauseHashEq(Clause::new(2)), stack!(Clause::new(2))),
+                (ClauseHashEq(Clause::new(0)), stack!()),
             ]
             .iter()
             .cloned()
@@ -726,11 +726,11 @@ p cnf 2 2
                     clause_ids: clause_ids,
                     clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                     clause_deleted_at: stack!(1, usize::max_value(), usize::max_value()),
-                    proof_start: Clause(2),
+                    proof_start: Clause::new(2),
                     proof: stack![
-                        ProofStep::Lemma(Clause(2)),
-                        ProofStep::Deletion(Clause(0)),
-                        ProofStep::Lemma(Clause(3))
+                        ProofStep::lemma(Clause::new(2)),
+                        ProofStep::deletion(Clause::new(0)),
+                        ProofStep::lemma(Clause::new(3))
                     ],
                 }
             );

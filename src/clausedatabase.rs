@@ -49,7 +49,7 @@ impl<'a> ClauseDatabase<'a> {
     pub fn offset2clause(&self, head: usize) -> Clause {
         let lower = self[head - PADDING_START];
         let upper = self[head - PADDING_START + 1];
-        Clause((lower.encoding as usize) | (upper.encoding as usize) >> 32)
+        Clause::new((lower.encoding as u64) | (upper.encoding as u64) >> 32)
     }
     pub fn swap(&mut self, a: usize, b: usize) {
         self.data.as_mut_slice().swap(a, b);
