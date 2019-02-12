@@ -2,9 +2,12 @@
 
 use crate::{
     config::ENABLE_BOUNDS_CHECKING,
-    memory::{Slice, SliceMut},
+    memory::{HeapSpace, Slice, SliceMut},
 };
-use std::ops::{Index, IndexMut};
+use std::{
+    mem::size_of,
+    ops::{Index, IndexMut},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Stack<T> {
@@ -126,5 +129,12 @@ impl<'a, T> IntoIterator for &'a Stack<T> {
     type IntoIter = std::slice::Iter<'a, T>;
     fn into_iter(self) -> std::slice::Iter<'a, T> {
         self.vec.iter()
+    }
+}
+
+impl<T: HeapSpace> HeapSpace for Stack<T> {
+    fn heap_space(&self) -> usize {
+        self.capacity() * size_of::<T>()
+            + (0..self.len()).fold(0, |sum, i| sum + self[i].heap_space())
     }
 }

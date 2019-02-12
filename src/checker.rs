@@ -7,12 +7,14 @@ use crate::{
     config::unreachable,
     config::Config,
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack, Offset, Slice, Stack, StackMapping},
+    memory::{Array, BoundedStack, HeapSpace, Offset, Slice, Stack, StackMapping},
+    output::number,
     parser::Parser,
 };
 use ansi_term::Colour;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
+use rate_macros::HeapSpace;
 use std::{
     cmp, fmt,
     fs::File,
@@ -91,11 +93,43 @@ struct Rejection {
     stable_assignment: Option<Assignment>,
 }
 
-#[derive(Debug)]
+// Can't derive HeapSpace for Option<T> yet.
+impl HeapSpace for Rejection {
+    fn heap_space(&self) -> usize {
+        self.lemma.heap_space()
+            + match &self.stable_assignment {
+                None => 0,
+                Some(assignment) => assignment.heap_space(),
+            }
+    }
+}
+
+#[derive(Debug, HeapSpace)]
 struct Revision {
     cone: Stack<Literal>,
     position_in_trail: Stack<usize>,
     reason_clause: Stack<Clause>,
+}
+
+#[cfg(test)]
+#[test]
+fn test_revision_memory_usage() {
+    let mut rev = Revision {
+        cone: Stack::new(),
+        position_in_trail: Stack::new(),
+        reason_clause: Stack::new(),
+    };
+    assert_eq!(rev.heap_space(), 0);
+    rev.cone.push(Literal::TOP);
+    assert_eq!(rev.heap_space(), std::mem::size_of::<Literal>());
+    rev.position_in_trail.push(0);
+    rev.reason_clause.push(Clause::new(0));
+    assert_eq!(
+        rev.heap_space(),
+        std::mem::size_of::<Literal>()
+            + std::mem::size_of::<usize>()
+            + std::mem::size_of::<Clause>()
+    );
 }
 
 impl Checker {
@@ -1717,4 +1751,49 @@ fn watch_find<'a>(
         }
     }
     false
+}
+
+pub fn print_memory_usage(checker: &Checker) {
+    macro_rules! heap_space {
+        ($($x:expr),*) => (vec!($(($x).heap_space()),*));
+    }
+    let usages = vec![
+        ("db", checker.db.heap_space()),
+        ("proof", checker.proof.heap_space()),
+        ("watchlist_core", checker.watchlist_core.heap_space()),
+        ("watchlist_noncore", checker.watchlist_noncore.heap_space()),
+        (
+            "lemma_newly_marked_clauses",
+            checker.lemma_newly_marked_clauses.heap_space(),
+        ),
+        ("revisions", checker.revisions.heap_space()),
+        ("lrat", checker.lrat.heap_space()),
+        (
+            "rest",
+            heap_space!(
+                checker.assignment,
+                checker.rejection,
+                checker.literal_reason,
+                checker.literal_minimal_lifetime,
+                checker.clause_scheduled,
+                checker.clause_deleted_at,
+                checker.clause_deletion_ignored,
+                checker.clause_pivot,
+                checker.clause_in_watchlist,
+                checker.lemma_newly_marked_clauses
+            )
+            .iter()
+            .map(|x| x.heap_space())
+            .sum(),
+        ),
+    ];
+    let total = usages.iter().fold(0, |a, tuple| a + tuple.1);
+    comment!("memory usage statistics (MB)");
+    for tuple in Some(("TOTAL", total)).iter().chain(usages.iter()) {
+        // comment!(
+        number(
+            &format!("memory-{}", tuple.0.replace("_", "-")),
+            &format!("{:0.2}", (tuple.1 as f64) / (1 << 20) as f64),
+        );
+    }
 }

@@ -6,7 +6,7 @@
 
 use crate::{
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack},
+    memory::{Array, BoundedStack, HeapSpace},
 };
 use std::{fmt, fmt::Display, ops::Index};
 
@@ -123,5 +123,11 @@ impl Index<Literal> for Assignment {
     fn index(&self, literal: Literal) -> &bool {
         requires!(self.mapping[Literal::TOP] && !self.mapping[Literal::BOTTOM]);
         &self.mapping[literal]
+    }
+}
+
+impl HeapSpace for Assignment {
+    fn heap_space(&self) -> usize {
+        self.mapping.heap_space() + self.trail.heap_space() + self.position_in_trail.heap_space()
     }
 }

@@ -1,12 +1,12 @@
 //! A dynamic array.
 
-use crate::memory::{Offset, Stack};
+use crate::memory::{HeapSpace, Offset, Stack};
 use alloc::raw_vec::RawVec;
 use std::{
     fmt,
     fmt::Debug,
     marker::PhantomData,
-    mem::forget,
+    mem::{forget, size_of},
     ops::{Index, IndexMut},
     ptr,
     ptr::write,
@@ -19,8 +19,8 @@ use std::{
 ///
 /// The array is allocated at construction time, i.e. the maximum capacity needs to be known
 /// already.
-
 pub struct Array<I: Offset, T: Clone> {
+    initialized: bool,
     vec: RawVec<T>,
     phantom: PhantomData<I>,
 }
@@ -35,12 +35,14 @@ impl<I: Offset, T: Clone> Array<I, T> {
             }
         }
         Array {
+            initialized: true,
             vec: vec,
             phantom: PhantomData,
         }
     }
     pub fn with_capacity(size: usize) -> Array<I, T> {
         Array {
+            initialized: false,
             vec: RawVec::with_capacity(size),
             phantom: PhantomData,
         }
@@ -50,6 +52,7 @@ impl<I: Offset, T: Clone> Array<I, T> {
         let cap = stack.capacity();
         forget(stack);
         Array {
+            initialized: true,
             vec: unsafe { RawVec::from_raw_parts(ptr, cap) },
             phantom: PhantomData,
         }
@@ -118,5 +121,15 @@ impl<I: Offset, T: Clone + PartialEq> PartialEq for Array<I, T> {
 impl<I: Offset, T: Clone> Drop for Array<I, T> {
     fn drop(&mut self) {
         unsafe { ptr::drop_in_place(self.mut_slice()) }
+    }
+}
+
+impl<I: Offset, T: Clone + HeapSpace> HeapSpace for Array<I, T> {
+    fn heap_space(&self) -> usize {
+        requires!(self.initialized);
+        self.size() * size_of::<T>()
+            + (0..self.size()).fold(0, |sum, i| {
+                sum + unsafe { &(*self.ptr().offset(i as isize)) }.heap_space()
+            })
     }
 }

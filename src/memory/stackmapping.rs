@@ -1,6 +1,6 @@
 //! Stack with fast lookup.
 
-use crate::memory::{Array, BoundedStack, Offset};
+use crate::memory::{Array, BoundedStack, HeapSpace, Offset};
 use std::{fmt::Debug, iter::IntoIterator, ops::Index};
 
 #[derive(Debug)]
@@ -74,5 +74,11 @@ impl<'a, Key: Offset + Copy + Debug, T: Copy + Debug> IntoIterator for &'a Stack
     type IntoIter = std::slice::Iter<'a, Key>;
     fn into_iter(self) -> std::slice::Iter<'a, Key> {
         self.stack.into_iter()
+    }
+}
+
+impl<Key: Offset + Copy + Debug, T: Copy + Debug> HeapSpace for StackMapping<Key, T> {
+    fn heap_space(&self) -> usize {
+        self.array.heap_space() + self.stack.heap_space()
     }
 }

@@ -1,5 +1,5 @@
 //! Stack that never grows.
-use crate::memory::Array;
+use crate::memory::{Array, HeapSpace};
 use std::{
     iter::IntoIterator,
     ops::{Index, IndexMut},
@@ -80,5 +80,11 @@ impl<T: Copy> BoundedStack<T> {
     {
         unsafe { std::slice::from_raw_parts_mut(self.array.mut_ptr(), self.len) }
             .sort_unstable_by_key(f)
+    }
+}
+
+impl<T: Copy> HeapSpace for BoundedStack<T> {
+    fn heap_space(&self) -> usize {
+        (0..self.len()).fold(0, |sum, i| sum + self[i].heap_space())
     }
 }

@@ -5,9 +5,10 @@ use crate::{
     parser::{PADDING_END, PADDING_START},
 };
 
+use rate_macros::HeapSpace;
 use std::ops::{Index, IndexMut, Range};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, HeapSpace)]
 pub struct ClauseDatabase<'a> {
     pub data: &'a mut Stack<Literal>,
     pub offset: &'a mut Stack<usize>,

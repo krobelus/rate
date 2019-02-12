@@ -15,11 +15,12 @@ extern crate scopeguard;
 extern crate alloc;
 
 #[macro_use]
-mod config;
+mod output;
 mod assignment;
 mod checker;
 mod clause;
 mod clausedatabase;
+mod config;
 mod literal;
 mod memory;
 mod parser;
@@ -30,8 +31,9 @@ use flamer::flame;
 use std::{process, time::SystemTime};
 
 use crate::{
-    checker::{check, Checker},
+    checker::{check, print_memory_usage, Checker},
     config::Config,
+    output::{number, solution},
     parser::parse_files,
 };
 
@@ -88,19 +90,20 @@ fn main() {
     let start = SystemTime::now();
     let (ok, checker) = run_checker(config);
     comment!(
-        "c Elapsed time: {} seconds",
+        "elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
     );
-    comment!("premise-clauses: {}", checker.premise_length);
-    comment!("proof-steps: {}", checker.proof.size());
-    comment!("skipped-tautologies: {}", checker.satisfied_count);
-    comment!("rup-introductions: {}", checker.rup_introductions);
-    comment!("rat-introductions: {}", checker.rat_introductions);
-    comment!("deletions: {}", checker.deletions);
-    comment!("skipped-deletions {}", checker.skipped_deletions);
-    comment!("reason-deletions: {}", checker.reason_deletions);
-    comment!("assignment-count: {}", checker.assign_count);
-    solution!("{}", if ok { "VERIFIED" } else { "NOT VERIFIED" });
+    print_memory_usage(&checker);
+    number("premise-clauses", checker.premise_length);
+    number("proof-steps", checker.proof.size());
+    number("skipped-tautologies", checker.satisfied_count);
+    number("rup-introductions", checker.rup_introductions);
+    number("rat-introductions", checker.rat_introductions);
+    number("deletions", checker.deletions);
+    number("skipped-deletion", checker.skipped_deletions);
+    number("reason-deletions", checker.reason_deletions);
+    number("assignment-count", checker.assign_count);
+    solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
     process::exit(if ok { 0 } else { 1 });

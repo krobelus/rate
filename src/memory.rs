@@ -37,3 +37,14 @@ impl Offset for usize {
         self
     }
 }
+
+/// Report memory usage
+pub trait HeapSpace {
+    fn heap_space(&self) -> usize;
+}
+
+impl<T: Copy> HeapSpace for T {
+    fn heap_space(&self) -> usize {
+        0
+    }
+}

@@ -17,6 +17,7 @@ flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.3", optional = true }
 atty = "0.2"
 static_assertions = "0.3.1"
+rate-macros = { path = "rate-macros" }
 
 [features]
 default = []
