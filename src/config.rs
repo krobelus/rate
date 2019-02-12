@@ -35,8 +35,17 @@ pub fn is_a_tty() -> bool {
 }
 
 // Print to stdout.
-macro_rules! echo {
+macro_rules! comment {
     ($($arg:tt)*) => ({
+        print!("c ");
+        println!($($arg)*);
+    })
+}
+
+// Print to stdout.
+macro_rules! solution {
+    ($($arg:tt)*) => ({
+        print!("s ");
         println!($($arg)*);
     })
 }

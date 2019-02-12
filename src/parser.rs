@@ -491,7 +491,7 @@ fn parse_proof<'a>(parser: &'a mut Parser, input: Slice<u8>) -> Option<ParseErro
         }
     }
     let result = if binary {
-        echo!("c Turning on binary mode.");
+        comment!("Turning on binary mode.");
         parse_proof_binary(parser, input);
         None
     } else {

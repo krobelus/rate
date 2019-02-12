@@ -87,20 +87,20 @@ fn main() {
     let config = Config::new(app.get_matches());
     let start = SystemTime::now();
     let (ok, checker) = run_checker(config);
-    echo!(
+    comment!(
         "c Elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
     );
-    echo!("c premise-clauses: {}", checker.premise_length);
-    echo!("c proof-steps: {}", checker.proof.size());
-    echo!("c skipped-tautologies: {}", checker.satisfied_count);
-    echo!("c rup-introductions: {}", checker.rup_introductions);
-    echo!("c rat-introductions: {}", checker.rat_introductions);
-    echo!("c deletions: {}", checker.deletions);
-    echo!("c skipped-deletions {}", checker.skipped_deletions);
-    echo!("c reason-deletions: {}", checker.reason_deletions);
-    echo!("c assignment-count: {}", checker.assign_count);
-    echo!("s {}", if ok { "VERIFIED" } else { "NOT VERIFIED" });
+    comment!("premise-clauses: {}", checker.premise_length);
+    comment!("proof-steps: {}", checker.proof.size());
+    comment!("skipped-tautologies: {}", checker.satisfied_count);
+    comment!("rup-introductions: {}", checker.rup_introductions);
+    comment!("rat-introductions: {}", checker.rat_introductions);
+    comment!("deletions: {}", checker.deletions);
+    comment!("skipped-deletions {}", checker.skipped_deletions);
+    comment!("reason-deletions: {}", checker.reason_deletions);
+    comment!("assignment-count: {}", checker.assign_count);
+    solution!("{}", if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
     process::exit(if ok { 0 } else { 1 });

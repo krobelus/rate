@@ -526,7 +526,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             true
         }
         None => {
-            echo!("c RAT check failed for {}", checker.clause_to_string(lemma));
+            comment!("RAT check failed for {}", checker.clause_to_string(lemma));
             false
         }
     }
@@ -554,8 +554,8 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
 
     let pivot_falsified = checker.assignment.position_in_trail(-pivot) < trail_length_forced;
     if pivot_falsified {
-        echo!(
-            "c RAT check on {} failed due to falsified pivot {}",
+        comment!(
+            "RAT check on {} failed due to falsified pivot {}",
             checker.clause_to_string(lemma),
             pivot
         );
