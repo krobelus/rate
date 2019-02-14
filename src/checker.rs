@@ -4,8 +4,7 @@ use crate::{
     assignment::Assignment,
     clause::{Clause, LRATDependency, LRATLiteral, ProofStep, Reason},
     clausedatabase::ClauseDatabase,
-    config::unreachable,
-    config::Config,
+    config::{unreachable, Config, RedundancyProperty},
     literal::{Literal, Variable},
     memory::{
         format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Slice, Stack, StackMapping,
@@ -22,7 +21,7 @@ use std::{
     fs::File,
     io,
     io::{BufWriter, Write},
-    ops,
+    ops::{self, Index},
 };
 
 pub fn check(checker: &mut Checker) -> bool {
@@ -66,6 +65,8 @@ pub struct Checker {
     clause_pivot: Array<Clause, Literal>,
     clause_in_watchlist: Array<Clause, bool>,
     lemma_revision: Array<Clause, bool>,
+    lemma_witness: Array<Clause, Stack<Literal>>,
+    witness: StackMapping<Literal, bool>,
 
     revisions: Stack<Revision>,
 
@@ -153,6 +154,12 @@ impl Checker {
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
             lemma_revision: Array::new(false, num_clauses),
+            lemma_witness: Array::from(parser.lemma_witness),
+            witness: StackMapping::with_array_value_size_stack_size(
+                false,
+                maxvar.array_size_for_literals(),
+                maxvar.array_size_for_variables(),
+            ),
             literal_reason: Array::new(Reason::invalid(), maxvar.array_size_for_literals()),
             lrat_id: Clause::new(0),
             clause_lrat_offset: Array::new(usize::max_value(), num_clauses),
@@ -534,9 +541,81 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
 
 fn check_inference(checker: &mut Checker) -> bool {
     checker.soft_propagation = true;
-    let ok = preserve_assignment!(checker, rup_or_rat(checker));
+    let ok = match checker.config.redundancy_property {
+        RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
+        RedundancyProperty::PR => pr(checker),
+    };
     checker.soft_propagation = false;
     ok
+}
+
+enum Reduct {
+    Top,
+    Clause(Stack<Literal>),
+}
+
+fn reduct(
+    checker: &Checker,
+    assignment: &impl Index<Literal, Output = bool>,
+    clause: Clause,
+) -> Reduct {
+    if checker
+        .clause(clause)
+        .iter()
+        .any(|&literal| assignment[literal])
+    {
+        Reduct::Top
+    } else {
+        Reduct::Clause(
+            checker
+                .clause(clause)
+                .iter()
+                .filter(|&literal| !assignment[-*literal])
+                .map(|l| *l)
+                .collect(),
+        )
+    }
+}
+
+fn is_proper_subset(left: &Stack<Literal>, right: &Stack<Literal>) -> bool {
+    left.len() < right.len()
+        && left.iter().all(|&left_literal| {
+            right
+                .iter()
+                .any(|&right_literal| left_literal == right_literal)
+        })
+}
+
+fn pr(checker: &mut Checker) -> bool {
+    let lemma = checker.lemma;
+    for clause in Clause::range(0, lemma) {
+        let witness = &checker.lemma_witness[lemma];
+        for &literal in witness {
+            invariant!(!checker.witness[literal]);
+            checker.witness.push(literal, true);
+        }
+        let reduct_witness = reduct(checker, &checker.witness, clause);
+        // TODO skip if if reduce == 0?
+        if match reduct_witness {
+            Reduct::Top => continue,
+            Reduct::Clause(clause_under_witness) => {
+                let reduct_assignment = reduct(checker, &checker.assignment, clause);
+                match reduct_assignment {
+                    Reduct::Top => true,
+                    Reduct::Clause(clause_under_assignment) => {
+                        is_proper_subset(&clause_under_witness, &clause_under_assignment)
+                    }
+                }
+            }
+        } {
+            let ok = preserve_assignment!(checker, rup(checker, clause, None)) == CONFLICT;
+            if !ok {
+                return false;
+            }
+        }
+        checker.witness.clear();
+    }
+    true
 }
 
 fn rup_or_rat(checker: &mut Checker) -> bool {
@@ -1022,7 +1101,10 @@ fn preprocess(checker: &mut Checker) -> bool {
         } else {
             invariant!(clause == checker.lemma);
             if checker.clause(clause).empty() {
-                warn!("conflict claimed but not detected");
+                warn!(
+                    "conflict claimed but not detected in {}",
+                    checker.clause_to_string(clause)
+                );
                 checker.rejection.failed_proof_step = i;
                 return false;
             }
@@ -1776,11 +1858,12 @@ impl Checker {
 
 fn print_memory_usage(checker: &Checker) {
     macro_rules! heap_space {
-        ($($x:expr),*) => (vec!($(($x).heap_space()),*));
+        ($($x:expr,)*) => (vec!($(($x).heap_space()),*));
     }
     let usages = vec![
         ("db", checker.db.heap_space()),
         ("proof", checker.proof.heap_space()),
+        ("witness", checker.lemma_witness.heap_space()),
         ("optimized-proof", checker.optimized_proof.heap_space()),
         ("watchlist_core", checker.watchlist_core.heap_space()),
         ("watchlist_noncore", checker.watchlist_noncore.heap_space()),
@@ -1804,7 +1887,8 @@ fn print_memory_usage(checker: &Checker) {
                 checker.clause_lrat_offset,
                 checker.clause_pivot,
                 checker.clause_scheduled,
-                checker.lemma_revision
+                checker.lemma_revision,
+                checker.lemma_witness,
             )
             .iter()
             .map(|x| x.heap_space())

@@ -85,7 +85,11 @@ fn main() {
 
     let config = Config::new(app.get_matches());
     let start = SystemTime::now();
-    let parser = parse_files(&config.formula_filename, &config.proof_filename);
+    let parser = parse_files(
+        &config.formula_filename,
+        &config.proof_filename,
+        config.redundancy_property,
+    );
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
     checker.print_memory_usage();

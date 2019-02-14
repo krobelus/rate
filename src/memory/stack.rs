@@ -9,6 +9,7 @@ use crate::{
 use alloc::raw_vec::RawVec;
 use std::{
     cmp::max,
+    iter::FromIterator,
     marker::PhantomData,
     mem::{self, size_of},
     ops::{Deref, DerefMut, Index, IndexMut},
@@ -255,6 +256,12 @@ impl<'a, T> IntoIterator for &'a Stack<T> {
     type IntoIter = StackIterator<'a, T>;
     fn into_iter(self) -> StackIterator<'a, T> {
         self.iter()
+    }
+}
+
+impl<T> FromIterator<T> for Stack<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Stack<T> {
+        Stack::from_vec(Vec::from_iter(iter))
     }
 }
 

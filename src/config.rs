@@ -5,6 +5,7 @@ use clap::ArgMatches;
 /// Parsed arguments.
 #[derive(Debug)]
 pub struct Config {
+    pub redundancy_property: RedundancyProperty,
     pub skip_unit_deletions: bool,
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
@@ -35,6 +36,12 @@ pub fn unreachable() -> ! {
 
 fn incompatible_options(what: &str) {
     die!("incompatible options: {}", what);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedundancyProperty {
+    RAT,
+    PR,
 }
 
 impl Config {
@@ -68,7 +75,16 @@ impl Config {
         if drat_trim && lratcheck_compat {
             incompatible_options("--drat-trim --lratcheck_compat");
         }
+        let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Config {
+            redundancy_property: if proof_filename.ends_with(".drat") {
+                RedundancyProperty::RAT
+            } else if proof_filename.ends_with(".pr") {
+                RedundancyProperty::PR
+            } else {
+                comment!("unknown file extension, defaulting to RAT checking");
+                RedundancyProperty::RAT
+            },
             skip_unit_deletions: drat_trim || skip_unit_deletions,
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
@@ -83,7 +99,7 @@ impl Config {
                 i => i,
             },
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
-            proof_filename: matches.value_of("PROOF").unwrap().to_string(),
+            proof_filename: proof_filename,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
             lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
             sick_filename: sick_filename,

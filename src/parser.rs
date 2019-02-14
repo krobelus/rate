@@ -3,7 +3,7 @@
 use crate::{
     clause::{Clause, ProofStep},
     clausedatabase::ClauseDatabase,
-    config::unreachable,
+    config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
     memory::{ConsumingStackIterator, HeapSpace, Offset, Slice, Stack},
 };
@@ -33,26 +33,30 @@ pub static mut CLAUSE_OFFSET: Stack<usize> = Stack::const_new();
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
+    pub redundancy_property: RedundancyProperty,
     pub maxvar: Variable,
     pub num_clauses: usize,
     pub db: ClauseDatabase<'static>,
     pub current_clause_offset: usize,
     pub clause_pivot: Stack<Literal>,
     pub clause_deleted_at: Stack<usize>,
+    pub lemma_witness: Stack<Stack<Literal>>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
 }
 
 impl Parser {
-    pub fn new() -> Parser {
+    pub fn new(redundancy_property: RedundancyProperty) -> Parser {
         unsafe { CLAUSE_OFFSET.push(0) }; // sentinel
         Parser {
+            redundancy_property: redundancy_property,
             maxvar: Variable::new(0),
             num_clauses: usize::max_value(),
             db: unsafe { ClauseDatabase::new(&mut CLAUSE_DATABASE, &mut CLAUSE_OFFSET) },
             current_clause_offset: 0,
             clause_pivot: Stack::new(),
             clause_deleted_at: Stack::new(),
+            lemma_witness: Stack::new(),
             proof_start: Clause::new(0),
             proof: Stack::new(),
         }
@@ -62,9 +66,13 @@ impl Parser {
 type HashTable = HashMap<ClauseHashEq, Stack<Clause>>;
 
 #[cfg_attr(feature = "flame_it", flame)]
-pub fn parse_files(formula_file: &str, proof_file: &str) -> Parser {
+pub fn parse_files(
+    formula_file: &str,
+    proof_file: &str,
+    redundancy_property: RedundancyProperty,
+) -> Parser {
     let mut clause_ids = HashTable::new();
-    let mut parser = Parser::new();
+    let mut parser = Parser::new(redundancy_property);
     {
         parse_formula(&mut parser, &mut clause_ids, open_file(&formula_file))
             .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
@@ -378,6 +386,7 @@ fn parse_formula(
         if clause_head {
             start_clause(&mut *parser);
             parser.clause_pivot.push(Literal::NEVER_READ);
+            parser.lemma_witness.push(Stack::new());
         }
         add_literal(parser, clause_ids, literal);
         clause_head = literal.is_zero();
@@ -474,6 +483,7 @@ fn do_parse_proof(
         Start,
         Lemma,
         Deletion,
+        Witness,
     }
 
     let literal_parser = if binary {
@@ -484,13 +494,14 @@ fn do_parse_proof(
 ;
     let mut state = State::Start;
     let mut lemma_head = true;
+    let mut first_literal = None;
     while let Some(c) = input.peek() {
         if !binary && is_space(c) {
             input.advance();
             continue;
         }
-        state = match state {
-            State::Start => match c {
+        if state == State::Start {
+            state = match c {
                 b'd' => {
                     input.advance();
                     start_clause(parser);
@@ -510,28 +521,41 @@ fn do_parse_proof(
                     State::Lemma
                 }
                 _ => return input.error(DRAT),
-            },
-            State::Lemma | State::Deletion => {
-                let literal = literal_parser(input)?;
-                match state {
-                    State::Lemma => {
-                        if lemma_head {
-                            parser.clause_pivot.push(literal);
-                        }
-                        lemma_head = false;
-                        add_literal(parser, clause_ids, literal);
-                    }
-                    State::Deletion => {
-                        add_deletion(parser, clause_ids, literal);
-                    }
-                    _ => unreachable(),
+            };
+            continue;
+        }
+        let literal = literal_parser(input)?;
+        if state == State::Lemma
+            && parser.redundancy_property == RedundancyProperty::PR
+            && first_literal == Some(literal)
+        {
+            first_literal = None;
+            state = State::Witness
+        }
+        match state {
+            State::Lemma => {
+                if lemma_head {
+                    parser.clause_pivot.push(literal);
+                    parser.lemma_witness.push(Stack::new());
+                    first_literal = Some(literal);
+                    lemma_head = false;
                 }
+                add_literal(parser, clause_ids, literal);
+            }
+            State::Deletion => {
+                add_deletion(parser, clause_ids, literal);
+            }
+            State::Witness => {
                 if literal.is_zero() {
-                    State::Start
+                    add_literal(parser, clause_ids, literal);
                 } else {
-                    state
+                    parser.lemma_witness[parser.proof_start.as_offset()].push(literal);
                 }
             }
+            _ => unreachable(),
+        }
+        if literal.is_zero() {
+            state = State::Start;
         }
     }
     match state {
@@ -541,7 +565,8 @@ fn do_parse_proof(
         State::Deletion => {
             add_deletion(parser, clause_ids, Literal::new(0));
         }
-        _ => (),
+        State::Witness => {}
+        State::Start => (),
     };
     let clause = start_clause(parser);
     parser.proof.push(ProofStep::lemma(clause));
@@ -577,7 +602,7 @@ mod tests {
     }
 
     fn sample_formula(clause_ids: &mut HashTable) -> Parser {
-        let mut parser = Parser::new();
+        let mut parser = Parser::new(RedundancyProperty::RAT);
         let example = r#"c comment
 p cnf 2 2
 1 2 0
@@ -634,6 +659,7 @@ c comment
             assert_eq!(
                 parser,
                 Parser {
+                    redundancy_property: RedundancyProperty::RAT,
                     maxvar: Variable::new(3),
                     num_clauses: 5,
                     db: unsafe { ClauseDatabase::new(&mut CLAUSE_DATABASE, &mut CLAUSE_OFFSET) },
@@ -645,6 +671,7 @@ c comment
                         usize::max_value(),
                         usize::max_value()
                     ),
+                    lemma_witness: stack!(stack!(), stack!(), stack!()),
                     proof_start: Clause::new(2),
                     proof: stack![
                         ProofStep::lemma(Clause::new(2)),

@@ -37,23 +37,32 @@ def benchmark_cnfs():
             for dirpath, _, files in os.walk(benchmark_location)
             for file in files
             if file.endswith('.cnf')
-            and '/performance' not in dirpath
-            and '/random' not in dirpath
             and '/excluded' not in dirpath
             )
 
 
-def all_inputs():
-    def size(cnf):
-        return os.path.getsize(cnf)
+def size(cnf):
+    return os.path.getsize(cnf)
+
+
+def drat_inputs():
     return [cnf[:-len('.cnf')]
-            for cnf in sorted(benchmark_cnfs(), key=size)]
+            for cnf in sorted(benchmark_cnfs(), key=size)
+            if os.path.exists(cnf[:-len('cnf')] + 'drat')
+            ]
 
 
-def small_inputs():
-    return [name for name in all_inputs()
+def small_drat_inputs():
+    return [name for name in drat_inputs()
             # only use small formulas
             if os.path.getsize(f'{name}.cnf') < 10_0000
+            ]
+
+
+def pr_inputs():
+    return [cnf[:-len('.cnf')]
+            for cnf in sorted(benchmark_cnfs(), key=size)
+            if os.path.exists(cnf[:-len('cnf')] + 'pr')
             ]
 
 
@@ -128,7 +137,7 @@ def sick_checker_accepts(checker, name):
     return ok
 
 
-def compare_acceptance(a, b, *, instances=all_inputs()):
+def compare_acceptance(a, b, *, instances=drat_inputs()):
     build_release()
     [ensure_executable(command) for command in (a, b)]
     for name in instances:
@@ -173,18 +182,24 @@ def double_check(
         drat_checker,
         lrat_checker=['lrat-check'],
         *,
-        instances=all_inputs()):
+        instances=drat_inputs()):
     build_release()
     [ensure_executable(command) for command in (drat_checker, lrat_checker)]
     sick = not(any('--skip-unit-deletions' in arg for arg in drat_checker))
     for name in instances:
+        pr = os.path.exists(f'{name}.pr')
         args = [
-            f'{name}.cnf',
-            f'{name}.drat',
-            '-L',
-            f'{name}.lrat']
-        if sick:
-            args += ['--recheck', f'{name}.sick']
+            f'{name}.cnf'
+        ]
+        if pr:
+            args += [f'{name}.pr']
+        else:
+            args += [f'{name}.drat', '-L', f'{name}.lrat']
+            if sick:
+                args += ['--recheck', f'{name}.sick']
+        if pr:
+            assert accepts(drat_checker + args, name)
+            return
         if accepts(drat_checker + args, name):
             if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[0]:
                 continue  # rejects tautological formulas
@@ -215,11 +230,15 @@ def double_check(
                 ['sickcheck'] + args[:2] + [args[-1]], name)
 
 
+def test_pr():
+    double_check(rate(), instances=pr_inputs())
+
+
 def test_quick_default():
     double_check(
         rate(
             flags=['--assume-pivot-is-first']),
-        instances=small_inputs())
+        instances=small_drat_inputs())
 
 
 def test_quick_no_core_first():
@@ -227,7 +246,7 @@ def test_quick_no_core_first():
         rate(
             flags=['--assume-pivot-is-first',
                    '--no-core-first']),
-        instances=small_inputs())
+        instances=small_drat_inputs())
 
 
 def test_quick_skip_unit_deletions():
@@ -235,7 +254,7 @@ def test_quick_skip_unit_deletions():
         rate(
             flags=['--assume-pivot-is-first',
                    '--skip-unit-deletions']),
-        instances=small_inputs())
+        instances=small_drat_inputs())
 
 
 def test_full():
@@ -261,7 +280,7 @@ def test_acceptance_initial_commit():
         rate(
             flags=['--noncore-rat-candidates']),
         rate(INITIAL_COMMIT),
-        instances=small_inputs())
+        instances=small_drat_inputs())
 
 
 def test_acceptance_drat_trim():
