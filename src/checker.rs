@@ -50,7 +50,8 @@ pub struct Checker {
 
     implication_graph: StackMapping<Literal, bool>,
     literal_reason: Array<Literal, Reason>,
-    literal_is_in_cone: Array<Literal, bool>,
+    literal_is_in_cone_preprocess: Array<Literal, bool>,
+    literal_is_in_cone_but_already_assigned: Array<Literal, bool>,
     literal_minimal_lifetime: Array<Literal, usize>,
     watchlist_noncore: Array<Literal, Watchlist>,
     watchlist_core: Array<Literal, Watchlist>,
@@ -171,7 +172,11 @@ impl Checker {
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
-            literal_is_in_cone: Array::new(false, maxvar.array_size_for_literals()),
+            literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
+            literal_is_in_cone_but_already_assigned: Array::new(
+                false,
+                maxvar.array_size_for_literals(),
+            ),
             literal_minimal_lifetime: Array::new(0, maxvar.array_size_for_literals()),
             revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
@@ -1479,6 +1484,7 @@ fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head
 // Revisions
 
 fn revision_create(checker: &mut Checker, clause: Clause) {
+    assignment_invariants(checker);
     log!(checker, 1, "{}", checker.assignment);
     let unit = *checker
         .clause(clause)
@@ -1505,17 +1511,19 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
             next_position_to_overwrite += 1;
         }
     }
-    checker.assignment.resize_trail(next_position_to_overwrite);
-    checker.processed = next_position_to_overwrite;
+    let length_after_removing_cone = next_position_to_overwrite;
+    checker.assignment.resize_trail(length_after_removing_cone);
+    checker.processed = length_after_removing_cone;
     for &literal in &revision.cone {
         watchlist_revise(checker, literal);
     }
     log!(checker, 1, "Created {}\n{}", revision, checker.assignment);
     for &literal in &revision.cone {
-        invariant!(checker.literal_is_in_cone[literal]);
-        checker.literal_is_in_cone[literal] = false;
+        invariant!(checker.literal_is_in_cone_preprocess[literal]);
+        checker.literal_is_in_cone_preprocess[literal] = false;
     }
     checker.revisions.push(revision);
+    assignment_invariants(checker);
 }
 
 fn watchlist_revise(checker: &mut Checker, lit: Literal) {
@@ -1568,7 +1576,7 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal)
     checker.literal_minimal_lifetime[lit] = 0;
     set_reason_flag(checker, lit, false);
     revision.cone.push(lit);
-    checker.literal_is_in_cone[lit] = true;
+    checker.literal_is_in_cone_preprocess[lit] = true;
     revision
         .position_in_trail
         .push(checker.assignment.position_in_trail(lit));
@@ -1585,44 +1593,58 @@ fn is_in_cone(checker: &Checker, literal: Literal) -> bool {
     checker
         .clause(checker.offset2clause(reason.offset()))
         .iter()
-        .any(|&lit| lit != literal && checker.literal_is_in_cone[-lit])
+        .any(|&lit| lit != literal && checker.literal_is_in_cone_preprocess[-lit])
 }
 
 fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
+    assignment_invariants(checker);
     let mut introductions = 0;
     let mut literals_to_revise = revision.cone.len();
     for &literal in &revision.cone {
         set_reason_flag(checker, literal, false);
         if !checker.assignment[literal] {
             introductions += 1;
+        } else {
+            checker.literal_is_in_cone_but_already_assigned[literal] = true;
         }
     }
     log!(checker, 1, "Applying {}{}", revision, checker.assignment);
-    let mut right_position = checker.assignment.len() + introductions;
-    let mut left_position = right_position - 1 - literals_to_revise;
-    checker.assignment.resize_trail(right_position);
-    checker.processed = right_position;
-    // Re-introduce the assignments that were induce by the deleted unit,
-    // starting from the ones with the highest offset in the trail.
+    let length_after_adding_cone = checker.assignment.len() + introductions;
+    let mut right_position = length_after_adding_cone - 1;
+    let mut left_position = checker.assignment.len();
+    checker.assignment.resize_trail(length_after_adding_cone);
+    checker.processed = length_after_adding_cone;
+    // Re-introduce the assignments that were induced by the deleted unit,
+    // starting with the ones with the highest offset in the trail.
     while literals_to_revise > 0 {
-        right_position -= 1;
-        let literal;
-        if right_position == revision.position_in_trail[literals_to_revise - 1] {
+        let literal = if right_position == revision.position_in_trail[literals_to_revise - 1] {
             literals_to_revise -= 1;
-            literal = revision.cone[literals_to_revise];
-            checker.literal_reason[literal] =
+            let lit = revision.cone[literals_to_revise];
+            checker.literal_reason[lit] =
                 Reason::forced(checker.clause2offset(revision.reason_clause[literals_to_revise]));
-            set_reason_flag(checker, literal, true);
+            set_reason_flag(checker, lit, true);
+            lit
         } else {
-            literal = checker.assignment.trail_at(left_position);
-            left_position -= 1;
-        }
+            loop {
+                invariant!(left_position > 0 && left_position <= checker.assignment.len());
+                left_position = left_position - 1;
+                let lit = checker.assignment.trail_at(left_position);
+                if !checker.literal_is_in_cone_but_already_assigned[lit] {
+                    break lit;
+                }
+            }
+        };
         checker
             .assignment
             .set_literal_at_level(literal, right_position);
+        right_position -= 1;
     }
     log!(checker, 1, "Applied revision:\n{}", checker.assignment);
+    for &literal in &revision.cone {
+        checker.literal_is_in_cone_but_already_assigned[literal] = false;
+    }
     watches_reset(checker, revision);
+    assignment_invariants(checker);
 }
 
 fn watches_reset(checker: &mut Checker, revision: &Revision) {

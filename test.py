@@ -140,6 +140,8 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
                 'benchmarks/crafted/missing-last-zero',
                     'benchmarks/crafted/missing-last-zero2'):
                 continue  # rupee rejects the proof
+            if name == 'benchmarks/rupee/problem':
+                continue  # rejected by rupee, see the commit that introduced this line
             if name == 'benchmarks/rupee/trick':
                 continue  # different result
         if name == 'benchmarks/crafted/faux-conflict' and 'drat-trim' in b[0]:
