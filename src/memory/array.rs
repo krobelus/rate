@@ -20,7 +20,6 @@ use std::{
 /// The array is allocated at construction time, i.e. the maximum capacity needs to be known
 /// already.
 pub struct Array<I: Offset, T: Clone> {
-    initialized: bool,
     vec: RawVec<T>,
     phantom: PhantomData<I>,
 }
@@ -35,24 +34,21 @@ impl<I: Offset, T: Clone> Array<I, T> {
             }
         }
         Array {
-            initialized: true,
             vec: vec,
             phantom: PhantomData,
         }
     }
     pub fn with_capacity(size: usize) -> Array<I, T> {
         Array {
-            initialized: false,
             vec: RawVec::with_capacity(size),
             phantom: PhantomData,
         }
     }
     pub fn from(mut stack: Stack<T>) -> Array<I, T> {
         let ptr = stack.as_mut_ptr();
-        let cap = stack.capacity();
+        let cap = stack.len();
         forget(stack);
         Array {
-            initialized: true,
             vec: unsafe { RawVec::from_raw_parts(ptr, cap) },
             phantom: PhantomData,
         }
@@ -126,7 +122,6 @@ impl<I: Offset, T: Clone> Drop for Array<I, T> {
 
 impl<I: Offset, T: Clone + HeapSpace> HeapSpace for Array<I, T> {
     fn heap_space(&self) -> usize {
-        requires!(self.initialized);
         self.size() * size_of::<T>()
             + (0..self.size()).fold(0, |sum, i| {
                 sum + unsafe { &(*self.ptr().offset(i as isize)) }.heap_space()
