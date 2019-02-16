@@ -111,7 +111,8 @@ def accepts(checker, name):
 def lrat_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
     ok = (('lratcheck' in checker[0] and b's ACCEPTED\n' in stdout)
-          or ('lrat-check' in checker[0] and b'c VERIFIED' in stdout)
+          # or ('lrat-check' in checker[0] and b'c VERIFIED' in stdout)
+          or ('lrat-check' in checker[0] and b's VERIFIED' in stdout)
           )
     if not ok:
         print(str(stdout, 'utf8'))
@@ -182,16 +183,17 @@ def double_check(
         if sick:
             args += ['--recheck', f'{name}.sick']
         if accepts(drat_checker + args, name):
-            if name == 'benchmarks/crafted/bottom' and 'lrat-check' in lrat_checker[0]:
-                continue  # infinite loop
             if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[0]:
                 continue  # rejects tautological formulas
-            # if name == 'benchmarks/crafted/tautological' and 'lrat-check' in lrat_checker[0]:
-            #     continue  # reports "Invalid formula!"
-            if name == 'benchmarks/crafted/bottom' and 'lrat-check' in lrat_checker[0]:
-                continue  # not sure how to do that
+            if 'lrat-check' in lrat_checker[0]:
+                if name == 'benchmarks/crafted/tautological':
+                    continue
+                if name == 'benchmarks/crafted/duplicate-literals':
+                    continue
+                if name == 'benchmarks/crafted/bottom':
+                    continue
             assert lrat_checker_accepts(
-                lrat_checker + [args[0], args[3]], name)
+                lrat_checker + [args[0], args[3], 'nil', 't'], name)
         elif sick:
             # TODO hack sickcheck to handle some edge cases
             if name == 'benchmarks/crafted/empty':

@@ -9,7 +9,7 @@ rate="cargo run --release -- $name.cnf $name.drat --assume-pivot-is-first $@"
 
 output="$($rate -L "$name".lrat -i "$name".sick)"
 echo "$output" | grep -q '^s VERIFIED$' && {
-  exec lrat-check-acl2 "$name".{cnf,lrat}
+  exec lrat-check "$name".{cnf,lrat} nil t
 }
 
 echo "$output" | grep -q '^s NOT VERIFIED$' && {
