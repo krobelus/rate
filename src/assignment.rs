@@ -80,7 +80,7 @@ impl Assignment {
         self.position_in_trail[literal] = dst;
     }
     /// Set the size of the trail.
-    /// Note: this does change the assigned values, only the trail.
+    /// Note: this does not change the assigned values, only the trail.
     pub fn resize_trail(&mut self, level: usize) {
         self.trail.resize(level);
     }
