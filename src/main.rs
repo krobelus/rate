@@ -84,8 +84,8 @@ fn main() {
     let parser = parse_files(&config.formula_filename, &config.proof_filename);
     parser.print_memory_usage();
     let mut checker = Checker::new(parser, config);
-    checker.print_memory_usage();
     let ok = check(&mut checker);
+    checker.print_memory_usage();
     comment!(
         "elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()

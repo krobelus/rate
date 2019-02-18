@@ -181,7 +181,7 @@ impl Checker {
                 maxvar.array_size_for_literals(),
             ),
             literal_minimal_lifetime: Array::new(0, maxvar.array_size_for_literals()),
-            revisions: Stack::with_capacity(maxvar.array_size_for_variables()),
+            revisions: Stack::new(),
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             rejection: Rejection::new(),
@@ -1790,6 +1790,7 @@ fn print_memory_usage(checker: &Checker) {
     let usages = vec![
         ("db", checker.db.heap_space()),
         ("proof", checker.proof.heap_space()),
+        ("optimized-proof", checker.optimized_proof.heap_space()),
         ("watchlist_core", checker.watchlist_core.heap_space()),
         ("watchlist_noncore", checker.watchlist_noncore.heap_space()),
         ("revisions", checker.revisions.heap_space()),
