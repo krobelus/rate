@@ -8,7 +8,7 @@ use std::{fmt, fmt::Display, ops};
 pub struct Variable(pub u32);
 
 /// A literal, encoded as 32 bit unsigned integer.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord, Default)]
 pub struct Literal {
     /// We use a sign-magnitude encoding (also used by AIGER and others). This
     /// allows us to directly use this as offset.
@@ -41,7 +41,7 @@ impl Variable {
 /// Enable as array index.
 impl Offset for Variable {
     /// We simply use the variable index, so offset 0 will be generally unused.
-    fn as_offset(self) -> usize {
+    fn as_offset(&self) -> usize {
         self.0 as usize
     }
 }
@@ -124,7 +124,7 @@ impl Literal {
 
 /// Enable as array index.
 impl Offset for Literal {
-    fn as_offset(self) -> usize {
+    fn as_offset(&self) -> usize {
         self.encoding as usize
     }
 }

@@ -16,6 +16,7 @@
 mod array;
 mod boundedstack;
 mod slice;
+#[macro_use]
 mod stack;
 mod stackmapping;
 
@@ -23,18 +24,18 @@ pub use crate::memory::{
     array::Array,
     boundedstack::BoundedStack,
     slice::{Slice, SliceMut},
-    stack::Stack,
+    stack::{Stack, StackIterator},
     stackmapping::StackMapping,
 };
 
 /// Trait for index-like types
 pub trait Offset {
-    fn as_offset(self) -> usize;
+    fn as_offset(&self) -> usize;
 }
 
 impl Offset for usize {
-    fn as_offset(self) -> usize {
-        self
+    fn as_offset(&self) -> usize {
+        *self
     }
 }
 

@@ -6,7 +6,7 @@
 
 use crate::{
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack, HeapSpace},
+    memory::{Array, StackIterator, BoundedStack, HeapSpace},
 };
 use std::{fmt, fmt::Display, ops::Index};
 
@@ -79,10 +79,15 @@ impl Assignment {
         self.trail[dst] = literal;
         self.position_in_trail[literal] = dst;
     }
-    /// Set the size of the trail.
+    /// Increase the size of the trail.
     /// Note: this does not change the assigned values, only the trail.
-    pub fn resize_trail(&mut self, level: usize) {
-        self.trail.resize(level);
+    pub fn grow_trail(&mut self, level: usize) {
+        self.trail.set_len(level)
+    }
+    /// Descrease the size of the trail.
+    /// Note: this does not change the assigned values, only the trail.
+    pub fn shrink_trail(&mut self, level: usize) {
+        self.trail.truncate(level)
     }
     /// Remove the assignment for a literal, without modifying the trail.
     pub fn unassign(&mut self, lit: Literal) {
@@ -100,7 +105,7 @@ impl Assignment {
 /// Iterate over the literals in the trail, from oldest to newest.
 impl<'a> IntoIterator for &'a Assignment {
     type Item = &'a Literal;
-    type IntoIter = std::slice::Iter<'a, Literal>;
+    type IntoIter = StackIterator<'a, Literal>;
     fn into_iter(self) -> Self::IntoIter {
         self.trail.into_iter()
     }

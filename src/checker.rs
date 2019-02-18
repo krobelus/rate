@@ -107,7 +107,7 @@ impl HeapSpace for Rejection {
     }
 }
 
-#[derive(Debug, HeapSpace)]
+#[derive(Debug, HeapSpace, Default, Clone)]
 struct Revision {
     cone: Stack<Literal>,
     position_in_trail: Stack<usize>,
@@ -124,15 +124,7 @@ fn test_revision_memory_usage() {
     };
     assert_eq!(rev.heap_space(), 0);
     rev.cone.push(Literal::TOP);
-    assert_eq!(rev.heap_space(), std::mem::size_of::<Literal>());
-    rev.position_in_trail.push(0);
-    rev.reason_clause.push(Clause::new(0));
-    assert_eq!(
-        rev.heap_space(),
-        std::mem::size_of::<Literal>()
-            + std::mem::size_of::<usize>()
-            + std::mem::size_of::<Clause>()
-    );
+    assert_eq!(rev.heap_space(), 64);
 }
 
 impl Checker {
@@ -1513,7 +1505,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         }
     }
     let length_after_removing_cone = next_position_to_overwrite;
-    checker.assignment.resize_trail(length_after_removing_cone);
+    checker.assignment.shrink_trail(length_after_removing_cone);
     checker.processed = length_after_removing_cone;
     for &literal in &revision.cone {
         watchlist_revise(checker, literal);
@@ -1613,7 +1605,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     let length_after_adding_cone = checker.assignment.len() + introductions;
     let mut right_position = length_after_adding_cone - 1;
     let mut left_position = checker.assignment.len();
-    checker.assignment.resize_trail(length_after_adding_cone);
+    checker.assignment.grow_trail(length_after_adding_cone);
     checker.processed = length_after_adding_cone;
     // Re-introduce the assignments that were induced by the deleted unit,
     // starting with the ones with the highest offset in the trail.

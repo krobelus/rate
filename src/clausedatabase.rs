@@ -53,7 +53,7 @@ impl<'a> ClauseDatabase<'a> {
         Clause::new((lower.encoding as u64) | (upper.encoding as u64) >> 32)
     }
     pub fn swap(&mut self, a: usize, b: usize) {
-        self.data.as_mut_slice().swap(a, b);
+        self.data.mut_slice().swap(a, b);
     }
     pub fn make_clause_empty(&mut self, target: Clause) {
         self.offset[target.as_offset() + 1] =

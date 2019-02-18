@@ -1,14 +1,13 @@
 //! A dynamic array.
 
-use crate::memory::{HeapSpace, Offset, Stack};
+use crate::{memory::{HeapSpace, Offset, Stack}, config::ENABLE_BOUNDS_CHECKING};
 use alloc::raw_vec::RawVec;
 use std::{
     fmt,
     fmt::Debug,
     marker::PhantomData,
     mem::{forget, size_of},
-    ops::{Index, IndexMut},
-    ptr,
+    ops::{Deref, DerefMut, Index, IndexMut},
     ptr::write,
     slice,
 };
@@ -19,28 +18,47 @@ use std::{
 ///
 /// The array is allocated at construction time, i.e. the maximum capacity needs to be known
 /// already.
-pub struct Array<I: Offset, T: Clone> {
-    vec: RawVec<T>,
-    phantom: PhantomData<I>,
+pub struct Array<I: Offset, T> {
+    pub data: RawVec<T>,
+    pub phantom: PhantomData<I>,
+}
+
+impl<I: Offset, T> Default for Array<I, T> {
+    fn default() -> Array<I, T> {
+        Array::with_capacity(0)
+    }
 }
 
 impl<I: Offset, T: Clone> Array<I, T> {
     pub fn new(value: T, size: usize) -> Array<I, T> {
         // optimize zero?
-        let vec = RawVec::with_capacity(size);
+        let data = RawVec::with_capacity(size);
         for i in 0..size {
             unsafe {
-                write((vec.ptr() as *mut T).offset(i as isize), value.clone());
+                write((data.ptr() as *mut T).offset(i as isize), value.clone());
             }
         }
         Array {
-            vec: vec,
+            data: data,
             phantom: PhantomData,
         }
     }
+    pub fn grow(&mut self, new_size: usize, value: T) {
+        requires!(new_size > self.size());
+        let old_size = self.size();
+        let needed = new_size - old_size;
+        self.data.reserve(old_size, needed);
+        for offset in old_size..new_size {
+            unsafe {
+                write(self.mut_ptr().add(offset), value.clone());
+            }
+        }
+    }
+}
+impl<I: Offset, T> Array<I, T> {
     pub fn with_capacity(size: usize) -> Array<I, T> {
         Array {
-            vec: RawVec::with_capacity(size),
+            data: RawVec::with_capacity(size),
             phantom: PhantomData,
         }
     }
@@ -49,34 +67,94 @@ impl<I: Offset, T: Clone> Array<I, T> {
         let cap = stack.len();
         forget(stack);
         Array {
-            vec: unsafe { RawVec::from_raw_parts(ptr, cap) },
+            data: unsafe { RawVec::from_raw_parts(ptr, cap) },
+            phantom: PhantomData,
+        }
+    }
+    pub fn from_vec(mut vec: Vec<T>) -> Array<I, T> {
+        let ptr = vec.as_mut_ptr();
+        let cap = vec.capacity();
+        forget(vec);
+        Array {
+            data: unsafe { RawVec::from_raw_parts(ptr, cap) },
             phantom: PhantomData,
         }
     }
     pub fn ptr(&self) -> *const T {
-        self.vec.ptr()
+        self.data.ptr()
     }
     pub fn mut_ptr(&self) -> *mut T {
-        self.vec.ptr()
+        self.data.ptr()
     }
     pub fn size(&self) -> usize {
-        self.vec.cap()
+        self.data.cap()
     }
     pub fn mut_slice(&self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) }
     }
 }
 
-impl<I: Offset, T: Clone> Index<I> for Array<I, T> {
-    type Output = T;
-    fn index(&self, key: I) -> &T {
-        unsafe { &*self.ptr().offset(key.as_offset() as isize) }
+impl<I: Offset, T> Deref for Array<I, T> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        unsafe {
+            let p = self.ptr();
+            invariant!(!p.is_null());
+            slice::from_raw_parts(p, self.size())
+        }
     }
 }
 
-impl<I: Offset, T: Clone> IndexMut<I> for Array<I, T> {
+impl<I: Offset, T> DerefMut for Array<I, T> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        unsafe {
+            let ptr = self.mut_ptr();
+            invariant!(!ptr.is_null());
+            slice::from_raw_parts_mut(ptr, self.size())
+        }
+    }
+}
+
+impl<I: Offset, T> AsRef<Array<I, T>> for Array<I, T> {
+    fn as_ref(&self) -> &Array<I, T> {
+        self
+    }
+}
+
+impl<I: Offset, T> AsMut<Array<I, T>> for Array<I, T> {
+    fn as_mut(&mut self) -> &mut Array<I, T> {
+        self
+    }
+}
+
+impl<I: Offset, T> AsRef<[T]> for Array<I, T> {
+    fn as_ref(&self) -> &[T] {
+        self
+    }
+}
+
+impl<I: Offset, T> AsMut<[T]> for Array<I, T> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self
+    }
+}
+
+impl<I: Offset, T> Index<I> for Array<I, T> {
+    type Output = T;
+    fn index(&self, key: I) -> &T {
+        if ENABLE_BOUNDS_CHECKING {
+            assert!((0..self.size()).contains(&key.as_offset()));
+        }
+        unsafe { &*self.ptr().add(key.as_offset()) }
+    }
+}
+
+impl<I: Offset, T> IndexMut<I> for Array<I, T> {
     fn index_mut(&mut self, key: I) -> &mut T {
-        unsafe { &mut *self.vec.ptr().offset(key.as_offset() as isize) }
+        if ENABLE_BOUNDS_CHECKING {
+            assert!((0..self.size()).contains(&key.as_offset()));
+        }
+        unsafe { &mut *self.data.ptr().add(key.as_offset()) }
     }
 }
 
@@ -85,7 +163,7 @@ impl<I: Offset, T: Clone> Clone for Array<I, T> {
         let copy = Array::with_capacity(self.size());
         for i in 0..self.size() {
             unsafe {
-                let value = (*self.ptr().offset(i as isize)).clone();
+                let value = (*self.ptr().add(i)).clone();
                 write((copy.ptr() as *mut T).offset(i as isize), value);
             }
         }
@@ -93,18 +171,13 @@ impl<I: Offset, T: Clone> Clone for Array<I, T> {
     }
 }
 
-impl<I: Offset, T: Clone + Debug> Debug for Array<I, T> {
+impl<I: Offset, T> Debug for Array<I, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[")?;
-        for i in 0..self.size() {
-            let value = unsafe { (*self.ptr().offset(i as isize)).clone() };
-            write!(f, "{:?}, ", value)?;
-        }
-        write!(f, "]")
+        write!(f, "[array of size {}]", self.size())
     }
 }
 
-impl<I: Offset, T: Clone + PartialEq> PartialEq for Array<I, T> {
+impl<I: Offset, T: PartialEq> PartialEq for Array<I, T> {
     fn eq(&self, other: &Self) -> bool {
         self.size() == other.size()
             && (0..self.size()).all(|i| unsafe {
@@ -114,13 +187,13 @@ impl<I: Offset, T: Clone + PartialEq> PartialEq for Array<I, T> {
 }
 
 /// If T does not implement Copy, then each member must have been initialized.
-impl<I: Offset, T: Clone> Drop for Array<I, T> {
+impl<I: Offset, T> Drop for Array<I, T> {
     fn drop(&mut self) {
-        unsafe { ptr::drop_in_place(self.mut_slice()) }
+        unsafe { std::ptr::drop_in_place(self.mut_slice()) }
     }
 }
 
-impl<I: Offset, T: Clone + HeapSpace> HeapSpace for Array<I, T> {
+impl<I: Offset, T: HeapSpace> HeapSpace for Array<I, T> {
     fn heap_space(&self) -> usize {
         self.size() * size_of::<T>()
             + (0..self.size()).fold(0, |sum, i| {

@@ -10,7 +10,7 @@ use std::{
 };
 
 /// The index of a clause or lemma, immutable during the lifetime of the program.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash, Default)]
 pub struct Clause {
     index: u64,
 }
@@ -37,7 +37,7 @@ impl Clause {
 }
 
 impl Offset for Clause {
-    fn as_offset(self) -> usize {
+    fn as_offset(&self) -> usize {
         self.index as usize
     }
 }
@@ -80,7 +80,7 @@ impl fmt::Display for Clause {
 ///     Deletion(Clause),
 /// }
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct ProofStep(Tagged64);
 
 impl ProofStep {
@@ -137,7 +137,7 @@ impl Reason {
 ///     ResolutionCandidate(Clause),
 /// }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct LRATDependency(Tagged64);
 
 impl LRATDependency {
@@ -173,7 +173,7 @@ impl LRATDependency {
 ///     Zero,
 /// }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct LRATLiteral(Tagged64);
 
 impl LRATLiteral {
@@ -203,7 +203,7 @@ impl LRATLiteral {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct Tagged64(u64);
 
 impl Tagged64 {

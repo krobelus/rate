@@ -1,6 +1,6 @@
 //! Non-owning view of contiguous, like std::slice
 
-use crate::{config::ENABLE_BOUNDS_CHECKING, memory::Stack};
+use crate::config::ENABLE_BOUNDS_CHECKING;
 
 use std::{
     ops::{Index, IndexMut},
@@ -21,6 +21,11 @@ impl<'a, T> Slice<'a, T> {
     pub fn new(slice: &'a [T]) -> Slice<'a, T> {
         Slice { slice: slice }
     }
+    pub fn from_ref(slice: &'a impl AsRef<[T]>) -> Slice<'a, T> {
+        Slice {
+            slice: slice.as_ref(),
+        }
+    }
     pub fn len(&self) -> usize {
         self.slice.len()
     }
@@ -40,16 +45,6 @@ impl<'a, T> Slice<'a, T> {
     }
 }
 
-impl<'a, T: Clone> Slice<'a, T> {
-    pub fn to_vec(&self) -> Vec<T> {
-        self.slice.to_vec()
-    }
-    pub fn to_stack(&self) -> Stack<T> {
-        Stack::from_vec(self.to_vec())
-    }
-}
-
-#[allow(dead_code)]
 impl<'a, T> SliceMut<'a, T> {
     pub fn new(slice: &'a mut [T]) -> SliceMut<'a, T> {
         SliceMut { slice: slice }

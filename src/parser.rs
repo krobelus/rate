@@ -4,8 +4,7 @@ use crate::{
     clause::{Clause, ProofStep},
     clausedatabase::ClauseDatabase,
     literal::{Literal, Variable},
-    memory::{format_memory_usage, HeapSpace, Offset, Slice, Stack},
-    output::number,
+    memory::{HeapSpace, Offset, Slice, Stack},
 };
 #[cfg(feature = "flame_it")]
 use flamer::flame;
@@ -27,8 +26,8 @@ use std::{
 pub const PADDING_START: usize = 2;
 pub const PADDING_END: usize = 1;
 
-pub static mut CLAUSE_DATABASE: Stack<Literal> = Stack { vec: Vec::new() };
-pub static mut CLAUSE_OFFSET: Stack<usize> = Stack { vec: Vec::new() };
+pub static mut CLAUSE_DATABASE: Stack<Literal> = Stack::const_new();
+pub static mut CLAUSE_OFFSET: Stack<usize> = Stack::const_new();
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
@@ -71,18 +70,14 @@ type HashTable = HashMap<ClauseHashEq, Stack<Clause>>;
 pub fn parse_files(formula_file: &str, proof_file: &str) -> Parser {
     let mut clause_ids = HashTable::new();
     let mut parser = Parser::new();
-    parse_formula(
-        &mut parser,
-        &mut clause_ids,
-        read_or_die(formula_file).as_slice(),
-    )
-    .map(|err| die!("error parsing formula at line {} col {}", err.line, err.col));
-    parse_proof(
-        &mut parser,
-        &mut clause_ids,
-        read_or_die(proof_file).as_slice(),
-    )
-    .map(|err| die!("error parsing proof at line {} col {}", err.line, err.col));
+    let formula = read_or_die(formula_file);
+    parse_formula(&mut parser, &mut clause_ids, formula.as_slice())
+        .map(|err| die!("error parsing formula at line {} col {}", err.line, err.col));
+    drop(formula);
+    let proof = read_or_die(proof_file);
+    parse_proof(&mut parser, &mut clause_ids, proof.as_slice())
+        .map(|err| die!("error parsing proof at line {} col {}", err.line, err.col));
+    drop(proof);
     parser
 }
 
@@ -96,6 +91,7 @@ fn read_file(filename: &str) -> Result<Stack<u8>, io::Error> {
     Ok(if size == 0 {
         Stack::new()
     } else {
+        // We could avoid to_owned here an directly convert the slice to a Stack
         Stack::from_vec(unsafe { MmapOptions::new().map(&file) }.unwrap().to_owned())
     })
 }
@@ -130,7 +126,7 @@ fn close_clause(parser: &mut Parser) -> Clause {
     parser
         .db
         .data
-        .as_mut_slice()
+        .mut_slice()
         .range(start, end)
         .sort_unstable_by_key(_sort_literally);
     let mut duplicate = false;
@@ -699,10 +695,6 @@ mod tests {
         ($($x:expr),*) => (Stack::from_vec(vec!($(Literal::new($x)),*)));
     }
 
-    macro_rules! stack {
-        ($($x:expr),*) => (Stack::from_vec(vec!($($x),*)));
-    }
-
     fn sample_formula(clause_ids: &mut HashTable) -> Parser {
         let mut parser = Parser::new();
         parse_formula(
@@ -751,7 +743,8 @@ p cnf 2 2
                     raw(0), raw(0), lit(1), lit(2), lit(0),
                     raw(1), raw(0), lit(-2), lit(-1), lit(0),
                     raw(2), raw(0), lit(1), lit(2), lit(3), lit(0),
-                    Literal::NEVER_READ, Literal::NEVER_READ, lit(0)
+                    Literal::NEVER_READ, Literal::NEVER_READ,
+                    lit(0)
                 )
             );
             assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 5, 10, 16, 19));
@@ -798,13 +791,5 @@ impl HeapSpace for Parser {
             + self.clause_pivot.heap_space()
             + self.clause_deleted_at.heap_space()
             + self.proof.heap_space()
-    }
-}
-
-/// Note: this does not account for the memory usage of the hash table `clause_ids`.
-impl Parser {
-    pub fn print_memory_usage(&self) {
-        comment!("parser memory usage (in MB)");
-        number("memory-parser", format_memory_usage(self.heap_space()));
     }
 }

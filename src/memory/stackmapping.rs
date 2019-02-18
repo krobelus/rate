@@ -1,9 +1,10 @@
 //! Stack with fast lookup.
 
-use crate::memory::{Array, BoundedStack, HeapSpace, Offset};
+use crate::memory::{Array, BoundedStack, Offset, StackIterator};
 use std::{fmt::Debug, iter::IntoIterator, ops::Index};
+use rate_macros::HeapSpace;
 
-#[derive(Debug)]
+#[derive(Debug, HeapSpace)]
 pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {
     default_value: T,
     array: Array<Key, T>,
@@ -28,10 +29,6 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
     pub fn empty(&self) -> bool {
         self.stack.empty()
     }
-    pub fn push(&mut self, key: Key, value: T) {
-        self.array[key] = value;
-        self.stack.push(key);
-    }
     pub fn pop(&mut self) -> Key {
         let key = self.stack.pop();
         self.array[key] = self.default_value;
@@ -51,13 +48,17 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
     pub fn stack_at_mut(&mut self, offset: usize) -> &mut Key {
         &mut self.stack[offset]
     }
-    pub fn set_but_do_not_push(&mut self, key: Key, value: T) {
+    pub fn push(&mut self, key: Key, value: T) {
         self.array[key] = value;
+        self.stack.push(key);
     }
     pub fn push_but_do_not_set(&mut self, key: Key) {
         self.stack.push(key);
     }
-    pub fn iter(&self) -> std::slice::Iter<Key> {
+    pub fn set_but_do_not_push(&mut self, key: Key, value: T) {
+        self.array[key] = value;
+    }
+    pub fn iter(&self) -> StackIterator<Key> {
         self.into_iter()
     }
 }
@@ -71,14 +72,8 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> Index<Key> for StackMapping<Ke
 
 impl<'a, Key: Offset + Copy + Debug, T: Copy + Debug> IntoIterator for &'a StackMapping<Key, T> {
     type Item = &'a Key;
-    type IntoIter = std::slice::Iter<'a, Key>;
-    fn into_iter(self) -> std::slice::Iter<'a, Key> {
+    type IntoIter = StackIterator<'a, Key>;
+    fn into_iter(self) -> StackIterator<'a, Key> {
         self.stack.into_iter()
-    }
-}
-
-impl<Key: Offset + Copy + Debug, T: Copy + Debug> HeapSpace for StackMapping<Key, T> {
-    fn heap_space(&self) -> usize {
-        self.array.heap_space() + self.stack.heap_space()
     }
 }

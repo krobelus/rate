@@ -13,3 +13,4 @@ __pycache__
 /*.profile
 /flame-graph.html
 /.dir-locals.el
+massif.out.*

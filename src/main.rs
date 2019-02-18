@@ -6,7 +6,9 @@
     alloc,
     ptr_wrapping_offset_from,
     raw_vec_internals,
+    range_contains,
     const_vec_new,
+    vec_resize_default,
     stmt_expr_attributes
 )]
 
@@ -16,13 +18,14 @@ extern crate alloc;
 
 #[macro_use]
 mod output;
+#[macro_use]
+mod memory;
 mod assignment;
 mod checker;
 mod clause;
 mod clausedatabase;
 mod config;
 mod literal;
-mod memory;
 mod parser;
 
 use clap::Arg;
@@ -82,7 +85,6 @@ fn main() {
     let config = Config::new(app.get_matches());
     let start = SystemTime::now();
     let parser = parse_files(&config.formula_filename, &config.proof_filename);
-    parser.print_memory_usage();
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
     checker.print_memory_usage();
