@@ -40,6 +40,7 @@ pub fn check(checker: &mut Checker) -> bool {
 pub struct Checker {
     db: ClauseDatabase<'static>,
     pub proof: Array<usize, ProofStep>,
+    optimized_proof: BoundedStack<ProofStep>,
     config: Config,
 
     maxvar: Variable,
@@ -64,8 +65,6 @@ pub struct Checker {
     clause_deletion_ignored: Array<Clause, bool>,
     clause_pivot: Array<Clause, Literal>,
     clause_in_watchlist: Array<Clause, bool>,
-    lemma_newly_marked_clauses: Array<Clause, Stack<Clause>>,
-    // lemma_revision: Option<Array<Clause, bool>>,
     lemma_revision: Array<Clause, bool>,
 
     revisions: Stack<Revision>,
@@ -139,9 +138,9 @@ fn test_revision_memory_usage() {
 impl Checker {
     pub fn new(parser: Parser, config: Config) -> Checker {
         let num_clauses = parser.num_clauses;
+        let num_lemmas = parser.proof.len();
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
-        let skip_unit_deletions = config.skip_unit_deletions;
         let mut checker = Checker {
             processed: assignment.len(),
             assignment: assignment,
@@ -161,8 +160,6 @@ impl Checker {
                 maxvar.array_size_for_literals(),
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
-            lemma_newly_marked_clauses: Array::new(Stack::new(), num_clauses),
-            // lemma_revision: if skip_unit_deletions { None } else { Some(Array::new(false, num_clauses))},
             lemma_revision: Array::new(false, num_clauses),
             literal_reason: Array::new(Reason::invalid(), maxvar.array_size_for_literals()),
             lrat_id: Clause::new(0),
@@ -175,6 +172,7 @@ impl Checker {
             ),
             maxvar: maxvar,
             proof: Array::from(parser.proof),
+            optimized_proof: BoundedStack::with_capacity(2 * num_lemmas + num_clauses),
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
@@ -320,8 +318,7 @@ impl ops::Try for MaybeConflict {
 
 fn schedule(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.clause_scheduled[clause] {
-        let lemma = checker.lemma;
-        checker.lemma_newly_marked_clauses[lemma].push(clause);
+        checker.optimized_proof.push(ProofStep::deletion(clause));
     }
     checker.clause_scheduled[clause] = true;
 }
@@ -971,6 +968,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     write_dependencies_for_lrat(checker, empty_clause, false);
     schedule(checker, empty_clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::lemma(empty_clause);
+    checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     true
 }
 
@@ -1074,7 +1072,6 @@ fn verify(checker: &mut Checker) -> bool {
                     watches_add(checker, Stage::Verification, clause);
                 }
             } else {
-                // if checker.lemma_revision.as_ref().unwrap()[clause] {
                 if checker.lemma_revision[clause] {
                     let mut revision = checker.revisions.pop();
                     revision_apply(checker, &mut revision);
@@ -1104,13 +1101,14 @@ fn verify(checker: &mut Checker) -> bool {
                     "[verify] skip {}",
                     checker.clause_to_string(lemma)
                 );
-                true
+                continue;
             }
         };
         if !accepted {
             checker.rejection.failed_proof_step = i;
             return false;
         }
+        checker.optimized_proof.push(proof_step)
     }
     true
 }
@@ -1190,85 +1188,46 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     enum State {
         Lemma,
-        InDeletionChain,
+        Deletion,
     };
-    let mut state = State::InDeletionChain;
-    open_deletion_chain(checker, &mut file, checker.lemma - 1)?;
+    let mut state = State::Deletion;
     invariant!(checker.lrat_id == lrat_id(checker, checker.lemma - 1));
+    write!(file, "{} d ", checker.lrat_id)?;
     // delete lemmas that were never used
     for clause in Clause::range(0, checker.lemma) {
         if !checker.clause_scheduled[clause] {
-            write!(file, "{} ", lrat_id(checker, clause))?;
-            clause_deleted[clause] = true;
+            write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause);
         }
     }
-    let mut i = 0;
-    while i <= checker.proof_steps_until_conflict {
-        let proof_step = checker.proof[i];
-        let lemma = proof_step.clause();
+    for i in (0..checker.optimized_proof.len()).rev() {
+        let proof_step = checker.optimized_proof[i];
+        let clause = proof_step.clause();
         match state {
             State::Lemma => {
-                invariant!(!proof_step.is_deletion());
-                if checker.clause_scheduled[lemma] {
-                    checker.lrat_id += 1;
-                    checker.clause_lrat_id[lemma] = checker.lrat_id;
-                    write!(file, "{} ", lrat_id(checker, lemma))?;
-                    write_clause(&mut file, checker.clause(lemma).iter())?;
-                    write!(file, " ")?;
-                    invariant!(checker.clause_lrat_offset[lemma] != usize::max_value());
-                    let mut i = checker.clause_lrat_offset[lemma];
-                    loop {
-                        let lrat_literal = checker.lrat[i];
-                        if lrat_literal.is_zero() {
-                            break;
-                        }
-                        let clause = lrat_literal.clause();
-                        if lrat_literal.is_resolution_candidate() {
-                            write!(file, "-{} ", lrat_id(checker, clause))
-                        } else {
-                            invariant!(lrat_literal.is_hint());
-                            invariant!(checker.clause_scheduled[clause]);
-                            invariant!(lrat_id(checker, clause) != Clause::NEVER_READ);
-                            write!(file, "{} ", lrat_id(checker, clause))
-                        }?;
-                        i += 1;
-                    }
-                    write!(file, "0\n")?;
-                    open_deletion_chain(checker, &mut file, lemma)?;
-                    if !checker.lemma_newly_marked_clauses[lemma].empty() {
-                        for &clause in &checker.lemma_newly_marked_clauses[lemma] {
-                            write_deletion(checker, &mut file, &mut clause_deleted, clause)?;
-                        }
-                    }
-                    state = State::InDeletionChain;
-                }
-                i += 1;
-            }
-            State::InDeletionChain => {
                 if proof_step.is_deletion() {
-                    if lemma != Clause::DOES_NOT_EXIST {
-                        invariant!(
-                            (lrat_id(checker, lemma) == Clause::UNINITIALIZED)
-                                == (lemma >= checker.lemma && !checker.clause_scheduled[lemma])
-                        );
-                        if lrat_id(checker, lemma) != Clause::UNINITIALIZED {
-                            write_deletion(checker, &mut file, &mut clause_deleted, lemma)?;
-                        }
-                    }
-                    i += 1;
+                    write!(file, "{} d ", checker.lrat_id)?;
+                    write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)
                 } else {
-                    if checker.clause_scheduled[lemma] {
-                        close_deletion_chain(&mut file)?;
-                        state = State::Lemma;
-                    } else {
-                        i += 1;
-                    }
-                }
+                    write_lrat_lemma(checker, &mut file, clause)
+                }?;
+            }
+            State::Deletion => {
+                if proof_step.is_deletion() {
+                    write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)
+                } else {
+                    write!(file, "0\n")?;
+                    write_lrat_lemma(checker, &mut file, clause)
+                }?;
             }
         }
+        state = if proof_step.is_deletion() {
+            State::Deletion
+        } else {
+            State::Lemma
+        };
     }
-    if state == State::InDeletionChain {
-        close_deletion_chain(&mut file)?;
+    if state == State::Deletion {
+        write!(file, "0\n")?;
     }
     Ok(())
 }
@@ -1276,19 +1235,56 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
 fn lrat_id(checker: &Checker, clause: Clause) -> Clause {
     checker.clause_lrat_id[clause]
 }
-fn open_deletion_chain(checker: &Checker, file: &mut impl Write, lemma: Clause) -> io::Result<()> {
-    write!(file, "{} d ", checker.clause_lrat_id[lemma])
-}
-fn close_deletion_chain(file: &mut impl Write) -> io::Result<()> {
+
+fn write_lrat_lemma(
+    checker: &mut Checker,
+    file: &mut impl Write,
+    clause: Clause,
+) -> io::Result<()> {
+    invariant!(checker.clause_scheduled[clause]);
+    checker.lrat_id += 1;
+    checker.clause_lrat_id[clause] = checker.lrat_id;
+    write!(file, "{} ", lrat_id(checker, clause))?;
+    write_clause(file, checker.clause(clause).iter())?;
+    write!(file, " ")?;
+    let mut i = checker.clause_lrat_offset[clause];
+    loop {
+        let lrat_literal = checker.lrat[i];
+        if lrat_literal.is_zero() {
+            break;
+        }
+        let hint = lrat_literal.clause();
+        if lrat_literal.is_resolution_candidate() {
+            write!(file, "-{} ", lrat_id(checker, hint))
+        } else {
+            invariant!(lrat_literal.is_hint());
+            invariant!(checker.clause_scheduled[hint]);
+            invariant!(lrat_id(checker, hint) != Clause::NEVER_READ);
+            write!(file, "{} ", lrat_id(checker, hint))
+        }?;
+        i += 1;
+    }
     write!(file, "0\n")
 }
-fn write_deletion(
+
+fn write_lrat_deletion(
     checker: &Checker,
     file: &mut impl Write,
     clause_deleted: &mut Array<Clause, bool>,
     clause: Clause,
 ) -> io::Result<()> {
-    if !clause_deleted[clause] && !checker.clause_deletion_ignored[clause] {
+    invariant!(clause != Clause::DOES_NOT_EXIST);
+    invariant!(clause != Clause::NEVER_READ);
+    invariant!(clause != Clause::UNINITIALIZED);
+    invariant!(
+        (lrat_id(checker, clause) == Clause::UNINITIALIZED)
+            == (clause >= checker.lemma && !checker.clause_scheduled[clause])
+    );
+    if
+        lrat_id(checker, clause) != Clause::UNINITIALIZED &&
+        !clause_deleted[clause]
+        && !checker.clause_deletion_ignored[clause]
+    {
         clause_deleted[clause] = true;
         write!(file, "{} ", checker.clause_lrat_id[clause])
     } else {
@@ -1498,7 +1494,6 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         .find(|&lit| checker.assignment[*lit])
         .unwrap();
     let unit_position = checker.assignment.position_in_trail(unit);
-    // checker.lemma_revision.as_mut().unwrap()[clause] = true;
     checker.lemma_revision[clause] = true;
     let mut revision = Revision {
         cone: Stack::new(),
@@ -1797,10 +1792,6 @@ fn print_memory_usage(checker: &Checker) {
         ("proof", checker.proof.heap_space()),
         ("watchlist_core", checker.watchlist_core.heap_space()),
         ("watchlist_noncore", checker.watchlist_noncore.heap_space()),
-        (
-            "lemma_newly_marked_clauses",
-            checker.lemma_newly_marked_clauses.heap_space(),
-        ),
         ("revisions", checker.revisions.heap_space()),
         ("lrat", checker.lrat.heap_space()),
         (
@@ -1821,7 +1812,6 @@ fn print_memory_usage(checker: &Checker) {
                 checker.clause_lrat_offset,
                 checker.clause_pivot,
                 checker.clause_scheduled,
-                checker.lemma_newly_marked_clauses,
                 checker.lemma_revision
             )
             .iter()

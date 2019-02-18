@@ -86,7 +86,6 @@ fn main() {
     let mut checker = Checker::new(parser, config);
     checker.print_memory_usage();
     let ok = check(&mut checker);
-    checker.print_memory_usage();
     comment!(
         "elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
