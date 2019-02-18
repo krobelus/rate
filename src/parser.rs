@@ -4,7 +4,8 @@ use crate::{
     clause::{Clause, ProofStep},
     clausedatabase::ClauseDatabase,
     literal::{Literal, Variable},
-    memory::{Offset, Slice, Stack},
+    memory::{format_memory_usage, HeapSpace, Offset, Slice, Stack},
+    output::number,
 };
 #[cfg(feature = "flame_it")]
 use flamer::flame;
@@ -15,7 +16,9 @@ use std::{
     fmt::{Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
-    io, panic, str,
+    io,
+    mem::size_of,
+    panic, str,
 };
 
 /// format: clause are stored sequentially, using:
@@ -750,5 +753,34 @@ p cnf 2 2
             CLAUSE_OFFSET.clear();
             CLAUSE_DATABASE.clear();
         }
+    }
+}
+
+// This is probably not correct.
+fn hash_map_heap_size<Key: Hash + Eq + Copy, Value: HeapSpace>(map: &HashMap<Key, Value>) -> usize {
+    map.capacity() * size_of::<Key>()
+        + map
+            .iter()
+            .fold(0, |sum, (_key, val)| sum + val.heap_space())
+}
+
+impl HeapSpace for Parser {
+    fn heap_space(&self) -> usize {
+        self.db.heap_space()
+            + hash_map_heap_size(&self.clause_ids)
+            + self.clause_pivot.heap_space()
+            + self.clause_deleted_at.heap_space()
+            + self.proof.heap_space()
+    }
+}
+
+impl Parser {
+    pub fn print_memory_usage(&self) {
+        comment!("parser memory usage (in MB)");
+        number("memory-parser", format_memory_usage(self.heap_space()));
+        number(
+            "memory-hashmap",
+            format_memory_usage(hash_map_heap_size(&self.clause_ids)),
+        );
     }
 }

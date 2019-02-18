@@ -7,7 +7,9 @@ use crate::{
     config::unreachable,
     config::Config,
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack, HeapSpace, Offset, Slice, Stack, StackMapping},
+    memory::{
+        format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Slice, Stack, StackMapping,
+    },
     output::number,
     parser::Parser,
 };
@@ -63,6 +65,7 @@ pub struct Checker {
     clause_pivot: Array<Clause, Literal>,
     clause_in_watchlist: Array<Clause, bool>,
     lemma_newly_marked_clauses: Array<Clause, Stack<Clause>>,
+    // lemma_revision: Option<Array<Clause, bool>>,
     lemma_revision: Array<Clause, bool>,
 
     revisions: Stack<Revision>,
@@ -138,6 +141,7 @@ impl Checker {
         let num_clauses = parser.num_clauses;
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
+        let skip_unit_deletions = config.skip_unit_deletions;
         let mut checker = Checker {
             processed: assignment.len(),
             assignment: assignment,
@@ -158,6 +162,7 @@ impl Checker {
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
             lemma_newly_marked_clauses: Array::new(Stack::new(), num_clauses),
+            // lemma_revision: if skip_unit_deletions { None } else { Some(Array::new(false, num_clauses))},
             lemma_revision: Array::new(false, num_clauses),
             literal_reason: Array::new(Reason::invalid(), maxvar.array_size_for_literals()),
             lrat_id: Clause::new(0),
@@ -1069,6 +1074,7 @@ fn verify(checker: &mut Checker) -> bool {
                     watches_add(checker, Stage::Verification, clause);
                 }
             } else {
+                // if checker.lemma_revision.as_ref().unwrap()[clause] {
                 if checker.lemma_revision[clause] {
                     let mut revision = checker.revisions.pop();
                     revision_apply(checker, &mut revision);
@@ -1492,6 +1498,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         .find(|&lit| checker.assignment[*lit])
         .unwrap();
     let unit_position = checker.assignment.position_in_trail(unit);
+    // checker.lemma_revision.as_mut().unwrap()[clause] = true;
     checker.lemma_revision[clause] = true;
     let mut revision = Revision {
         cone: Stack::new(),
@@ -1775,7 +1782,13 @@ fn watch_find<'a>(
     false
 }
 
-pub fn print_memory_usage(checker: &Checker) {
+impl Checker {
+    pub fn print_memory_usage(&self) {
+        print_memory_usage(self)
+    }
+}
+
+fn print_memory_usage(checker: &Checker) {
     macro_rules! heap_space {
         ($($x:expr),*) => (vec!($(($x).heap_space()),*));
     }
@@ -1795,27 +1808,33 @@ pub fn print_memory_usage(checker: &Checker) {
             heap_space!(
                 checker.assignment,
                 checker.rejection,
-                checker.literal_reason,
+                checker.literal_is_in_cone_but_already_assigned,
+                checker.literal_is_in_cone_preprocess,
                 checker.literal_minimal_lifetime,
-                checker.clause_scheduled,
+                checker.literal_minimal_lifetime,
+                checker.literal_reason,
                 checker.clause_deleted_at,
                 checker.clause_deletion_ignored,
-                checker.clause_pivot,
                 checker.clause_in_watchlist,
-                checker.lemma_newly_marked_clauses
+                checker.clause_is_a_reason,
+                checker.clause_lrat_id,
+                checker.clause_lrat_offset,
+                checker.clause_pivot,
+                checker.clause_scheduled,
+                checker.lemma_newly_marked_clauses,
+                checker.lemma_revision
             )
             .iter()
             .map(|x| x.heap_space())
             .sum(),
         ),
     ];
-    let total = usages.iter().fold(0, |a, tuple| a + tuple.1);
-    comment!("memory usage statistics (MB)");
+    let total = usages.iter().fold(0, |sum, tuple| sum + tuple.1);
+    comment!("checker memory usage (in MB)");
     for tuple in Some(("TOTAL", total)).iter().chain(usages.iter()) {
-        // comment!(
         number(
             &format!("memory-{}", tuple.0.replace("_", "-")),
-            &format!("{:0.2}", (tuple.1 as f64) / (1 << 20) as f64),
+            &format_memory_usage(tuple.1),
         );
     }
 }

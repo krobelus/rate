@@ -31,18 +31,11 @@ use flamer::flame;
 use std::{process, time::SystemTime};
 
 use crate::{
-    checker::{check, print_memory_usage, Checker},
+    checker::{check, Checker},
     config::Config,
     output::{number, solution},
     parser::parse_files,
 };
-
-fn run_checker(config: Config) -> (bool, Checker) {
-    let parser = parse_files(&config.formula_filename, &config.proof_filename);
-    let mut checker = Checker::new(parser, config);
-    let ok = check(&mut checker);
-    (ok, checker)
-}
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn main() {
@@ -88,12 +81,16 @@ fn main() {
 
     let config = Config::new(app.get_matches());
     let start = SystemTime::now();
-    let (ok, checker) = run_checker(config);
+    let parser = parse_files(&config.formula_filename, &config.proof_filename);
+    parser.print_memory_usage();
+    let mut checker = Checker::new(parser, config);
+    checker.print_memory_usage();
+    let ok = check(&mut checker);
+    checker.print_memory_usage();
     comment!(
         "elapsed time: {} seconds",
         start.elapsed().expect("failed to get time").as_secs()
     );
-    print_memory_usage(&checker);
     number("premise-clauses", checker.premise_length);
     number("proof-steps", checker.proof.size());
     number("skipped-tautologies", checker.satisfied_count);
