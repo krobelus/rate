@@ -1196,7 +1196,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     // delete lemmas that were never used
     for clause in Clause::range(0, checker.lemma) {
         if !checker.clause_scheduled[clause] {
-            write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause);
+            write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)?;
         }
     }
     for i in (0..checker.optimized_proof.len()).rev() {
@@ -1280,9 +1280,8 @@ fn write_lrat_deletion(
         (lrat_id(checker, clause) == Clause::UNINITIALIZED)
             == (clause >= checker.lemma && !checker.clause_scheduled[clause])
     );
-    if
-        lrat_id(checker, clause) != Clause::UNINITIALIZED &&
-        !clause_deleted[clause]
+    if lrat_id(checker, clause) != Clause::UNINITIALIZED
+        && !clause_deleted[clause]
         && !checker.clause_deletion_ignored[clause]
     {
         clause_deleted[clause] = true;
