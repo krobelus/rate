@@ -258,16 +258,6 @@ struct ParseError {
     why: &'static str,
 }
 
-impl Default for ParseError {
-    fn default() -> ParseError {
-        assert!(false);
-        ParseError {
-            line: 0,
-            why: "TODO",
-        }
-    }
-}
-
 const OVERFLOW: &'static str = "overflow while parsing number";
 const NUMBER: &'static str = "expected number";
 const EOF: &'static str = "premature end of file";

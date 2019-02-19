@@ -86,8 +86,6 @@ def timed(f):
     def wrapper(*args, **kwargs):
         start = time.time()
         call = f.__name__ + '(' + ', '.join(str(a) for a in args)
-        # (f.__name__ + '(' + newline
-        #           + newline.join(str(a) for a in args))
         if kwargs:
             # call += ',' + newline + newline.join(f'{key}={str(kwargs[key])},' for key in kwargs)
             call += ',' ', '.join(
