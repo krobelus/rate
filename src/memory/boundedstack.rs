@@ -81,7 +81,7 @@ impl<'a, T: HeapSpace> IntoIterator for &'a BoundedStack<T> {
     type Item = &'a T;
     type IntoIter = StackIterator<'a, T>;
     fn into_iter(self) -> StackIterator<'a, T> {
-        self.stack.into_iter()
+        self.stack.iter()
     }
 }
 

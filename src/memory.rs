@@ -24,7 +24,7 @@ pub use crate::memory::{
     array::Array,
     boundedstack::BoundedStack,
     slice::{Slice, SliceMut},
-    stack::{Stack, StackIterator},
+    stack::{ConsumingStackIterator, Stack, StackIterator},
     stackmapping::StackMapping,
 };
 

@@ -1,6 +1,9 @@
 //! A dynamic array.
 
-use crate::{memory::{HeapSpace, Offset, Stack}, config::ENABLE_BOUNDS_CHECKING};
+use crate::{
+    config::ENABLE_BOUNDS_CHECKING,
+    memory::{HeapSpace, Offset, Stack},
+};
 use alloc::raw_vec::RawVec;
 use std::{
     fmt,

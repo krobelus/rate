@@ -6,7 +6,7 @@
 
 use crate::{
     literal::{Literal, Variable},
-    memory::{Array, StackIterator, BoundedStack, HeapSpace},
+    memory::{Array, BoundedStack, HeapSpace, StackIterator},
 };
 use std::{fmt, fmt::Display, ops::Index};
 

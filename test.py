@@ -135,6 +135,8 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
         args = [f'{name}.cnf', f'{name}.drat']
 
         if 'rupee' in b[0]:
+            if name == 'benchmarks/crafted/comments':
+                continue
             if name == 'benchmarks/crafted/bottom':
                 continue  # different result
             if name in (
@@ -153,6 +155,7 @@ def compare_acceptance(a, b, *, instances=all_inputs()):
                 'benchmarks/crafted/marked-environment',
                 'benchmarks/crafted/missing-last-zero',
                 'benchmarks/crafted/missing-last-zero2',
+                'benchmarks/crafted/comments'
         )):
             print(
                 f'skipping {name} as {b[0]} checks all RAT candidates (not just core)')
@@ -197,6 +200,8 @@ def double_check(
         elif sick:
             # TODO hack sickcheck to handle some edge cases
             if name == 'benchmarks/crafted/empty':
+                continue
+            if name == 'benchmarks/crafted/comments':
                 continue
             if name == 'benchmarks/crafted/multi-delete':
                 continue

@@ -9,6 +9,7 @@
     range_contains,
     const_vec_new,
     vec_resize_default,
+    result_map_or_else,
     stmt_expr_attributes
 )]
 

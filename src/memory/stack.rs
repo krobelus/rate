@@ -10,7 +10,7 @@ use alloc::raw_vec::RawVec;
 use std::{
     cmp::max,
     marker::PhantomData,
-    mem::size_of,
+    mem::{self, size_of},
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 
@@ -19,8 +19,6 @@ pub struct Stack<T> {
     array: Array<usize, T>,
     len: usize,
 }
-
-pub type StackIterator<'a, T> = std::iter::Take<std::slice::Iter<'a, T>>;
 
 impl<T> Default for Stack<T> {
     fn default() -> Stack<T> {
@@ -82,7 +80,7 @@ impl<T> Stack<T> {
         &self[self.len() - 1]
     }
     pub fn iter(&self) -> StackIterator<T> {
-        self.into_iter()
+        self.array.iter().take(self.len())
     }
     pub fn as_slice(&self) -> Slice<T> {
         Slice::from_ref(self).range(0, self.len())
@@ -154,7 +152,7 @@ impl<T> AsMut<[T]> for Stack<T> {
     }
 }
 
-impl<T: Clone + Default > Stack<T> {
+impl<T: Clone + Default> Stack<T> {
     pub fn grow(&mut self, new_capacity: usize) {
         self.array.grow(new_capacity, T::default());
     }
@@ -250,11 +248,13 @@ impl<T: PartialEq> PartialEq for Stack<T> {
     }
 }
 
+pub type StackIterator<'a, T> = std::iter::Take<std::slice::Iter<'a, T>>;
+
 impl<'a, T> IntoIterator for &'a Stack<T> {
     type Item = &'a T;
     type IntoIter = StackIterator<'a, T>;
     fn into_iter(self) -> StackIterator<'a, T> {
-        self.array.iter().take(self.len())
+        self.iter()
     }
 }
 
@@ -262,5 +262,59 @@ impl<T: HeapSpace> HeapSpace for Stack<T> {
     fn heap_space(&self) -> usize {
         self.capacity() * size_of::<T>()
             + (0..self.len()).fold(0, |sum, i| sum + self[i].heap_space())
+    }
+}
+
+pub struct ConsumingStackIterator<T> {
+    buf: *mut T,
+    cap: usize,
+    ptr: *const T,
+    end: *const T,
+}
+
+/// Very similar to Vec::into_iter()
+impl<T> IntoIterator for Stack<T> {
+    type Item = T;
+    type IntoIter = ConsumingStackIterator<T>;
+    fn into_iter(mut self) -> ConsumingStackIterator<T> {
+        unsafe {
+            let begin = self.mut_ptr();
+            requires!(!begin.is_null());
+            requires!(size_of::<T>() != 0);
+            let end = begin.add(self.len()) as *const T;
+            let cap = self.capacity();
+            mem::forget(self);
+            ConsumingStackIterator {
+                buf: begin,
+                cap,
+                ptr: begin,
+                end,
+            }
+        }
+    }
+}
+
+impl<T> Iterator for ConsumingStackIterator<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<T> {
+        if self.ptr as *const _ == self.end {
+            None
+        } else {
+            let old = self.ptr;
+            unsafe {
+                self.ptr = self.ptr.add(1);
+                Some(std::ptr::read(old))
+            }
+        }
+    }
+}
+
+impl<T> Drop for ConsumingStackIterator<T> {
+    fn drop(&mut self) {
+        // destroy the remaining elements
+        for _x in self.by_ref() {}
+
+        // RawVec handles deallocation
+        let _ = unsafe { RawVec::from_raw_parts(self.buf, self.cap) };
     }
 }

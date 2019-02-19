@@ -1,0 +1,12 @@
+p cnf 1703806 6
+1703801 -1703803 1703805 0
+-1703804 -1703806 0
+-1703805 -1703806 0
+1703804 1703805 1703806 0
+-7746 1703806 0
+7746 -1703806 0
+c __CPROVER_malloc_is_new_array#1 FALSE
+c goto_symex::\guard#1 1
+c goto_symex::\guard#2 2
+c goto_symex::\guard#3 5
+c goto_symex::\guard#4 8
