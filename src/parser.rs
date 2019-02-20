@@ -16,7 +16,7 @@ use std::{
     fs::File,
     hash::{Hash, Hasher},
     io::{self, BufReader, Bytes, Read},
-    iter::{Chain, Map, Peekable},
+    iter::{Chain, FromIterator, Map, Peekable},
     panic, str,
 };
 
@@ -63,7 +63,7 @@ impl Parser {
     }
 }
 
-type HashTable = HashMap<ClauseHashEq, Stack<Clause>>;
+type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
 
 #[cfg_attr(feature = "flame_it", flame)]
 pub fn parse_files(
@@ -155,7 +155,10 @@ fn add_literal<'r>(parser: &'r mut Parser, clause_ids: &mut HashTable, literal: 
     if literal.is_zero() {
         let clause = close_clause(parser);
         let key = ClauseHashEq(clause);
-        clause_ids.entry(key).or_insert(Stack::new()).push(clause);
+        clause_ids
+            .entry(key)
+            .or_insert(SmallStack::empty())
+            .push(clause);
     } else {
         parser.maxvar = cmp::max(parser.maxvar, literal.variable());
         parser.db.data.push(literal);
@@ -223,11 +226,9 @@ impl PartialEq for ClauseHashEq {
 }
 
 fn find_clause(clause_ids: &mut HashTable, needle: Clause) -> Option<Clause> {
-    clause_ids.get_mut(&ClauseHashEq(needle)).map(|clauses| {
-        let clause = *clauses.first();
-        clauses.swap_remove(0);
-        clause
-    })
+    clause_ids
+        .get_mut(&ClauseHashEq(needle))
+        .map(|clauses| clauses.swap_remove(0))
 }
 
 fn compute_hash(clause: Slice<Literal>) -> usize {
@@ -618,10 +619,19 @@ c comment
             );
             assert!(result.is_ok());
             let expected_clause_ids = [
-                (ClauseHashEq(Clause::new(1)), stack!(Clause::new(1))),
-                (ClauseHashEq(Clause::new(2)), stack!(Clause::new(2))),
-                (ClauseHashEq(Clause::new(0)), stack!()),
-                (ClauseHashEq(Clause::new(3)), stack!(Clause::new(3))),
+                (
+                    ClauseHashEq(Clause::new(1)),
+                    SmallStack::one(Clause::new(1)),
+                ),
+                (
+                    ClauseHashEq(Clause::new(2)),
+                    SmallStack::one(Clause::new(2)),
+                ),
+                (ClauseHashEq(Clause::new(0)), SmallStack::empty()),
+                (
+                    ClauseHashEq(Clause::new(3)),
+                    SmallStack::one(Clause::new(3)),
+                ),
             ]
             .iter()
             .cloned()
@@ -835,5 +845,67 @@ impl<'a, T: Iterator<Item = u8>> Input for ChainInput<T> {
     }
     fn iter_mut(&mut self) -> &mut Peekable<Self::Iter> {
         &mut self.source
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum State<T> {
+    Empty,
+    One(T),
+    Many(Stack<T>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct SmallStack<T> {
+    state: State<T>,
+}
+
+impl<T: Copy + Default> SmallStack<T> {
+    fn empty() -> SmallStack<T> {
+        SmallStack {
+            state: State::Empty,
+        }
+    }
+    #[allow(dead_code)]
+    fn one(value: T) -> SmallStack<T> {
+        SmallStack {
+            state: State::One(value),
+        }
+    }
+    fn many(stack: Stack<T>) -> SmallStack<T> {
+        SmallStack {
+            state: State::Many(stack),
+        }
+    }
+    fn push(&mut self, new_value: T) {
+        if let State::Empty = self.state {
+            self.state = State::One(new_value);
+            return;
+        }
+        if let State::One(value) = self.state {
+            self.state = State::Many(stack!(value));
+        }
+        if let State::Many(stack) = &mut self.state {
+            stack.push(new_value);
+            return;
+        }
+        unreachable();
+    }
+    fn swap_remove(&mut self, index: usize) -> T {
+        requires!(index == 0);
+        if let State::One(value) = self.state {
+            self.state = State::Empty;
+            value
+        } else if let State::Many(stack) = &mut self.state {
+            stack.swap_remove(0)
+        } else {
+            unreachable()
+        }
+    }
+}
+
+impl<T: Copy + Default> FromIterator<T> for SmallStack<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> SmallStack<T> {
+        SmallStack::many(Stack::from_iter(iter))
     }
 }

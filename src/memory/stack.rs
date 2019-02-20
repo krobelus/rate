@@ -198,9 +198,11 @@ macro_rules! stack {
 }
 
 impl<T: Copy> Stack<T> {
-    pub fn swap_remove(&mut self, offset: usize) {
+    pub fn swap_remove(&mut self, offset: usize) -> T {
+        let value = self[offset];
         self[offset] = self[self.len() - 1];
         self.pop();
+        value
     }
 }
 
