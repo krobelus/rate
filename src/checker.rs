@@ -84,7 +84,6 @@ pub struct Checker {
     pub skipped_deletions: usize,
     pub reason_deletions: usize,
 
-    pub assign_count: usize,
     pub satisfied_count: usize,
 }
 
@@ -191,7 +190,6 @@ impl Checker {
             deletions: 0,
             skipped_deletions: 0,
             reason_deletions: 0,
-            assign_count: 0,
             satisfied_count: 0,
         };
         checker.literal_reason[Literal::TOP] = Reason::assumed();
@@ -331,7 +329,6 @@ fn set_reason_flag(checker: &mut Checker, lit: Literal, value: bool) {
 }
 
 fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConflict {
-    checker.assign_count += 1;
     requires!(!checker.assignment[literal]);
     checker.literal_reason[literal] = reason;
     checker.assignment.push(literal);

@@ -105,7 +105,6 @@ fn main() {
     number("deletions", checker.deletions);
     number("skipped-deletion", checker.skipped_deletions);
     number("reason-deletions", checker.reason_deletions);
-    number("assignment-count", checker.assign_count);
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
