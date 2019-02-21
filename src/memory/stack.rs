@@ -2,10 +2,7 @@
 //!
 //! We use a different growth factor (1.5 instead of 2)
 
-use crate::{
-    config::ENABLE_BOUNDS_CHECKING,
-    memory::{Array, HeapSpace, Slice, SliceMut},
-};
+use crate::memory::{assert_in_bounds, Array, HeapSpace, Slice, SliceMut};
 use alloc::raw_vec::RawVec;
 use std::{
     cmp::max,
@@ -194,7 +191,7 @@ macro_rules! stack {
             result
         }
     );
-    ($($x:expr,)*) => (stack![$($x),*])
+    ($($x:expr,)*) => (stack!($($x),*))
 }
 
 impl<T: Copy> Stack<T> {
@@ -225,23 +222,15 @@ impl<T> Stack<T> {
 impl<T> Index<usize> for Stack<T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        if ENABLE_BOUNDS_CHECKING {
-            assert!((0..self.len()).contains(&offset));
-            &self.array[offset]
-        } else {
-            unsafe { self.array.get_unchecked(offset) }
-        }
+        assert_in_bounds(0..self.len(), offset);
+        &self.array[offset]
     }
 }
 
 impl<T> IndexMut<usize> for Stack<T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
-        if ENABLE_BOUNDS_CHECKING {
-            assert!((0..self.len()).contains(&offset));
-            &mut self.array[offset]
-        } else {
-            unsafe { self.array.get_unchecked_mut(offset) }
-        }
+        assert_in_bounds(0..self.len(), offset);
+        &mut self.array[offset]
     }
 }
 

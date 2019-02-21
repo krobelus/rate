@@ -91,12 +91,9 @@ fn main() {
         config.redundancy_property,
     );
     let mut checker = Checker::new(parser, config);
+    comment!("checking for {}", checker.config.redundancy_property);
     let ok = check(&mut checker);
     checker.print_memory_usage();
-    comment!(
-        "elapsed time: {} seconds",
-        start.elapsed().expect("failed to get time").as_secs()
-    );
     number("premise-clauses", checker.premise_length);
     number("proof-steps", checker.proof.size());
     number("skipped-tautologies", checker.satisfied_count);
@@ -105,6 +102,10 @@ fn main() {
     number("deletions", checker.deletions);
     number("skipped-deletion", checker.skipped_deletions);
     number("reason-deletions", checker.reason_deletions);
+    comment!(
+        "elapsed time: {} seconds",
+        start.elapsed().expect("failed to get time").as_secs()
+    );
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();

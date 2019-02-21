@@ -3,7 +3,7 @@
 use crate::{
     assignment::Assignment,
     clause::{Clause, LRATDependency, LRATLiteral, ProofStep, Reason},
-    clausedatabase::ClauseDatabase,
+    clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, Config, RedundancyProperty},
     literal::{Literal, Variable},
     memory::{
@@ -37,10 +37,11 @@ pub fn check(checker: &mut Checker) -> bool {
 
 #[derive(Debug)]
 pub struct Checker {
-    db: ClauseDatabase<'static>,
+    db: &'static mut ClauseDatabase,
+    witness_db: &'static mut WitnessDatabase,
     pub proof: Array<usize, ProofStep>,
     optimized_proof: BoundedStack<ProofStep>,
-    config: Config,
+    pub config: Config,
 
     maxvar: Variable,
     assignment: Assignment,
@@ -65,8 +66,7 @@ pub struct Checker {
     clause_pivot: Array<Clause, Literal>,
     clause_in_watchlist: Array<Clause, bool>,
     lemma_revision: Array<Clause, bool>,
-    lemma_witness: Array<Clause, Stack<Literal>>,
-    witness: StackMapping<Literal, bool>,
+    is_in_witness: StackMapping<Literal, bool>,
 
     revisions: Stack<Revision>,
 
@@ -129,7 +129,7 @@ fn test_revision_memory_usage() {
 
 impl Checker {
     pub fn new(parser: Parser, config: Config) -> Checker {
-        let num_clauses = parser.num_clauses;
+        let num_clauses = parser.clause_db.number_of_clauses() as usize;
         let num_lemmas = parser.proof.len();
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
@@ -145,7 +145,8 @@ impl Checker {
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
             config: config,
-            db: parser.db,
+            db: parser.clause_db,
+            witness_db: parser.witness_db,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -153,8 +154,7 @@ impl Checker {
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
             lemma_revision: Array::new(false, num_clauses),
-            lemma_witness: Array::from(parser.lemma_witness),
-            witness: StackMapping::with_array_value_size_stack_size(
+            is_in_witness: StackMapping::with_array_value_size_stack_size(
                 false,
                 maxvar.array_size_for_literals(),
                 maxvar.array_size_for_variables(),
@@ -205,11 +205,22 @@ impl Checker {
     fn clause_to_string(&self, clause: Clause) -> String {
         self.db.clause_to_string(clause)
     }
+    #[allow(dead_code)]
+    fn witness_to_string(&self, clause: Clause) -> String {
+        self.witness_db.witness_to_string(clause)
+    }
     fn clause(&self, clause: Clause) -> Slice<Literal> {
         self.db.clause(clause)
     }
+    #[allow(dead_code)]
+    fn witness(&self, clause: Clause) -> Slice<Literal> {
+        self.witness_db.witness(clause)
+    }
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
         self.db.clause_range(clause)
+    }
+    fn witness_range(&self, clause: Clause) -> ops::Range<usize> {
+        self.witness_db.witness_range(clause)
     }
     fn watches(&self, head: usize) -> [Literal; 2] {
         self.db.watches(head)
@@ -574,7 +585,7 @@ fn reduct(
     }
 }
 
-fn is_proper_subset(left: &Stack<Literal>, right: &Stack<Literal>) -> bool {
+fn is_proper_subset(left: Slice<Literal>, right: Slice<Literal>) -> bool {
     left.len() < right.len()
         && left.iter().all(|&left_literal| {
             right
@@ -586,12 +597,12 @@ fn is_proper_subset(left: &Stack<Literal>, right: &Stack<Literal>) -> bool {
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     for clause in Clause::range(0, lemma) {
-        let witness = &checker.lemma_witness[lemma];
-        for &literal in witness {
-            invariant!(!checker.witness[literal]);
-            checker.witness.push(literal, true);
+        for offset in checker.witness_range(lemma) {
+            let literal = checker.witness_db[offset];
+            invariant!(!checker.is_in_witness[literal]);
+            checker.is_in_witness.push(literal, true);
         }
-        let reduct_witness = reduct(checker, &checker.witness, clause);
+        let reduct_witness = reduct(checker, &checker.is_in_witness, clause);
         // TODO skip if if reduce == 0?
         if match reduct_witness {
             Reduct::Top => continue,
@@ -599,9 +610,10 @@ fn pr(checker: &mut Checker) -> bool {
                 let reduct_assignment = reduct(checker, &checker.assignment, clause);
                 match reduct_assignment {
                     Reduct::Top => true,
-                    Reduct::Clause(clause_under_assignment) => {
-                        is_proper_subset(&clause_under_witness, &clause_under_assignment)
-                    }
+                    Reduct::Clause(clause_under_assignment) => is_proper_subset(
+                        clause_under_witness.as_slice(),
+                        clause_under_assignment.as_slice(),
+                    ),
                 }
             }
         } {
@@ -610,7 +622,7 @@ fn pr(checker: &mut Checker) -> bool {
                 return false;
             }
         }
-        checker.witness.clear();
+        checker.is_in_witness.clear();
     }
     true
 }
@@ -1860,7 +1872,6 @@ fn print_memory_usage(checker: &Checker) {
     let usages = vec![
         ("db", checker.db.heap_space()),
         ("proof", checker.proof.heap_space()),
-        ("witness", checker.lemma_witness.heap_space()),
         ("optimized-proof", checker.optimized_proof.heap_space()),
         ("watchlist_core", checker.watchlist_core.heap_space()),
         ("watchlist_noncore", checker.watchlist_noncore.heap_space()),
@@ -1885,7 +1896,6 @@ fn print_memory_usage(checker: &Checker) {
                 checker.clause_pivot,
                 checker.clause_scheduled,
                 checker.lemma_revision,
-                checker.lemma_witness,
             )
             .iter()
             .map(|x| x.heap_space())

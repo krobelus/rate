@@ -2,7 +2,7 @@
 
 use crate::{
     clause::{Clause, ProofStep},
-    clausedatabase::ClauseDatabase,
+    clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
     memory::{ConsumingStackIterator, HeapSpace, Offset, Slice, Stack},
@@ -20,46 +20,43 @@ use std::{
     panic, str,
 };
 
-/// format: clause are stored sequentially, using:
-/// - clause id (usize), stored as 2x32bit LE
-/// - sequence of Literal
-/// - zero terminator Literal::new(0)
-
-pub const PADDING_START: usize = 2;
-pub const PADDING_END: usize = 1;
-
-pub static mut CLAUSE_DATABASE: Stack<Literal> = Stack::const_new();
-pub static mut CLAUSE_OFFSET: Stack<usize> = Stack::const_new();
+// This needs to be static so that ClauseHashEq can access it.
+pub static mut CLAUSE_DATABASE: ClauseDatabase = ClauseDatabase::new();
+pub static mut WITNESS_DATABASE: WitnessDatabase = WitnessDatabase::new();
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
     pub redundancy_property: RedundancyProperty,
     pub maxvar: Variable,
-    pub num_clauses: usize,
-    pub db: ClauseDatabase<'static>,
-    pub current_clause_offset: usize,
+    pub clause_db: &'static mut ClauseDatabase,
+    pub witness_db: &'static mut WitnessDatabase,
     pub clause_pivot: Stack<Literal>,
     pub clause_deleted_at: Stack<usize>,
-    pub lemma_witness: Stack<Stack<Literal>>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
 }
 
 impl Parser {
     pub fn new(redundancy_property: RedundancyProperty) -> Parser {
-        unsafe { CLAUSE_OFFSET.push(0) }; // sentinel
+        unsafe {
+            CLAUSE_DATABASE.initialize();
+            if redundancy_property == RedundancyProperty::PR {
+                WITNESS_DATABASE.initialize();
+            }
+        }
         Parser {
             redundancy_property: redundancy_property,
             maxvar: Variable::new(0),
-            num_clauses: usize::max_value(),
-            db: unsafe { ClauseDatabase::new(&mut CLAUSE_DATABASE, &mut CLAUSE_OFFSET) },
-            current_clause_offset: 0,
+            clause_db: unsafe { &mut CLAUSE_DATABASE },
+            witness_db: unsafe { &mut WITNESS_DATABASE },
             clause_pivot: Stack::new(),
             clause_deleted_at: Stack::new(),
-            lemma_witness: Stack::new(),
             proof_start: Clause::new(0),
             proof: Stack::new(),
         }
+    }
+    pub fn is_pr(&self) -> bool {
+        self.redundancy_property == RedundancyProperty::PR
     }
 }
 
@@ -90,106 +87,70 @@ fn open_file(filename: &str) -> BufReaderInput {
     ))
 }
 
-fn start_clause(parser: &mut Parser) -> Clause {
-    parser.db.offset.pop(); // pop sentinel
-    let clause = parser.db.offset.len() as u64;
-    parser.db.offset.push(parser.db.data.len());
-    let lower = (clause & 0x00000000ffffffff) as u32;
-    let upper = ((clause & 0xffffffff00000000) >> 32) as u32;
-    parser.db.data.push(Literal::from_raw(lower));
-    parser.db.data.push(Literal::from_raw(upper));
-    parser.clause_deleted_at.push(usize::max_value());
-    Clause::new(clause)
-}
-
-fn close_clause(parser: &mut Parser) -> Clause {
-    let clause = Clause::new(parser.db.offset.len() as u64) - 1;
-    let start = parser.current_clause_offset + PADDING_START;
-    let end = parser.db.data.len();
-    let _sort_literally = |&literal: &Literal| literal.decode();
-    let _sort_magnitude = |&literal: &Literal| literal.encoding;
-    parser
-        .db
-        .data
-        .mut_slice()
-        .range(start, end)
-        .sort_unstable_by_key(_sort_literally);
-    let mut duplicate = false;
-    let mut length = 0;
-    for i in start..end {
-        if i + 1 < end && parser.db[i] == parser.db[i + 1] {
-            duplicate = true;
-        } else {
-            parser.db[start + length] = parser.db[i];
-            length += 1;
-        }
-    }
-    parser.db.data.truncate(start + length);
-    if length == 1 {
-        parser.db.data.push(Literal::BOTTOM);
-    }
-    parser.db.data.push(Literal::new(0));
-    parser.current_clause_offset = parser.db.data.len();
-    parser.db.offset.push(parser.current_clause_offset); // sentinel
-    if duplicate {
-        warn!(
-            "Removed duplicate literals in {}",
-            parser.db.clause_to_string(clause)
-        );
-    }
-    clause
-}
-
-fn pop_clause(parser: &mut Parser, prev_clause_offset: usize) {
-    parser.db.data.truncate(prev_clause_offset);
-    parser.current_clause_offset = prev_clause_offset;
-
-    parser.db.offset.pop(); // sentinel
-    parser.db.offset.pop();
-    parser.db.offset.push(prev_clause_offset);
-
-    parser.clause_deleted_at.pop();
-}
-
-fn add_literal<'r>(parser: &'r mut Parser, clause_ids: &mut HashTable, literal: Literal) {
-    if literal.is_zero() {
-        let clause = close_clause(parser);
-        let key = ClauseHashEq(clause);
-        clause_ids
-            .entry(key)
-            .or_insert(SmallStack::empty())
-            .push(clause);
-    } else {
-        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
-        parser.db.data.push(literal);
-    }
-}
-
-fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable, literal: Literal) -> Literal {
-    if literal.is_zero() {
-        let prev = parser.current_clause_offset;
-        let clause = close_clause(parser);
-        match find_clause(clause_ids, clause) {
-            None => {
-                warn!(
-                    "Deleted clause is not present in the formula: {}",
-                    parser.db.clause_to_string(clause)
-                );
-                // need this for sickcheck
-                parser
-                    .proof
-                    .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
-            }
-            Some(clause) => {
-                parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
-                parser.proof.push(ProofStep::deletion(clause))
+fn add_literal(
+    parser: &mut Parser,
+    clause_ids: &mut HashTable,
+    state: ParserState,
+    literal: Literal,
+) {
+    parser.maxvar = cmp::max(parser.maxvar, literal.variable());
+    match state {
+        ParserState::Clause => {
+            parser.clause_db.push_literal(literal);
+            if parser.is_pr() && literal.is_zero() {
+                parser.witness_db.push_literal(literal);
             }
         }
-        pop_clause(parser, prev);
-    } else {
-        parser.db.data.push(literal);
+        ParserState::Witness => {
+            invariant!(parser.is_pr());
+            parser.witness_db.push_literal(literal);
+            if literal.is_zero() {
+                parser.clause_db.push_literal(literal);
+            }
+        }
+        ParserState::Deletion => {
+            parser.clause_db.push_literal(literal);
+            if literal.is_zero() {
+                add_deletion(parser, clause_ids)
+            }
+        }
+        ParserState::Start => unreachable(),
     }
-    literal
+    match state {
+        ParserState::Clause | ParserState::Witness => {
+            if literal.is_zero() {
+                let clause = parser.clause_db.last_clause();
+                let key = ClauseHashEq(clause);
+                clause_ids
+                    .entry(key)
+                    .or_insert(SmallStack::empty())
+                    .push(clause);
+            }
+        }
+        _ => (),
+    }
+}
+
+fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
+    let clause = parser.clause_db.last_clause();
+    match find_clause(clause_ids, clause) {
+        None => {
+            warn!(
+                "Deleted clause is not present in the formula: {}",
+                parser.clause_db.clause_to_string(clause)
+            );
+            // Need this for sickcheck
+            parser
+                .proof
+                .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
+        }
+        Some(clause) => {
+            invariant!(parser.clause_deleted_at[clause.as_offset()] == usize::max_value());
+            parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
+            parser.proof.push(ProofStep::deletion(clause))
+        }
+    }
+    parser.clause_db.pop_clause();
 }
 
 #[derive(Debug, Eq, Clone, Copy)]
@@ -198,9 +159,7 @@ struct ClauseHashEq(Clause);
 impl Hash for ClauseHashEq {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         unsafe {
-            let start = CLAUSE_OFFSET[self.0.as_offset()] + PADDING_START;
-            let end = CLAUSE_OFFSET[self.0.as_offset() + 1] - PADDING_END;
-            compute_hash(CLAUSE_DATABASE.as_slice().range(start, end)).hash(hasher)
+            compute_hash(CLAUSE_DATABASE.clause(self.0)).hash(hasher);
         }
     }
 }
@@ -208,27 +167,17 @@ impl Hash for ClauseHashEq {
 impl PartialEq for ClauseHashEq {
     fn eq(&self, other: &ClauseHashEq) -> bool {
         unsafe {
-            invariant!(self.0.as_offset() + 1 < CLAUSE_OFFSET.len());
-            let start = CLAUSE_OFFSET[self.0.as_offset()] + PADDING_START;
-            let end = CLAUSE_OFFSET[self.0.as_offset() + 1] - PADDING_END;
-            let other_start = CLAUSE_OFFSET[other.0.as_offset()] + PADDING_START;
-            for i in 0..end - start {
-                if other_start + i == CLAUSE_DATABASE.len() {
-                    return false;
-                }
-                if CLAUSE_DATABASE[start + i] != CLAUSE_DATABASE[other_start + i] {
-                    return false;
-                }
-            }
+            let clause = CLAUSE_DATABASE.clause(self.0);
+            let other_clause = CLAUSE_DATABASE.clause(other.0);
+            clause == other_clause
         }
-        true
     }
 }
 
 fn find_clause(clause_ids: &mut HashTable, needle: Clause) -> Option<Clause> {
     clause_ids
         .get_mut(&ClauseHashEq(needle))
-        .map(|clauses| clauses.swap_remove(0))
+        .map(|clause_db| clause_db.swap_remove(0))
 }
 
 fn compute_hash(clause: Slice<Literal>) -> usize {
@@ -357,6 +306,15 @@ fn is_space(c: u8) -> bool {
     [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
 }
 
+fn open_clause(parser: &mut Parser, state: ParserState) -> Clause {
+    let clause = parser.clause_db.open_clause();
+    if parser.is_pr() && state != ParserState::Deletion {
+        let witness = parser.witness_db.open_witness();
+        invariant!(clause == witness);
+    }
+    clause
+}
+
 fn parse_formula(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
@@ -375,11 +333,11 @@ fn parse_formula(
         }
         let literal = parse_literal(&mut input)?;
         if clause_head {
-            start_clause(&mut *parser);
+            open_clause(parser, ParserState::Clause);
             parser.clause_pivot.push(Literal::NEVER_READ);
-            parser.lemma_witness.push(Stack::new());
+            parser.clause_deleted_at.push(usize::max_value());
         }
-        add_literal(parser, clause_ids, literal);
+        add_literal(parser, clause_ids, ParserState::Clause, literal);
         clause_head = literal.is_zero();
     }
     Ok(())
@@ -439,28 +397,21 @@ fn is_binary_drat_stream(mut input: impl Input) -> (impl Input, bool) {
     (equivalent_input, is_binary)
 }
 
-fn parse_proof<'a>(
-    parser: &'a mut Parser,
-    clause_ids: &mut HashTable,
-    input: impl Input,
-) -> Result<()> {
-    parser.proof_start = Clause::new(parser.db.offset.len() as u64 - 1);
-
+fn parse_proof(parser: &mut Parser, clause_ids: &mut HashTable, input: impl Input) -> Result<()> {
+    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
     let (mut input, is_binary) = is_binary_drat_stream(input);
-
     if is_binary {
         comment!("Turning on binary mode.");
     }
-    let result = do_parse_proof(parser, clause_ids, &mut input, is_binary);
-    // Add empty clauses to the end of the proof.
-    parser.num_clauses = parser.db.offset.len();
-    let empty_clause = Clause::new(parser.db.offset.len() as u64) - 1;
-    parser.db.data.push(Literal::NEVER_READ);
-    parser.db.data.push(Literal::NEVER_READ);
-    parser.db.data.push(Literal::new(0));
-    parser.db.offset.push(parser.db.data.len());
-    parser.proof.push(ProofStep::lemma(empty_clause));
-    result
+    do_parse_proof(parser, clause_ids, &mut input, is_binary)
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ParserState {
+    Start,
+    Clause,
+    Witness,
+    Deletion,
 }
 
 fn do_parse_proof(
@@ -469,21 +420,12 @@ fn do_parse_proof(
     input: &mut impl Input,
     binary: bool,
 ) -> Result<()> {
-    #[derive(Debug, PartialEq, Eq)]
-    enum State {
-        Start,
-        Lemma,
-        Deletion,
-        Witness,
-    }
-
     let literal_parser = if binary {
         parse_literal_binary
     } else {
         parse_literal
     };
-;
-    let mut state = State::Start;
+    let mut state = ParserState::Start;
     let mut lemma_head = true;
     let mut first_literal = None;
     while let Some(c) = input.peek() {
@@ -491,77 +433,58 @@ fn do_parse_proof(
             input.advance();
             continue;
         }
-        if state == State::Start {
+        if state == ParserState::Start {
             state = match c {
                 b'd' => {
                     input.advance();
-                    start_clause(parser);
-                    State::Deletion
+                    open_clause(parser, ParserState::Deletion);
+                    ParserState::Deletion
                 }
                 b'c' => {
                     parse_comment(input);
-                    State::Start
+                    ParserState::Start
                 }
                 c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
                     if binary {
                         input.advance();
                     }
                     lemma_head = true;
-                    let clause = start_clause(parser);
+                    let clause = open_clause(parser, ParserState::Clause);
                     parser.proof.push(ProofStep::lemma(clause));
-                    State::Lemma
+                    ParserState::Clause
                 }
                 _ => return input.error(DRAT),
             };
             continue;
         }
         let literal = literal_parser(input)?;
-        if state == State::Lemma
-            && parser.redundancy_property == RedundancyProperty::PR
-            && first_literal == Some(literal)
-        {
+        if parser.is_pr() && state == ParserState::Clause && first_literal == Some(literal) {
             first_literal = None;
-            state = State::Witness
+            state = ParserState::Witness;
         }
-        match state {
-            State::Lemma => {
-                if lemma_head {
-                    parser.clause_pivot.push(literal);
-                    parser.lemma_witness.push(Stack::new());
-                    first_literal = Some(literal);
-                    lemma_head = false;
-                }
-                add_literal(parser, clause_ids, literal);
-            }
-            State::Deletion => {
-                add_deletion(parser, clause_ids, literal);
-            }
-            State::Witness => {
-                if literal.is_zero() {
-                    add_literal(parser, clause_ids, literal);
-                } else {
-                    parser.lemma_witness[parser.proof_start.as_offset()].push(literal);
-                }
-            }
-            _ => unreachable(),
+        if state == ParserState::Clause && lemma_head {
+            parser.clause_pivot.push(literal);
+            parser.clause_deleted_at.push(usize::max_value());
+            first_literal = Some(literal);
+            lemma_head = false;
         }
+        invariant!(state != ParserState::Start);
+        add_literal(parser, clause_ids, state, literal);
         if literal.is_zero() {
-            state = State::Start;
+            state = ParserState::Start;
         }
     }
+    // patch missing zero terminators
     match state {
-        State::Lemma => {
-            add_literal(parser, clause_ids, Literal::new(0));
+        ParserState::Clause | ParserState::Deletion | ParserState::Witness => {
+            add_literal(parser, clause_ids, state, Literal::new(0));
         }
-        State::Deletion => {
-            add_deletion(parser, clause_ids, Literal::new(0));
-        }
-        State::Witness => {}
-        State::Start => (),
+        ParserState::Start => (),
     };
-    let clause = start_clause(parser);
+    // ensure that every proof ends with an empty clause
+    let clause = open_clause(parser, ParserState::Clause);
     parser.proof.push(ProofStep::lemma(clause));
-    add_literal(parser, clause_ids, Literal::new(0));
+    add_literal(parser, clause_ids, ParserState::Clause, Literal::new(0));
     Ok(())
 }
 
@@ -573,14 +496,20 @@ impl Display for ParseError {
 
 #[allow(dead_code)]
 fn print_db() {
-    println!(
-        "CLAUSE_DATABASE: [{}]",
-        (unsafe { &CLAUSE_DATABASE })
-            .iter()
-            .map(|&l| format!("{}", l))
-            .collect::<Vec<_>>()
-            .join(", "),
-    );
+    let clause_db = unsafe { &CLAUSE_DATABASE };
+    let witness_db = unsafe { &WITNESS_DATABASE };
+    let is_pr = !witness_db.empty();
+    for clause in Clause::range(0, clause_db.last_clause() + 1) {
+        println!(
+            "{}{}",
+            clause_db.clause_to_string(clause),
+            if is_pr {
+                format!(", {}", witness_db.witness_to_string(clause))
+            } else {
+                "".into()
+            }
+        );
+    }
 }
 
 #[cfg(test)]
@@ -642,43 +571,39 @@ c comment
             fn raw(x: u32) -> Literal {
                 Literal::from_raw(x)
             }
-            print_db();
             assert_eq!(
                 unsafe { &CLAUSE_DATABASE },
-                #[rustfmt::skip]
-             &stack!(
-                 raw(0), raw(0), lit(1), lit(2), lit(0),
-                 raw(1), raw(0), lit(-2), lit(-1), lit(0),
-                 raw(2), raw(0), lit(1), lit(2), lit(3), lit(0),
-                 raw(3), raw(0), lit(0),
-                 Literal::NEVER_READ, Literal::NEVER_READ, lit(0) // TODO cut this one?
-             )
+                &ClauseDatabase::from(
+                    #[rustfmt::skip]
+                     stack!(
+                       raw(0), raw(0), lit(1), lit(2), lit(0),
+                       raw(1), raw(0), lit(-2), lit(-1), lit(0),
+                       raw(2), raw(0), lit(1), lit(2), lit(3), lit(0),
+                       raw(3), raw(0), lit(0),
+                     ),
+                    stack!(0, 5, 10, 16)
+                )
             );
-            assert_eq!(unsafe { &CLAUSE_OFFSET }, &stack!(0, 5, 10, 16, 19, 22));
+            assert_eq!(
+                unsafe { &WITNESS_DATABASE },
+                &WitnessDatabase::from(stack!(), stack!())
+            );
             assert_eq!(clause_ids, expected_clause_ids);
             assert_eq!(
                 parser,
                 Parser {
                     redundancy_property: RedundancyProperty::RAT,
                     maxvar: Variable::new(3),
-                    num_clauses: 5,
-                    db: unsafe { ClauseDatabase::new(&mut CLAUSE_DATABASE, &mut CLAUSE_OFFSET) },
-                    current_clause_offset: 19,
+                    clause_db: unsafe { &mut CLAUSE_DATABASE },
+                    witness_db: unsafe { &mut WITNESS_DATABASE },
                     clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
-                    clause_deleted_at: stack!(
-                        1,
-                        usize::max_value(),
-                        usize::max_value(),
-                        usize::max_value()
-                    ),
-                    lemma_witness: stack!(stack!(), stack!(), stack!()),
+                    clause_deleted_at: stack!(1, usize::max_value(), usize::max_value(),),
                     proof_start: Clause::new(2),
-                    proof: stack![
+                    proof: stack!(
                         ProofStep::lemma(Clause::new(2)),
                         ProofStep::deletion(Clause::new(0)),
                         ProofStep::lemma(Clause::new(3)),
-                        ProofStep::lemma(Clause::new(4)),
-                    ],
+                    ),
                 }
             );
         })
@@ -694,15 +619,15 @@ c comment
     }
     fn reset_globals() {
         unsafe {
-            CLAUSE_OFFSET.clear();
             CLAUSE_DATABASE.clear();
+            WITNESS_DATABASE.clear();
         }
     }
 }
 
 impl HeapSpace for Parser {
     fn heap_space(&self) -> usize {
-        self.db.heap_space()
+        self.clause_db.heap_space()
             + self.clause_pivot.heap_space()
             + self.clause_deleted_at.heap_space()
             + self.proof.heap_space()
@@ -849,7 +774,7 @@ impl<'a, T: Iterator<Item = u8>> Input for ChainInput<T> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum State<T> {
+enum SmallStackState<T> {
     Empty,
     One(T),
     Many(Stack<T>),
@@ -857,35 +782,35 @@ enum State<T> {
 
 #[derive(Debug, PartialEq, Clone)]
 struct SmallStack<T> {
-    state: State<T>,
+    state: SmallStackState<T>,
 }
 
 impl<T: Copy + Default> SmallStack<T> {
     fn empty() -> SmallStack<T> {
         SmallStack {
-            state: State::Empty,
+            state: SmallStackState::Empty,
         }
     }
     #[allow(dead_code)]
     fn one(value: T) -> SmallStack<T> {
         SmallStack {
-            state: State::One(value),
+            state: SmallStackState::One(value),
         }
     }
     fn many(stack: Stack<T>) -> SmallStack<T> {
         SmallStack {
-            state: State::Many(stack),
+            state: SmallStackState::Many(stack),
         }
     }
     fn push(&mut self, new_value: T) {
-        if let State::Empty = self.state {
-            self.state = State::One(new_value);
+        if let SmallStackState::Empty = self.state {
+            self.state = SmallStackState::One(new_value);
             return;
         }
-        if let State::One(value) = self.state {
-            self.state = State::Many(stack!(value));
+        if let SmallStackState::One(value) = self.state {
+            self.state = SmallStackState::Many(stack!(value));
         }
-        if let State::Many(stack) = &mut self.state {
+        if let SmallStackState::Many(stack) = &mut self.state {
             stack.push(new_value);
             return;
         }
@@ -893,10 +818,10 @@ impl<T: Copy + Default> SmallStack<T> {
     }
     fn swap_remove(&mut self, index: usize) -> T {
         requires!(index == 0);
-        if let State::One(value) = self.state {
-            self.state = State::Empty;
+        if let SmallStackState::One(value) = self.state {
+            self.state = SmallStackState::Empty;
             value
-        } else if let State::Many(stack) = &mut self.state {
+        } else if let SmallStackState::Many(stack) = &mut self.state {
             stack.swap_remove(0)
         } else {
             unreachable()

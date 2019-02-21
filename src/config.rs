@@ -1,6 +1,7 @@
 //! Compile time and run time configuration
 
 use clap::ArgMatches;
+use std::fmt;
 
 /// Parsed arguments.
 #[derive(Debug)]
@@ -42,6 +43,19 @@ fn incompatible_options(what: &str) {
 pub enum RedundancyProperty {
     RAT,
     PR,
+}
+
+impl fmt::Display for RedundancyProperty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RedundancyProperty::RAT => "RAT",
+                RedundancyProperty::PR => "PR",
+            }
+        )
+    }
 }
 
 impl Config {

@@ -21,7 +21,7 @@ mod stack;
 mod stackmapping;
 
 pub use crate::memory::{
-    array::Array,
+    array::{assert_in_bounds, Array},
     boundedstack::BoundedStack,
     slice::{Slice, SliceMut},
     stack::{ConsumingStackIterator, Stack, StackIterator},

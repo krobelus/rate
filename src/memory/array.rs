@@ -10,7 +10,7 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     mem::{forget, size_of},
-    ops::{Deref, DerefMut, Index, IndexMut},
+    ops::{Deref, DerefMut, Index, IndexMut, Range},
     ptr::write,
     slice,
 };
@@ -142,21 +142,29 @@ impl<I: Offset, T> AsMut<[T]> for Array<I, T> {
     }
 }
 
+pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
+    if ENABLE_BOUNDS_CHECKING {
+        assert!(
+            bounds.contains(&offset),
+            format!(
+                "array index out of bounds: {} (range is {:?})",
+                offset, bounds
+            )
+        );
+    }
+}
+
 impl<I: Offset, T> Index<I> for Array<I, T> {
     type Output = T;
     fn index(&self, key: I) -> &T {
-        if ENABLE_BOUNDS_CHECKING {
-            assert!((0..self.size()).contains(&key.as_offset()));
-        }
+        assert_in_bounds(0..self.size(), key.as_offset());
         unsafe { &*self.ptr().add(key.as_offset()) }
     }
 }
 
 impl<I: Offset, T> IndexMut<I> for Array<I, T> {
     fn index_mut(&mut self, key: I) -> &mut T {
-        if ENABLE_BOUNDS_CHECKING {
-            assert!((0..self.size()).contains(&key.as_offset()));
-        }
+        assert_in_bounds(0..self.size(), key.as_offset());
         unsafe { &mut *self.data.ptr().add(key.as_offset()) }
     }
 }
