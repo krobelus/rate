@@ -31,6 +31,7 @@ pub struct Parser {
     pub clause_db: &'static mut ClauseDatabase,
     pub witness_db: &'static mut WitnessDatabase,
     pub clause_pivot: Stack<Literal>,
+    #[cfg(feature = "clause_lifetime_heuristic")]
     pub clause_deleted_at: Stack<usize>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
@@ -50,6 +51,7 @@ impl Parser {
             clause_db: unsafe { &mut CLAUSE_DATABASE },
             witness_db: unsafe { &mut WITNESS_DATABASE },
             clause_pivot: Stack::new(),
+            #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Stack::new(),
             proof_start: Clause::new(0),
             proof: Stack::new(),
@@ -145,8 +147,11 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
                 .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
         }
         Some(clause) => {
+            #[cfg(feature = "clause_lifetime_heuristic")]
+            {
             invariant!(parser.clause_deleted_at[clause.as_offset()] == usize::max_value());
             parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
+            }
             parser.proof.push(ProofStep::deletion(clause))
         }
     }
@@ -335,6 +340,7 @@ fn parse_formula(
         if clause_head {
             open_clause(parser, ParserState::Clause);
             parser.clause_pivot.push(Literal::NEVER_READ);
+            #[cfg(feature = "clause_lifetime_heuristic")]
             parser.clause_deleted_at.push(usize::max_value());
         }
         add_literal(parser, clause_ids, ParserState::Clause, literal);
@@ -464,6 +470,7 @@ fn do_parse_proof(
         }
         if state == ParserState::Clause && lemma_head {
             parser.clause_pivot.push(literal);
+            #[cfg(feature = "clause_lifetime_heuristic")]
             parser.clause_deleted_at.push(usize::max_value());
             first_literal = Some(literal);
             lemma_head = false;
@@ -597,6 +604,7 @@ c comment
                     clause_db: unsafe { &mut CLAUSE_DATABASE },
                     witness_db: unsafe { &mut WITNESS_DATABASE },
                     clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
+                    #[cfg(feature = "clause_lifetime_heuristic")]
                     clause_deleted_at: stack!(1, usize::max_value(), usize::max_value(),),
                     proof_start: Clause::new(2),
                     proof: stack!(
@@ -629,7 +637,6 @@ impl HeapSpace for Parser {
     fn heap_space(&self) -> usize {
         self.clause_db.heap_space()
             + self.clause_pivot.heap_space()
-            + self.clause_deleted_at.heap_space()
             + self.proof.heap_space()
     }
 }

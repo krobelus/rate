@@ -54,13 +54,11 @@ pub struct Checker {
     implication_graph: StackMapping<usize, bool>,
     literal_is_in_cone_preprocess: Array<Literal, bool>,
     literal_is_in_cone_but_already_assigned: Array<Literal, bool>,
-    literal_minimal_lifetime: Array<Literal, usize>,
     watchlist_noncore: Array<Literal, Watchlist>,
     watchlist_core: Array<Literal, Watchlist>,
 
     clause_is_a_reason: Array<Clause, bool>,
     clause_scheduled: Array<Clause, bool>,
-    clause_deleted_at: Array<Clause, usize>,
     clause_deletion_ignored: Array<Clause, bool>,
     clause_pivot: Array<Clause, Literal>,
     clause_in_watchlist: Array<Clause, bool>,
@@ -75,6 +73,11 @@ pub struct Checker {
     dependencies: Stack<LRATDependency>,
     lrat_id: Clause,
     prerat_clauses: StackMapping<Clause, bool>, // Linear lookup should be fine here as well.
+
+    #[cfg(feature = "clause_lifetime_heuristic")]
+    clause_deleted_at: Array<Clause, usize>,
+    #[cfg(feature = "clause_lifetime_heuristic")]
+    literal_minimal_lifetime: Array<Literal, usize>,
 
     pub premise_length: usize,
     pub rup_introductions: usize,
@@ -138,6 +141,7 @@ impl Checker {
             clause_is_a_reason: Array::new(false, num_clauses),
             clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
             clause_scheduled: Array::new(false, num_clauses),
+            #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Array::from(parser.clause_deleted_at),
             clause_deletion_ignored: Array::new(false, num_clauses),
             clause_in_watchlist: Array::new(false, num_clauses),
@@ -176,6 +180,7 @@ impl Checker {
                 false,
                 maxvar.array_size_for_literals(),
             ),
+            #[cfg(feature = "clause_lifetime_heuristic")]
             literal_minimal_lifetime: Array::new(0, maxvar.array_size_for_literals()),
             revisions: Stack::new(),
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
@@ -190,8 +195,11 @@ impl Checker {
             reason_deletions: 0,
             satisfied_count: 0,
         };
-        checker.literal_minimal_lifetime[Literal::TOP] = usize::max_value();
-        checker.literal_minimal_lifetime[Literal::BOTTOM] = usize::max_value();
+        #[cfg(feature = "clause_lifetime_heuristic")]
+        {
+            checker.literal_minimal_lifetime[Literal::TOP] = usize::max_value();
+            checker.literal_minimal_lifetime[Literal::BOTTOM] = usize::max_value();
+        }
         for clause in Clause::range(0, checker.lemma) {
             checker.lrat_id += 1;
             checker.clause_lrat_id[clause] = checker.lrat_id;
@@ -804,8 +812,8 @@ fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<u
                     continue;
                 }
                 let negation_position = checker.assignment.position_in_trail(-lit);
-                let negation_reason= checker.assignment.trail_at(negation_position).1;
-                if  !checker.implication_graph[negation_position]
+                let negation_reason = checker.assignment.trail_at(negation_position).1;
+                if !checker.implication_graph[negation_position]
                     && negation_reason != Reason::assumed()
                 {
                     checker.implication_graph.push(negation_position, true);
@@ -1673,7 +1681,10 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal,
         .reason_clause
         .push(checker.offset2clause(reason.offset()));
     checker.assignment.unassign(lit);
-    checker.literal_minimal_lifetime[lit] = 0;
+    #[cfg(feature = "clause_lifetime_heuristic")]
+    {
+        checker.literal_minimal_lifetime[lit] = 0;
+    }
     set_reason_flag(checker, reason, false);
 }
 
@@ -1700,7 +1711,9 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     // Re-introduce the assignments that were induced by the deleted unit,
     // starting with the ones with the highest offset in the trail.
     while literals_to_revise > 0 {
-        let (literal, reason) = if right_position == revision.position_in_trail[literals_to_revise - 1] {
+        let (literal, reason) = if right_position
+            == revision.position_in_trail[literals_to_revise - 1]
+        {
             literals_to_revise -= 1;
             let lit = revision.cone[literals_to_revise];
             let lit_reason =
@@ -1883,9 +1896,6 @@ fn print_memory_usage(checker: &Checker) {
                 checker.rejection,
                 checker.literal_is_in_cone_but_already_assigned,
                 checker.literal_is_in_cone_preprocess,
-                checker.literal_minimal_lifetime,
-                checker.literal_minimal_lifetime,
-                checker.clause_deleted_at,
                 checker.clause_deletion_ignored,
                 checker.clause_in_watchlist,
                 checker.clause_is_a_reason,
