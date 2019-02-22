@@ -6,6 +6,7 @@ use crate::{
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
     memory::{ConsumingStackIterator, HeapSpace, Offset, Slice, Stack},
+    output::Timer,
 };
 #[cfg(feature = "flame_it")]
 use flamer::flame;
@@ -73,10 +74,12 @@ pub fn parse_files(
     let mut clause_ids = HashTable::new();
     let mut parser = Parser::new(redundancy_property);
     {
+        let _timer = Timer::name("parsing formula");
         parse_formula(&mut parser, &mut clause_ids, open_file(&formula_file))
             .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
     {
+        let _timer = Timer::name("parsing proof");
         parse_proof(&mut parser, &mut clause_ids, open_file(&proof_file))
             .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
     }
@@ -84,7 +87,6 @@ pub fn parse_files(
 }
 
 fn open_file(filename: &str) -> BufReaderInput {
-    comment!("parsing {}", filename);
     BufReaderInput::new(BufReader::new(
         File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err)),
     ))
@@ -150,8 +152,8 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
         Some(clause) => {
             #[cfg(feature = "clause_lifetime_heuristic")]
             {
-            invariant!(parser.clause_deleted_at[clause.as_offset()] == usize::max_value());
-            parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
+                invariant!(parser.clause_deleted_at[clause.as_offset()] == usize::max_value());
+                parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
             }
             parser.proof.push(ProofStep::deletion(clause))
         }
@@ -408,7 +410,7 @@ fn parse_proof(parser: &mut Parser, clause_ids: &mut HashTable, input: impl Inpu
     parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
     let (mut input, is_binary) = is_binary_drat_stream(input);
     if is_binary {
-        comment!("Turning on binary mode.");
+        comment!("binary proof mode");
     }
     do_parse_proof(parser, clause_ids, &mut input, is_binary)
 }
@@ -638,9 +640,7 @@ c comment
 
 impl HeapSpace for Parser {
     fn heap_space(&self) -> usize {
-        self.clause_db.heap_space()
-            + self.clause_pivot.heap_space()
-            + self.proof.heap_space()
+        self.clause_db.heap_space() + self.clause_pivot.heap_space() + self.proof.heap_space()
     }
 }
 

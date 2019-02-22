@@ -32,12 +32,12 @@ mod parser;
 use clap::Arg;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
-use std::{process, time::SystemTime};
+use std::process;
 
 use crate::{
     checker::{check, Checker},
     config::Config,
-    output::{number, solution},
+    output::{number, solution, Timer},
     parser::parse_files,
 };
 
@@ -74,8 +74,8 @@ fn main() {
          .help("Write the core lemmas as LRAT certificate to this file."))
     .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
          .help("Write the recheck incorrectness witness."))
-
     ;
+
     if config::ENABLE_LOGGING {
         app = app.arg(
             Arg::with_name("v")
@@ -86,16 +86,15 @@ fn main() {
     }
 
     let config = Config::new(app.get_matches());
-    let start = SystemTime::now();
+    let timer = Timer::name("elapsed time");
     let parser = parse_files(
         &config.formula_filename,
         &config.proof_filename,
         config.redundancy_property,
     );
     let mut checker = Checker::new(parser, config);
-    comment!("checking for {}", checker.config.redundancy_property);
+    number("mode", checker.config.redundancy_property);
     let ok = check(&mut checker);
-    let elapsed_time = start.elapsed().expect("failed to get time");
     number("premise clauses", checker.premise_length);
     number("proof steps", checker.proof.size());
     number("skipped tautologies", checker.satisfied_count);
@@ -104,9 +103,7 @@ fn main() {
     number("deletions", checker.deletions);
     number("skipped deletions", checker.skipped_deletions);
     number("reason deletions", checker.reason_deletions);
-    number("elapsed time (s)",
-          format!("{}.{:03}", elapsed_time.as_secs(), elapsed_time.subsec_millis())
-    );
+    drop(timer);
     checker.print_memory_usage();
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]

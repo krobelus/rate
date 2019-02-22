@@ -1,7 +1,7 @@
 //! Output routines.
 
 use atty::{self, Stream};
-use std::fmt::Display;
+use std::{fmt::Display, time::SystemTime};
 
 /// Check whether we are writing to a terminal.
 pub fn is_a_tty() -> bool {
@@ -98,4 +98,32 @@ pub fn solution(verdict: &str) {
 pub fn number(key: &str, value: impl Display) {
     requires!(key.len() < 35);
     comment!("{:<35} {:>}", format!("{}:", key), value);
+}
+
+pub struct Timer {
+    name: &'static str,
+    start: SystemTime,
+}
+
+impl Timer {
+    pub fn name(name: &'static str) -> Timer {
+        Timer {
+            name: name,
+            start: SystemTime::now(),
+        }
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        let elapsed_time = self.start.elapsed().expect("failed to get time");
+        number(
+            &format!("{} (s)", self.name),
+            format!(
+                "{}.{:03}",
+                elapsed_time.as_secs(),
+                elapsed_time.subsec_millis()
+            ),
+        );
+    }
 }

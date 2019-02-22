@@ -1,9 +1,9 @@
 ///! Container for clauses
 use crate::{
+    checker::ClauseFields,
     clause::Clause,
     literal::Literal,
     memory::{Offset, Slice, Stack},
-    checker::ClauseFields,
 };
 
 use rate_macros::HeapSpace;
@@ -173,13 +173,16 @@ impl ClauseDatabase {
             self.offset[target.as_offset()] + PADDING_START + PADDING_END;
     }
     pub fn fields(&self, clause: Clause) -> &ClauseFields {
-            unsafe {std::mem::transmute(
-        &self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
-            )}
+        unsafe {
+            std::mem::transmute(
+                &self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding,
+            )
+        }
     }
-    pub fn fields_mut(&mut self, clause: Clause)-> &mut ClauseFields {
-        unsafe {std::mem::transmute(
-        &mut self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
+    pub fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
+        unsafe {
+            std::mem::transmute(
+                &mut self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding,
             )
         }
     }

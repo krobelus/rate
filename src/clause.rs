@@ -133,13 +133,15 @@ impl Reason {
 
 impl fmt::Display for Reason {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", if
-              self.is_assumed() {
-                  "Assumption".into()
-              } else {
-                  format!("Forced by clause {}", self.offset())
-              }
-              )
+        write!(
+            f,
+            "{}",
+            if self.is_assumed() {
+                "Assumption".into()
+            } else {
+                format!("Forced by clause {}", self.offset())
+            }
+        )
     }
 }
 

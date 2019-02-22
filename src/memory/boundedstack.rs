@@ -96,8 +96,7 @@ impl<T: HeapSpace> BoundedStack<T> {
 }
 
 impl<T: HeapSpace + Ord> BoundedStack<T> {
-    pub fn sort_unstable(&mut self)
-    {
+    pub fn sort_unstable(&mut self) {
         self.stack.sort_unstable()
     }
 }

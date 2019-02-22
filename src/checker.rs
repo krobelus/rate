@@ -9,10 +9,11 @@ use crate::{
     memory::{
         format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Slice, Stack, StackMapping,
     },
-    output::number,
+    output::{number, Timer},
     parser::Parser,
 };
 use ansi_term::Colour;
+use bitfield::bitfield;
 #[cfg(feature = "flame_it")]
 use flamer::flame;
 use rate_macros::HeapSpace;
@@ -23,7 +24,6 @@ use std::{
     io::{BufWriter, Write},
     ops::{self, Index},
 };
-use bitfield::bitfield;
 
 pub fn check(checker: &mut Checker) -> bool {
     preprocess(checker) && verify(checker) && {
@@ -85,7 +85,7 @@ pub struct Checker {
     pub satisfied_count: usize,
 }
 
-bitfield!{
+bitfield! {
     pub struct ClauseFields(u32);
     impl Debug;
     pub is_scheduled, set_is_scheduled: 0;
@@ -1071,7 +1071,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn preprocess(checker: &mut Checker) -> bool {
-    comment!("preprocessing proof");
+    let _timer = Timer::name("preprocessing proof");
     log!(checker, 1, "[preprocess]");
     defer_log!(checker, 1, "[preprocess] done\n");
     for clause in Clause::range(0, checker.lemma) {
@@ -1150,9 +1150,9 @@ fn preprocess(checker: &mut Checker) -> bool {
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn verify(checker: &mut Checker) -> bool {
-    comment!("verifying proof");
     log!(checker, 1, "[verify]");
     defer_log!(checker, 1, "[verify] done\n");
+    let _timer = Timer::name("verifying proof");
     for i in (0..checker.proof_steps_until_conflict).rev() {
         watch_invariants(checker);
         let proof_step = checker.proof[i];
