@@ -21,6 +21,7 @@ rate-macros = { path = "rate-macros" }
 [features]
 default = []
 flame_it = ["flame", "flamer"]
+clause_lifetime_heuristic = []
 
 [profile.release]
 panic = "abort"

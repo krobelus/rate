@@ -11,7 +11,6 @@ pub struct Config {
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
     pub no_core_first: bool,
-    pub check_satisfied_lemmas: bool,
     pub lratcheck_compat: bool,
     pub verbosity: u64,
     pub formula_filename: String,
@@ -65,7 +64,7 @@ impl Config {
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
-        let check_satisfied_lemmas = matches.is_present("CHECK_SATISFIED_LEMMAS");
+
         let lratcheck_compat = matches.is_present("LRATCHECK_COMPAT");
         let sick_filename = matches.value_of("SICK_FILE").map(String::from);
 
@@ -103,7 +102,6 @@ impl Config {
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_core_first: matches.is_present("NO_CORE_FIRST"),
-            check_satisfied_lemmas: rupee || check_satisfied_lemmas,
             lratcheck_compat: lratcheck_compat,
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {

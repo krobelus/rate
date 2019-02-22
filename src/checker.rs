@@ -345,7 +345,8 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
     checker.assignment.push(literal);
     if !checker.soft_propagation {
         set_reason_flag(checker, literal, true);
-        if !checker.config.check_satisfied_lemmas {
+        #[cfg(feature = "clause_lifetime_heuristic")]
+        {
             let reason_clause = reason.offset();
             let reason_lifetime = checker.clause_deleted_at[checker.offset2clause(reason_clause)];
             let reason_reason_lifetime = checker
@@ -1003,7 +1004,12 @@ fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
         .any(|&literal| checker.assignment[literal])
 }
 
+#[cfg(feature = "clause_lifetime_heuristic")]
 fn clause_is_satisfied_until_its_deletion(checker: &Checker, clause: Clause) -> bool {
+    fn implies(a: bool, b: bool) -> bool {
+        !a || b
+    }
+
     checker.clause(clause).iter().any(|&literal| {
         invariant!(
             implies(
@@ -1028,9 +1034,13 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     let already_satisfied = if checker.config.skip_unit_deletions {
         clause_is_satisfied(checker, clause)
     } else {
-        clause_is_satisfied_until_its_deletion(checker, clause)
+        #[cfg(feature = "clause_lifetime_heuristic")]
+        let it = clause_is_satisfied_until_its_deletion(checker, clause);
+        #[cfg(not(feature = "clause_lifetime_heuristic"))]
+        let it = false;
+        it
     };
-    if !checker.config.check_satisfied_lemmas && already_satisfied {
+    if already_satisfied {
         checker.satisfied_count += 1;
     } else {
         watches_add(checker, Stage::Preprocessing, clause)?;
@@ -1222,7 +1232,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
     for offset in checker.clause_range(clause) {
         let literal = checker.db[offset];
         checker.rejection.lemma.push(literal);
-        if checker.config.skip_unit_deletions && !checker.config.check_satisfied_lemmas {
+        if checker.config.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
         }
         if !checker.assignment[-literal] {
@@ -1456,10 +1466,6 @@ fn assignment_invariants(checker: &Checker) {
         let literal = checker.assignment.trail_at(position);
         invariant!(position == checker.assignment.position_in_trail(literal));
     }
-}
-
-fn implies(a: bool, b: bool) -> bool {
-    !a || b
 }
 
 type Watchlist = Stack<usize>;
