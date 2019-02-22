@@ -508,13 +508,14 @@ fn print_db() {
     let is_pr = !witness_db.empty();
     for clause in Clause::range(0, clause_db.last_clause() + 1) {
         println!(
-            "{}{}",
+            "{}{} {:?}",
             clause_db.clause_to_string(clause),
             if is_pr {
                 format!(", {}", witness_db.witness_to_string(clause))
             } else {
                 "".into()
-            }
+            },
+            clause_db.fields(clause)
         );
     }
 }
@@ -578,17 +579,18 @@ c comment
             fn raw(x: u32) -> Literal {
                 Literal::from_raw(x)
             }
+            print_db();
             assert_eq!(
                 unsafe { &CLAUSE_DATABASE },
                 &ClauseDatabase::from(
                     #[rustfmt::skip]
                      stack!(
-                       raw(0), raw(0), lit(1), lit(2), lit(0),
-                       raw(1), raw(0), lit(-2), lit(-1), lit(0),
-                       raw(2), raw(0), lit(1), lit(2), lit(3), lit(0),
-                       raw(3), raw(0), lit(0),
+                       raw(0), raw(0), raw(0), lit(1), lit(2), lit(0),
+                       raw(1), raw(0), raw(0), lit(-2), lit(-1), lit(0),
+                       raw(2), raw(0), raw(0), lit(1), lit(2), lit(3), lit(0),
+                       raw(3), raw(0), raw(0), lit(0),
                      ),
-                    stack!(0, 5, 10, 16)
+                    stack!(0, 6, 12, 19)
                 )
             );
             assert_eq!(

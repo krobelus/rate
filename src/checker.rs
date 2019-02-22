@@ -23,6 +23,7 @@ use std::{
     io::{BufWriter, Write},
     ops::{self, Index},
 };
+use bitfield::bitfield;
 
 pub fn check(checker: &mut Checker) -> bool {
     preprocess(checker) && verify(checker) && {
@@ -57,12 +58,7 @@ pub struct Checker {
     watchlist_noncore: Array<Literal, Watchlist>,
     watchlist_core: Array<Literal, Watchlist>,
 
-    clause_is_a_reason: Array<Clause, bool>,
-    clause_scheduled: Array<Clause, bool>,
-    clause_deletion_ignored: Array<Clause, bool>,
     clause_pivot: Array<Clause, Literal>,
-    clause_in_watchlist: Array<Clause, bool>,
-    lemma_revision: Array<Clause, bool>,
     is_in_witness: StackMapping<Literal, bool>,
 
     revisions: Stack<Revision>,
@@ -87,6 +83,16 @@ pub struct Checker {
     pub reason_deletions: usize,
 
     pub satisfied_count: usize,
+}
+
+bitfield!{
+    pub struct ClauseFields(u32);
+    impl Debug;
+    pub is_scheduled, set_is_scheduled: 0;
+    pub is_reason, set_is_reason: 1;
+    pub in_watchlist, set_in_watchlist: 2;
+    pub has_revision, set_has_revision: 3;
+    pub deletion_ignored, set_deletion_ignored: 4;
 }
 
 #[derive(Debug)]
@@ -138,13 +144,9 @@ impl Checker {
         let mut checker = Checker {
             processed: assignment.len(),
             assignment: assignment,
-            clause_is_a_reason: Array::new(false, num_clauses),
             clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
-            clause_scheduled: Array::new(false, num_clauses),
             #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Array::from(parser.clause_deleted_at),
-            clause_deletion_ignored: Array::new(false, num_clauses),
-            clause_in_watchlist: Array::new(false, num_clauses),
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
             config: config,
@@ -156,7 +158,6 @@ impl Checker {
                 maxvar.array_size_for_literals(),
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
-            lemma_revision: Array::new(false, num_clauses),
             is_in_witness: StackMapping::with_array_value_size_stack_size(
                 false,
                 maxvar.array_size_for_literals(),
@@ -239,13 +240,18 @@ impl Checker {
         if self.config.no_core_first {
             Mode::NonCore
         } else {
-            match self.clause_scheduled[clause] {
+            match self.fields(clause).is_scheduled() {
                 true => Mode::Core,
                 false => Mode::NonCore,
             }
         }
     }
-
+    fn fields(&self, clause: Clause) -> &ClauseFields {
+        self.db.fields(clause)
+    }
+    fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
+        self.db.fields_mut(clause)
+    }
     #[allow(dead_code)]
     fn clause_colorized(&self, clause: Clause) -> String {
         let mut result = String::new();
@@ -329,16 +335,16 @@ impl ops::Try for MaybeConflict {
 }
 
 fn schedule(checker: &mut Checker, clause: Clause) {
-    if checker.soft_propagation && !checker.clause_scheduled[clause] {
+    if checker.soft_propagation && !checker.fields(clause).is_scheduled() {
         checker.optimized_proof.push(ProofStep::deletion(clause));
     }
-    checker.clause_scheduled[clause] = true;
+    checker.fields_mut(clause).set_is_scheduled(true);
 }
 
 fn set_reason_flag(checker: &mut Checker, reason: Reason, value: bool) {
     if !reason.is_assumed() {
         let clause = checker.offset2clause(reason.offset());
-        checker.clause_is_a_reason[clause] = value;
+        checker.fields_mut(clause).set_is_reason(value);
     }
 }
 
@@ -483,10 +489,10 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 }
 
 fn move_to_core(checker: &mut Checker, clause: Clause) {
-    if checker.clause_scheduled[clause] {
+    if checker.fields(clause).is_scheduled() {
         return;
     }
-    if !checker.clause_in_watchlist[clause] {
+    if !checker.fields(clause).in_watchlist() {
         return;
     }
     if checker.config.no_core_first {
@@ -530,9 +536,9 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
             let head = watchlist_filter_core(checker)[lit][i];
             let clause = checker.offset2clause(head);
             let want = if checker.config.no_core_first {
-                checker.clause_scheduled[clause]
+                checker.fields(clause).is_scheduled()
             } else {
-                invariant!(checker.clause_scheduled[clause]);
+                invariant!(checker.fields(clause).is_scheduled());
                 true
             };
             if want
@@ -687,7 +693,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
         let resolution_candidates = collect_resolution_candidates(checker, pivot);
         invariant!(
             !resolution_candidates.empty()
-                || (checker.config.skip_unit_deletions && checker.clause_is_a_reason[lemma])
+                || (checker.config.skip_unit_deletions && checker.fields(lemma).is_reason())
         );
         if !resolution_candidates.empty() {
             checker.rejection.resolved_with = Some(resolution_candidates[0]);
@@ -741,7 +747,7 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
         preserve_assignment!(
             checker,
             (!checker.config.unmarked_rat_candidates
-                && !checker.clause_scheduled[resolution_candidate])
+                && !checker.fields(resolution_candidate).is_scheduled())
                 || {
                     watch_invariants(checker);
                     // During the RUP check, -pivot was an assumption. ACL2
@@ -976,7 +982,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
                 invariant!(conflict == NO_CONFLICT);
             }
             if !checker.config.skip_unit_deletions {
-                checker.clause_in_watchlist[clause] = true;
+                checker.fields_mut(clause).set_in_watchlist(true);
                 checker.db.swap(head, i1);
                 watch_add(checker, mode, w1, head);
                 if stage == Stage::Verification {
@@ -988,7 +994,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
         NonFalsified::Two(i1, i2) => {
             let w1 = checker.db[i1];
             let w2 = checker.db[i2];
-            checker.clause_in_watchlist[clause] = true;
+            checker.fields_mut(clause).set_in_watchlist(true);
             checker.db.swap(head, i1);
             checker.db.swap(head + 1, i2);
             watch_add(checker, mode, w1, head);
@@ -1090,7 +1096,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                 "[preprocess] del {}",
                 checker.clause_to_string(clause)
             );
-            if checker.clause_is_a_reason[clause] {
+            if checker.fields(clause).is_reason() {
                 checker.reason_deletions += 1;
             }
             if checker.config.skip_unit_deletions {
@@ -1100,7 +1106,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                     .count()
                     == 1;
                 if is_unit {
-                    checker.clause_deletion_ignored[clause] = true;
+                    checker.fields_mut(clause).set_deletion_ignored(true);
                     checker.skipped_deletions += 1;
                     if checker.config.verbosity > 0 {
                         warn!(
@@ -1112,9 +1118,9 @@ fn preprocess(checker: &mut Checker) -> bool {
                     watches_remove(checker, checker.clause_mode(clause), clause);
                 }
             } else {
-                invariant!(!checker.clause_scheduled[clause]);
+                invariant!(!checker.fields(clause).is_scheduled());
                 watches_remove(checker, Mode::NonCore, clause);
-                if checker.clause_is_a_reason[clause] {
+                if checker.fields(clause).is_reason() {
                     revision_create(checker, clause);
                 }
             }
@@ -1160,13 +1166,13 @@ fn verify(checker: &mut Checker) -> bool {
                 checker.clause_to_string(clause)
             );
             if checker.config.skip_unit_deletions {
-                if !checker.clause_is_a_reason[clause] {
+                if !checker.fields(clause).is_reason() {
                     // not actually deleted otherwise!
                     invariant!(checker.clause_mode(clause) == Mode::NonCore);
                     watches_add(checker, Stage::Verification, clause);
                 }
             } else {
-                if checker.lemma_revision[clause] {
+                if checker.fields(clause).has_revision() {
                     let mut revision = checker.revisions.pop();
                     revision_apply(checker, &mut revision);
                 }
@@ -1179,7 +1185,7 @@ fn verify(checker: &mut Checker) -> bool {
             invariant!(clause == lemma);
             watches_remove(checker, checker.clause_mode(lemma), lemma);
             unpropagate_unit(checker, lemma);
-            if checker.clause_scheduled[lemma] {
+            if checker.fields(lemma).is_scheduled() {
                 move_falsified_literals_to_end(checker, lemma);
                 log!(
                     checker,
@@ -1208,7 +1214,7 @@ fn verify(checker: &mut Checker) -> bool {
 }
 
 fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
-    if !checker.clause_is_a_reason[clause] {
+    if !checker.fields(clause).is_reason() {
         return;
     }
     checker
@@ -1257,7 +1263,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         None => return Ok(()),
     };
     for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
-        if checker.clause_scheduled[lemma] {
+        if checker.fields(lemma).is_scheduled() {
             write_clause(&mut file, checker.clause(lemma).iter())?;
             write!(file, "\n")?;
         }
@@ -1289,7 +1295,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     write!(file, "{} d ", checker.lrat_id)?;
     // delete lemmas that were never used
     for clause in Clause::range(0, checker.lemma) {
-        if !checker.clause_scheduled[clause] {
+        if !checker.fields(clause).is_scheduled() {
             write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)?;
         }
     }
@@ -1335,7 +1341,7 @@ fn write_lrat_lemma(
     file: &mut impl Write,
     clause: Clause,
 ) -> io::Result<()> {
-    invariant!(checker.clause_scheduled[clause]);
+    invariant!(checker.fields(clause).is_scheduled());
     checker.lrat_id += 1;
     checker.clause_lrat_id[clause] = checker.lrat_id;
     write!(file, "{} ", lrat_id(checker, clause))?;
@@ -1352,7 +1358,7 @@ fn write_lrat_lemma(
             write!(file, "-{} ", lrat_id(checker, hint))
         } else {
             invariant!(lrat_literal.is_hint());
-            invariant!(checker.clause_scheduled[hint]);
+            invariant!(checker.fields(hint).is_scheduled());
             invariant!(lrat_id(checker, hint) != Clause::NEVER_READ);
             write!(file, "{} ", lrat_id(checker, hint))
         }?;
@@ -1372,11 +1378,11 @@ fn write_lrat_deletion(
     invariant!(clause != Clause::UNINITIALIZED);
     invariant!(
         (lrat_id(checker, clause) == Clause::UNINITIALIZED)
-            == (clause >= checker.lemma && !checker.clause_scheduled[clause])
+            == (clause >= checker.lemma && !checker.fields(clause).is_scheduled())
     );
     if lrat_id(checker, clause) != Clause::UNINITIALIZED
         && !clause_deleted[clause]
-        && !checker.clause_deletion_ignored[clause]
+        && !checker.fields(clause).deletion_ignored()
     {
         clause_deleted[clause] = true;
         write!(file, "{} ", checker.clause_lrat_id[clause])
@@ -1549,7 +1555,7 @@ fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
     let [w1, w2] = checker.watches(head);
     watches_find_and_remove(checker, mode, w1, head);
     watches_find_and_remove(checker, mode, w2, head);
-    checker.clause_in_watchlist[clause] = false;
+    checker.fields_mut(clause).set_in_watchlist(false);
 }
 
 fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) -> bool {
@@ -1591,7 +1597,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         .unwrap();
     let unit_position = checker.assignment.position_in_trail(unit);
     let unit_reason = checker.assignment.trail_at(unit_position).1;
-    checker.lemma_revision[clause] = true;
+    checker.fields_mut(clause).set_has_revision(true);
     let mut revision = Revision {
         cone: Stack::new(),
         position_in_trail: Stack::new(),
@@ -1896,14 +1902,9 @@ fn print_memory_usage(checker: &Checker) {
                 checker.rejection,
                 checker.literal_is_in_cone_but_already_assigned,
                 checker.literal_is_in_cone_preprocess,
-                checker.clause_deletion_ignored,
-                checker.clause_in_watchlist,
-                checker.clause_is_a_reason,
                 checker.clause_lrat_id,
                 checker.clause_lrat_offset,
                 checker.clause_pivot,
-                checker.clause_scheduled,
-                checker.lemma_revision,
             )
             .iter()
             .map(|x| x.heap_space())

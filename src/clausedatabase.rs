@@ -3,17 +3,20 @@ use crate::{
     clause::Clause,
     literal::Literal,
     memory::{Offset, Slice, Stack},
+    checker::ClauseFields,
 };
 
 use rate_macros::HeapSpace;
 use std::ops::{Index, IndexMut, Range};
 
-pub const PADDING_START: usize = 2;
+pub const PADDING_START: usize = 3;
+pub const FIELDS_OFFSET: usize = 2;
 pub const PADDING_END: usize = 1;
 
 /// Clause are stored in field `data`:
 /// The first two elements encode the clause ID.
-/// After that, the literals are stored terminated by a 0.
+/// The third element contains a `struct ClauseFields`.
+/// After that, the literals are stored (zero-terminated)
 #[derive(Debug, PartialEq, HeapSpace)]
 pub struct ClauseDatabase {
     data: Stack<Literal>,
@@ -84,6 +87,7 @@ impl ClauseDatabase {
         let upper = ((id & 0xffffffff00000000) >> 32) as u32;
         self.data.push(Literal::from_raw(lower));
         self.data.push(Literal::from_raw(upper));
+        self.data.push(Literal::from_raw(0));
         clause
     }
     fn close_clause(&mut self) {
@@ -167,6 +171,17 @@ impl ClauseDatabase {
     pub fn make_clause_empty(&mut self, target: Clause) {
         self.offset[target.as_offset() + 1] =
             self.offset[target.as_offset()] + PADDING_START + PADDING_END;
+    }
+    pub fn fields(&self, clause: Clause) -> &ClauseFields {
+            unsafe {std::mem::transmute(
+        &self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
+            )}
+    }
+    pub fn fields_mut(&mut self, clause: Clause)-> &mut ClauseFields {
+        unsafe {std::mem::transmute(
+        &mut self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
+            )
+        }
     }
     #[cfg(test)]
     pub fn clear(&mut self) {

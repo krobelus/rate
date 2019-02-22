@@ -115,11 +115,11 @@ impl<'a> IntoIterator for &'a Assignment {
 
 impl Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Assignment: {} {{", self.len())?;
+        write!(f, "Assignment: {}", self.len())?;
         for (literal, reason) in self {
             write!(f, " {} ({}),", literal, reason)?;
         }
-        write!(f, "}}")
+        Ok(())
     }
 }
 
