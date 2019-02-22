@@ -5,6 +5,7 @@
 //! revision.
 
 use crate::{
+    clause::Reason,
     literal::{Literal, Variable},
     memory::{Array, BoundedStack, HeapSpace, StackIterator},
 };
@@ -21,7 +22,7 @@ pub struct Assignment {
     /// Maps assigned literal to true.
     mapping: Array<Literal, bool>,
     /// Assigned literals, in chronologic order.
-    trail: BoundedStack<Literal>,
+    trail: BoundedStack<(Literal, Reason)>,
     /// Maps literal to their offset in `trail`, or `usize::max_value()`
     position_in_trail: Array<Literal, usize>,
 }
@@ -38,45 +39,46 @@ impl Assignment {
         // Equivalent to assignment.push(Literal::TOP); but does not check invariants
         assignment.mapping[Literal::TOP] = true;
         assignment.position_in_trail[Literal::TOP] = assignment.len();
-        assignment.trail.push(Literal::TOP);
+        assignment.trail.push((Literal::TOP, Reason::assumed()));
         assignment
     }
     /// Return the number of assigned literals.
     pub fn len(&self) -> usize {
         self.trail.len()
     }
-    /// Return the position in the trail where this literal was assigned, or `usize::max_value()`.
-    pub fn position_in_trail(&self, lit: Literal) -> usize {
-        self.position_in_trail[lit]
+    /// Return the position in the trail where this literal was assigned.
+    pub fn position_in_trail(&self, literal: Literal) -> usize {
+        requires!(self[literal]);
+        self.position_in_trail[literal]
     }
     /// Access the trail by offset.
-    pub fn trail_at(&self, offset: usize) -> Literal {
+    pub fn trail_at(&self, offset: usize) -> (Literal, Reason) {
         self.trail[offset]
     }
     /// Add a new literal to the trail, assigning it to true.
-    pub fn push(&mut self, lit: Literal) {
+    pub fn push(&mut self, lit: Literal, reason: Reason) {
         requires!(!lit.is_constant());
         requires!(!self[lit]);
         self.mapping[lit] = true;
         self.position_in_trail[lit] = self.len();
-        self.trail.push(lit);
+        self.trail.push((lit, reason));
     }
     /// View the literal that was assigned last.
-    pub fn peek(&mut self) -> Literal {
+    pub fn peek(&mut self) -> (Literal, Reason) {
         self.trail[self.len() - 1]
     }
     /// Unassign the literal that was assigned last.
-    pub fn pop(&mut self) -> Literal {
-        let lit = self.trail.pop();
-        if !lit.is_constant() {
-            self.mapping[lit] = false;
+    pub fn pop(&mut self) -> (Literal, Reason) {
+        let (literal, reason) = self.trail.pop();
+        if !literal.is_constant() {
+            self.mapping[literal] = false;
         }
-        lit
+        (literal, reason)
     }
     /// Move the literal at trail position `src` to `dst`.
     pub fn move_to(&mut self, src: usize, dst: usize) {
-        let literal = self.trail[src];
-        self.trail[dst] = literal;
+        let (literal, reason) = self.trail[src];
+        self.trail[dst] = (literal, reason);
         self.position_in_trail[literal] = dst;
     }
     /// Increase the size of the trail.
@@ -90,22 +92,22 @@ impl Assignment {
         self.trail.truncate(level)
     }
     /// Remove the assignment for a literal, without modifying the trail.
-    pub fn unassign(&mut self, lit: Literal) {
-        requires!(self[lit], "Literal {} is not assigned.", lit);
-        self.mapping[lit] = false;
+    pub fn unassign(&mut self, literal: Literal) {
+        requires!(self[literal], "Literal {} is not assigned.", literal);
+        self.mapping[literal] = false;
     }
     /// Insert a literal into the trail and assign it.
-    pub fn set_literal_at_level(&mut self, literal: Literal, offset: usize) {
+    pub fn set_trail_at(&mut self, offset: usize, literal: Literal, reason: Reason) {
         self.mapping[literal] = true;
-        self.trail[offset] = literal;
+        self.trail[offset] = (literal, reason);
         self.position_in_trail[literal] = offset;
     }
 }
 
 /// Iterate over the literals in the trail, from oldest to newest.
 impl<'a> IntoIterator for &'a Assignment {
-    type Item = &'a Literal;
-    type IntoIter = StackIterator<'a, Literal>;
+    type Item = &'a (Literal, Reason);
+    type IntoIter = StackIterator<'a, (Literal, Reason)>;
     fn into_iter(self) -> Self::IntoIter {
         self.trail.into_iter()
     }
@@ -113,9 +115,9 @@ impl<'a> IntoIterator for &'a Assignment {
 
 impl Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Assignment: {} {{ ", self.len())?;
-        for literal in self {
-            write!(f, "{} ", literal)?;
+        write!(f, "Assignment: {} {{", self.len())?;
+        for (literal, reason) in self {
+            write!(f, " {} ({}),", literal, reason)?;
         }
         write!(f, "}}")
     }

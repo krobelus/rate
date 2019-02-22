@@ -51,8 +51,7 @@ pub struct Checker {
     soft_propagation: bool,
     rejection: Rejection,
 
-    implication_graph: StackMapping<Literal, bool>,
-    literal_reason: Array<Literal, Reason>,
+    implication_graph: StackMapping<usize, bool>,
     literal_is_in_cone_preprocess: Array<Literal, bool>,
     literal_is_in_cone_but_already_assigned: Array<Literal, bool>,
     literal_minimal_lifetime: Array<Literal, usize>,
@@ -159,7 +158,6 @@ impl Checker {
                 maxvar.array_size_for_literals(),
                 maxvar.array_size_for_variables(),
             ),
-            literal_reason: Array::new(Reason::invalid(), maxvar.array_size_for_literals()),
             lrat_id: Clause::new(0),
             clause_lrat_offset: Array::new(usize::max_value(), num_clauses),
             lrat: Stack::new(),
@@ -192,9 +190,7 @@ impl Checker {
             reason_deletions: 0,
             satisfied_count: 0,
         };
-        checker.literal_reason[Literal::TOP] = Reason::assumed();
         checker.literal_minimal_lifetime[Literal::TOP] = usize::max_value();
-        checker.literal_reason[Literal::BOTTOM] = Reason::assumed();
         checker.literal_minimal_lifetime[Literal::BOTTOM] = usize::max_value();
         for clause in Clause::range(0, checker.lemma) {
             checker.lrat_id += 1;
@@ -331,8 +327,7 @@ fn schedule(checker: &mut Checker, clause: Clause) {
     checker.clause_scheduled[clause] = true;
 }
 
-fn set_reason_flag(checker: &mut Checker, lit: Literal, value: bool) {
-    let reason = checker.literal_reason[lit];
+fn set_reason_flag(checker: &mut Checker, reason: Reason, value: bool) {
     if !reason.is_assumed() {
         let clause = checker.offset2clause(reason.offset());
         checker.clause_is_a_reason[clause] = value;
@@ -341,10 +336,9 @@ fn set_reason_flag(checker: &mut Checker, lit: Literal, value: bool) {
 
 fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConflict {
     requires!(!checker.assignment[literal]);
-    checker.literal_reason[literal] = reason;
-    checker.assignment.push(literal);
+    checker.assignment.push(literal, reason);
     if !checker.soft_propagation {
-        set_reason_flag(checker, literal, true);
+        set_reason_flag(checker, reason, true);
         #[cfg(feature = "clause_lifetime_heuristic")]
         {
             let reason_clause = reason.offset();
@@ -378,7 +372,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 core_mode = false;
                 continue;
             }
-            let literal = -checker.assignment.trail_at(processed_core);
+            let literal = -checker.assignment.trail_at(processed_core).0;
             processed_core += 1;
 
             let mut i = 0;
@@ -425,7 +419,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
             if checker.processed == checker.assignment.len() {
                 return NO_CONFLICT;
             }
-            let literal = -checker.assignment.trail_at(checker.processed);
+            let literal = -checker.assignment.trail_at(checker.processed).0;
             checker.processed += 1;
 
             let mut i = noncore_watchlist_index;
@@ -747,8 +741,12 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
                     // expects that -pivot was the result of propagating the
                     // resolution candidate.
                     if checker.config.lratcheck_compat {
-                        checker.literal_reason[-pivot] =
-                            Reason::forced(checker.clause2offset(resolution_candidate));
+                        let position = checker.assignment.position_in_trail(-pivot);
+                        checker.assignment.set_trail_at(
+                            position,
+                            -pivot,
+                            Reason::forced(checker.clause2offset(resolution_candidate)),
+                        );
                     }
                     log!(
                         checker,
@@ -774,65 +772,60 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
 }
 
 fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<usize>) {
-    let lemma = checker.lemma;
-    let conflict_literal = checker.assignment.peek();
+    let conflict_literal = checker.assignment.peek().0;
     requires!(
         conflict_literal == Literal::TOP
             || (checker.assignment[conflict_literal] && checker.assignment[-conflict_literal])
     );
     requires!(checker.implication_graph.empty());
     fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
-        let reason = checker.literal_reason[literal];
+        let position = checker.assignment.position_in_trail(literal);
+        let reason = checker.assignment.trail_at(position).1;
         if !reason.is_assumed() {
-            checker.implication_graph.push(literal, true);
+            checker.implication_graph.push(position, true);
         }
     }
-
     if conflict_literal != Literal::TOP {
         add_cause_of_conflict(checker, conflict_literal);
         add_cause_of_conflict(checker, -conflict_literal);
     }
     let mut i = 0;
     while i < checker.implication_graph.len() {
-        let pivot = checker.implication_graph.stack_at(i);
+        let position = checker.implication_graph.stack_at(i);
+        let (pivot, reason) = checker.assignment.trail_at(position);
         invariant!(checker.assignment[pivot]);
-        let reason = checker.literal_reason[pivot];
         if !reason.is_assumed() {
-            let clause = reason.offset();
-            move_to_core(checker, checker.offset2clause(clause));
-            schedule(checker, checker.offset2clause(clause));
-            for offset in checker.clause_range(checker.offset2clause(clause)) {
-                let lit = checker.db[offset];
-                if lit != pivot
-                    && !checker.implication_graph[-lit]
-                    && checker.literal_reason[-lit] != Reason::assumed()
+            let offset = reason.offset();
+            move_to_core(checker, checker.offset2clause(offset));
+            schedule(checker, checker.offset2clause(offset));
+            for lit_offset in checker.clause_range(checker.offset2clause(offset)) {
+                let lit = checker.db[lit_offset];
+                if lit == pivot {
+                    continue;
+                }
+                let negation_position = checker.assignment.position_in_trail(-lit);
+                let negation_reason= checker.assignment.trail_at(negation_position).1;
+                if  !checker.implication_graph[negation_position]
+                    && negation_reason != Reason::assumed()
                 {
-                    checker.implication_graph.push(-lit, true);
+                    checker.implication_graph.push(negation_position, true);
                 }
             }
         }
         i += 1;
     }
-    // We might be able to eliminate this by using checker.implication_graph instead.
-    let mut reason_literals = BoundedStack::with_capacity(checker.implication_graph.len());
-    for &literal in &checker.implication_graph {
-        let reason_clause = checker.offset2clause(checker.literal_reason[literal].offset());
-        invariant!(reason_clause < lemma);
-        reason_literals.push(literal);
-    }
-    reason_literals.sort_unstable_by_key(|&literal| checker.assignment.position_in_trail(literal));
+    checker.implication_graph.sort_unstable();
     log!(checker, 3, "Resolution chain:");
-
-    for &literal in &reason_literals {
-        let reason_clause = checker.literal_reason[literal].offset();
+    for &position in &checker.implication_graph {
+        let (literal, reason) = checker.assignment.trail_at(position);
         log!(
             checker,
             3,
             "{}:\t{}",
             literal,
-            checker.clause_to_string(checker.offset2clause(reason_clause))
+            checker.clause_to_string(checker.offset2clause(reason.offset()))
         );
-        let clause = checker.offset2clause(reason_clause);
+        let clause = checker.offset2clause(reason.offset());
         // For lratcheck, we also need to give hints for real unit clauses
         // This should not be done for ACL2 lrat-check where units are
         // implicitly propagated at the beginning of a RAT check.
@@ -1053,7 +1046,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     let empty_clause = checker.lemma;
     checker.db.make_clause_empty(empty_clause);
     invariant!(checker.clause(empty_clause).empty());
-    invariant!((checker.maxvar == Variable(0)) == (checker.assignment.peek() == Literal::TOP));
+    invariant!((checker.maxvar == Variable(0)) == (checker.assignment.peek().0 == Literal::TOP));
     extract_dependencies(checker, None);
     write_dependencies_for_lrat(checker, empty_clause, false);
     schedule(checker, empty_clause);
@@ -1217,8 +1210,8 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
             let unit = checker.db[offset];
             let trail_length = checker.assignment.position_in_trail(unit);
             while checker.assignment.len() > trail_length {
-                let lit = checker.assignment.pop();
-                set_reason_flag(checker, lit, true);
+                let reason = checker.assignment.pop().1;
+                set_reason_flag(checker, reason, true);
             }
             checker.processed = trail_length;
         });
@@ -1448,8 +1441,7 @@ fn assignment_invariants(checker: &Checker) {
     if !crate::config::ENABLE_EXPENSIVE_ASSERTIONS {
         return;
     }
-    for &literal in checker.assignment.into_iter() {
-        let reason = checker.literal_reason[literal];
+    for &(literal, reason) in &checker.assignment {
         if !reason.is_assumed() {
             let clause = checker.offset2clause(reason.offset());
             invariant!(
@@ -1463,7 +1455,7 @@ fn assignment_invariants(checker: &Checker) {
         }
     }
     for position in 0..checker.assignment.len() {
-        let literal = checker.assignment.trail_at(position);
+        let literal = checker.assignment.trail_at(position).0;
         invariant!(position == checker.assignment.position_in_trail(literal));
     }
 }
@@ -1573,6 +1565,14 @@ fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head
 
 // Revisions
 
+fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
+    invariant!(!reason.is_assumed());
+    checker
+        .clause(checker.offset2clause(reason.offset()))
+        .iter()
+        .any(|&lit| lit != literal && checker.literal_is_in_cone_preprocess[-lit])
+}
+
 fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
     log!(checker, 1, "{}", checker.assignment);
@@ -1582,18 +1582,19 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         .find(|&lit| checker.assignment[*lit])
         .unwrap();
     let unit_position = checker.assignment.position_in_trail(unit);
+    let unit_reason = checker.assignment.trail_at(unit_position).1;
     checker.lemma_revision[clause] = true;
     let mut revision = Revision {
         cone: Stack::new(),
         position_in_trail: Stack::new(),
         reason_clause: Stack::new(),
     };
-    add_to_revision(checker, &mut revision, unit);
+    add_to_revision(checker, &mut revision, unit, unit_reason);
     let mut next_position_to_overwrite = unit_position;
     for position in unit_position + 1..checker.assignment.len() {
-        let lit = checker.assignment.trail_at(position);
-        if is_in_cone(checker, lit) {
-            add_to_revision(checker, &mut revision, lit);
+        let (literal, reason) = checker.assignment.trail_at(position);
+        if is_in_cone(checker, literal, reason) {
+            add_to_revision(checker, &mut revision, literal, reason);
         } else {
             checker
                 .assignment
@@ -1661,29 +1662,19 @@ fn watches_revise(
     };
 }
 
-fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal) {
-    checker.assignment.unassign(lit);
-    checker.literal_minimal_lifetime[lit] = 0;
-    set_reason_flag(checker, lit, false);
+fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal, reason: Reason) {
     revision.cone.push(lit);
     checker.literal_is_in_cone_preprocess[lit] = true;
     revision
         .position_in_trail
         .push(checker.assignment.position_in_trail(lit));
-    let reason = checker.literal_reason[lit];
     invariant!(!reason.is_assumed());
     revision
         .reason_clause
         .push(checker.offset2clause(reason.offset()));
-}
-
-fn is_in_cone(checker: &Checker, literal: Literal) -> bool {
-    let reason = checker.literal_reason[literal];
-    invariant!(!reason.is_assumed());
-    checker
-        .clause(checker.offset2clause(reason.offset()))
-        .iter()
-        .any(|&lit| lit != literal && checker.literal_is_in_cone_preprocess[-lit])
+    checker.assignment.unassign(lit);
+    checker.literal_minimal_lifetime[lit] = 0;
+    set_reason_flag(checker, reason, false);
 }
 
 fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
@@ -1691,11 +1682,13 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     let mut introductions = 0;
     let mut literals_to_revise = revision.cone.len();
     for &literal in &revision.cone {
-        set_reason_flag(checker, literal, false);
-        if !checker.assignment[literal] {
-            introductions += 1;
-        } else {
+        if checker.assignment[literal] {
             checker.literal_is_in_cone_but_already_assigned[literal] = true;
+            let position = checker.assignment.position_in_trail(literal);
+            let reason = checker.assignment.trail_at(position).1;
+            set_reason_flag(checker, reason, false);
+        } else {
+            introductions += 1;
         }
     }
     log!(checker, 1, "Applying {}{}", revision, checker.assignment);
@@ -1707,26 +1700,26 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     // Re-introduce the assignments that were induced by the deleted unit,
     // starting with the ones with the highest offset in the trail.
     while literals_to_revise > 0 {
-        let literal = if right_position == revision.position_in_trail[literals_to_revise - 1] {
+        let (literal, reason) = if right_position == revision.position_in_trail[literals_to_revise - 1] {
             literals_to_revise -= 1;
             let lit = revision.cone[literals_to_revise];
-            checker.literal_reason[lit] =
+            let lit_reason =
                 Reason::forced(checker.clause2offset(revision.reason_clause[literals_to_revise]));
-            set_reason_flag(checker, lit, true);
-            lit
+            set_reason_flag(checker, lit_reason, true);
+            (lit, lit_reason)
         } else {
             loop {
                 invariant!(left_position > 0 && left_position <= checker.assignment.len());
                 left_position = left_position - 1;
-                let lit = checker.assignment.trail_at(left_position);
+                let (lit, current_reason) = checker.assignment.trail_at(left_position);
                 if !checker.literal_is_in_cone_but_already_assigned[lit] {
-                    break lit;
+                    break (lit, current_reason);
                 }
             }
         };
         checker
             .assignment
-            .set_literal_at_level(literal, right_position);
+            .set_trail_at(right_position, literal, reason);
         right_position -= 1;
     }
     log!(checker, 1, "Applied revision:\n{}", checker.assignment);
@@ -1892,7 +1885,6 @@ fn print_memory_usage(checker: &Checker) {
                 checker.literal_is_in_cone_preprocess,
                 checker.literal_minimal_lifetime,
                 checker.literal_minimal_lifetime,
-                checker.literal_reason,
                 checker.clause_deleted_at,
                 checker.clause_deletion_ignored,
                 checker.clause_in_watchlist,

@@ -77,3 +77,19 @@ impl<'a, Key: Offset + Copy + Debug, T: Copy + Debug> IntoIterator for &'a Stack
         self.stack.into_iter()
     }
 }
+
+impl<Key: Ord + Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
+    pub fn sort_unstable(&mut self) {
+        self.stack.sort_unstable()
+    }
+}
+
+impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
+    pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
+    where
+        F: FnMut(&Key) -> K,
+        K: Ord,
+    {
+        self.stack.sort_unstable_by_key(f)
+    }
+}

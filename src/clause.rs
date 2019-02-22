@@ -126,7 +126,20 @@ impl Reason {
     }
     pub fn offset(self) -> usize {
         invariant!(self != Reason::invalid());
+        invariant!(self != Reason::assumed());
         self.0.payload() as usize
+    }
+}
+
+impl fmt::Display for Reason {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", if
+              self.is_assumed() {
+                  "Assumption".into()
+              } else {
+                  format!("Forced by clause {}", self.offset())
+              }
+              )
     }
 }
 

@@ -29,6 +29,7 @@ impl ClauseDatabase {
             have_sentinel: false,
         }
     }
+    #[cfg(test)]
     pub fn from(data: Stack<Literal>, offset: Stack<usize>) -> ClauseDatabase {
         let mut db = ClauseDatabase {
             data: data,
@@ -200,6 +201,7 @@ impl WitnessDatabase {
             offset: Stack::const_new(),
         }
     }
+    #[cfg(test)]
     pub fn from(data: Stack<Literal>, offset: Stack<usize>) -> WitnessDatabase {
         WitnessDatabase {
             data: data,

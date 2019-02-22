@@ -94,3 +94,10 @@ impl<T: HeapSpace> BoundedStack<T> {
         self.stack.sort_unstable_by_key(f)
     }
 }
+
+impl<T: HeapSpace + Ord> BoundedStack<T> {
+    pub fn sort_unstable(&mut self)
+    {
+        self.stack.sort_unstable()
+    }
+}
