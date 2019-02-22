@@ -5,7 +5,7 @@ use crate::{
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{ConsumingStackIterator, HeapSpace, Offset, Slice, Stack},
+    memory::{HeapSpace, Offset, Slice, Stack},
     output::Timer,
 };
 #[cfg(feature = "flame_it")]
@@ -16,8 +16,8 @@ use std::{
     fmt::{Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
-    io::{self, BufReader, Bytes, Read},
-    iter::{Chain, FromIterator, Map, Peekable},
+    io::{self, BufReader, Read},
+    iter::{FromIterator, Peekable},
     panic, str,
 };
 
@@ -75,21 +75,62 @@ pub fn parse_files(
     let mut parser = Parser::new(redundancy_property);
     {
         let _timer = Timer::name("parsing formula");
-        parse_formula(&mut parser, &mut clause_ids, open_file(&formula_file))
+        parse_formula(&mut parser, &mut clause_ids, text_file_iter(&formula_file))
             .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
     {
         let _timer = Timer::name("parsing proof");
-        parse_proof(&mut parser, &mut clause_ids, open_file(&proof_file))
-            .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
+        let binary = {
+            is_binary_drat(
+                open_file(&proof_file)
+                    .bytes()
+                    .map(panic_on_error as fn(io::Result<u8>) -> u8)
+                    .take(10),
+            )
+        };
+        if binary {
+            comment!("binary proof mode");
+        }
+        if binary {
+            parse_proof(
+                &mut parser,
+                &mut clause_ids,
+                binary_file_iter(&proof_file),
+                binary,
+            )
+        } else {
+            parse_proof(
+                &mut parser,
+                &mut clause_ids,
+                text_file_iter(&proof_file),
+                binary,
+            )
+        }
+        .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
     }
     parser
 }
 
-fn open_file(filename: &str) -> BufReaderInput {
-    BufReaderInput::new(BufReader::new(
-        File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err)),
-    ))
+fn open_file(filename: &str) -> File {
+    File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
+}
+
+fn read_file(filename: &str) -> impl Iterator<Item = u8> {
+    BufReader::new(open_file(filename))
+        .bytes()
+        .map(panic_on_error as fn(io::Result<u8>) -> u8)
+}
+
+fn panic_on_error(result: io::Result<u8>) -> u8 {
+    result.unwrap_or_else(|error| die!("read error: {}", error))
+}
+
+fn text_file_iter(filename: &str) -> impl Input {
+    TextInput::new(read_file(filename))
+}
+
+fn binary_file_iter(filename: &str) -> impl Input {
+    BinaryInput::new(read_file(filename))
 }
 
 fn add_literal(
@@ -227,7 +268,7 @@ fn parse_literal(input: &mut impl Input) -> Result<Literal> {
         None => input.error(EOF),
         Some(c) if is_digit_or_dash(c) => {
             let sign = if c == b'-' {
-                input.advance();
+                input.next();
                 -1
             } else {
                 1
@@ -240,10 +281,10 @@ fn parse_literal(input: &mut impl Input) -> Result<Literal> {
 
 fn parse_u64(input: &mut impl Input) -> Result<u64> {
     while input.peek() == Some(b' ') {
-        input.advance();
+        input.next();
     }
     let mut value: u64 = 0;
-    while let Some(c) = input.advance() {
+    while let Some(c) = input.next() {
         if c == b' ' || c == b'\n' {
             break;
         }
@@ -271,7 +312,7 @@ fn parse_i32(input: &mut impl Input) -> Result<i32> {
 fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
-    while let Some(value) = input.advance() {
+    while let Some(value) = input.next() {
         result |= ((value & 0x7f) as u32) << (7 * i);
         i += 1;
         if (value & 0x80) == 0 {
@@ -284,8 +325,8 @@ fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
 fn parse_comment(input: &mut impl Input) -> Option<()> {
     match input.peek() {
         Some(b'c') => {
-            input.advance();
-            while let Some(c) = input.advance() {
+            input.next();
+            while let Some(c) = input.next() {
                 if c == b'\n' {
                     return Some(());
                 }
@@ -303,7 +344,7 @@ fn parse_formula_header(input: &mut impl Input) -> Result<(u64, u64)> {
         if input.peek().map_or(true, |c| c != expected) {
             return input.error(P_CNF);
         }
-        input.advance();
+        input.next();
     }
     let maxvar = parse_u64(input)?;
     let num_clauses = parse_u64(input)?;
@@ -332,7 +373,7 @@ fn parse_formula(
     let mut clause_head = true;
     while let Some(c) = input.peek() {
         if is_space(c) {
-            input.advance();
+            input.next();
             continue;
         }
         if c == b'c' {
@@ -353,8 +394,8 @@ fn parse_formula(
 }
 
 // See drat-trim
-fn is_binary_drat(buffer: Slice<u8>) -> bool {
-    for &c in buffer {
+fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
+    for c in buffer {
         if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
         {
             return true;
@@ -389,32 +430,6 @@ fn is_binary_drat(buffer: Slice<u8>) -> bool {
         */
 }
 
-fn is_binary_drat_stream(mut input: impl Input) -> (impl Input, bool) {
-    let mut buffer = Stack::new();
-    for _ in 0..10 {
-        match input.advance() {
-            Some(c) => buffer.push(c),
-            None => break,
-        }
-    }
-    let is_binary = is_binary_drat(buffer.as_slice());
-    let saved_line = input.line();
-    let equivalent_input = ChainInput {
-        source: buffer.into_iter().chain(input.into_iter()).peekable(),
-        line: saved_line,
-    };
-    (equivalent_input, is_binary)
-}
-
-fn parse_proof(parser: &mut Parser, clause_ids: &mut HashTable, input: impl Input) -> Result<()> {
-    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
-    let (mut input, is_binary) = is_binary_drat_stream(input);
-    if is_binary {
-        comment!("binary proof mode");
-    }
-    do_parse_proof(parser, clause_ids, &mut input, is_binary)
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum ParserState {
     Start,
@@ -423,12 +438,13 @@ enum ParserState {
     Deletion,
 }
 
-fn do_parse_proof(
+fn parse_proof(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
-    input: &mut impl Input,
+    mut input: impl Input,
     binary: bool,
 ) -> Result<()> {
+    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
     let literal_parser = if binary {
         parse_literal_binary
     } else {
@@ -439,23 +455,23 @@ fn do_parse_proof(
     let mut first_literal = None;
     while let Some(c) = input.peek() {
         if !binary && is_space(c) {
-            input.advance();
+            input.next();
             continue;
         }
         if state == ParserState::Start {
             state = match c {
                 b'd' => {
-                    input.advance();
+                    input.next();
                     open_clause(parser, ParserState::Deletion);
                     ParserState::Deletion
                 }
                 b'c' => {
-                    parse_comment(input);
+                    parse_comment(&mut input);
                     ParserState::Start
                 }
                 c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
                     if binary {
-                        input.advance();
+                        input.next();
                     }
                     lemma_head = true;
                     let clause = open_clause(parser, ParserState::Clause);
@@ -466,7 +482,7 @@ fn do_parse_proof(
             };
             continue;
         }
-        let literal = literal_parser(input)?;
+        let literal = literal_parser(&mut input)?;
         if parser.is_pr() && state == ParserState::Clause && first_literal == Some(literal) {
             first_literal = None;
             state = ParserState::Witness;
@@ -542,7 +558,7 @@ c comment
         assert!(parse_formula(
             &mut parser,
             clause_ids,
-            BufferInput::from(example.as_bytes().to_vec())
+            TextInput::new(example.as_bytes().to_vec().into_iter()),
         )
         .is_ok());
         parser
@@ -555,7 +571,8 @@ c comment
             let result = parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                BufferInput::from(b"1 2 3 0\nd 1 2 0".to_vec()),
+                TextInput::new(b"1 2 3 0\nd 1 2 0".to_vec().into_iter()),
+                false,
             );
             assert!(result.is_ok());
             let expected_clause_ids = [
@@ -645,141 +662,72 @@ impl HeapSpace for Parser {
 }
 
 trait Input {
-    type Iter: Iterator<Item = u8>;
-    fn line(&self) -> usize;
-    fn line_mut(&mut self) -> &mut usize;
-    fn iter_mut(&mut self) -> &mut Peekable<Self::Iter>;
+    fn next(&mut self) -> Option<u8>;
+    fn peek(&mut self) -> Option<u8>;
+    fn error<U>(&self, why: &'static str) -> Result<U>;
+}
 
-    fn advance(&mut self) -> Option<u8>
-    where
-        Self: Sized,
-    {
-        self.iter_mut().next().map(|c| {
+struct TextInput<T: Iterator<Item = u8>> {
+    iter: Peekable<T>,
+    line: usize,
+}
+
+impl<T: Iterator<Item = u8>> TextInput<T> {
+    fn new(iter: T) -> TextInput<T> {
+        TextInput {
+            iter: iter.peekable(),
+            line: 0,
+        }
+    }
+}
+
+impl<T: Iterator<Item = u8>> Input for TextInput<T> {
+    fn next(&mut self) -> Option<u8> {
+        self.iter.next().map(|c| {
             if c == b'\n' {
-                *self.line_mut() += 1;
+                self.line += 1;
             }
             c
         })
     }
-
-    fn peek(&mut self) -> Option<u8>
-    where
-        Self: Sized,
-    {
-        match self.iter_mut().peek() {
-            Some(c) => Some(*c),
-            None => None,
-        }
+    fn peek(&mut self) -> Option<u8> {
+        self.iter.peek().map(|&c| c)
     }
-
     fn error<U>(&self, why: &'static str) -> Result<U>
     where
         Self: Sized,
     {
         Err(ParseError {
             why: why,
-            line: self.line(),
+            line: self.line,
         })
     }
+}
 
-    fn into_iter(self) -> Peekable<InputIntoIter<Self>>
+struct BinaryInput<T: Iterator<Item = u8>> {
+    iter: Peekable<T>,
+}
+
+impl<T: Iterator<Item = u8>> BinaryInput<T> {
+    fn new(iter: T) -> BinaryInput<T> {
+        BinaryInput {
+            iter: iter.peekable(),
+        }
+    }
+}
+
+impl<T: Iterator<Item = u8>> Input for BinaryInput<T> {
+    fn next(&mut self) -> Option<u8> {
+        self.iter.next()
+    }
+    fn peek(&mut self) -> Option<u8> {
+        self.iter.peek().map(|&c| c)
+    }
+    fn error<U>(&self, why: &'static str) -> Result<U>
     where
         Self: Sized,
     {
-        InputIntoIter(self).peekable()
-    }
-}
-
-struct InputIntoIter<T: Input>(T);
-
-impl<T: Input> Iterator for InputIntoIter<T> {
-    type Item = u8;
-    fn next(&mut self) -> Option<u8> {
-        self.0.iter_mut().next()
-    }
-}
-
-type BufReaderInputIter = Map<Bytes<BufReader<File>>, fn(io::Result<u8>) -> u8>;
-struct BufReaderInput {
-    source: Peekable<BufReaderInputIter>,
-    line: usize,
-}
-
-impl BufReaderInput {
-    fn new(source: BufReader<File>) -> BufReaderInput {
-        BufReaderInput {
-            source: source
-                .bytes()
-                .map(panic_on_error as fn(io::Result<u8>) -> u8)
-                .peekable(),
-            line: 0,
-        }
-    }
-}
-
-fn panic_on_error(result: io::Result<u8>) -> u8 {
-    result.unwrap_or_else(|error| die!("read error: {}", error))
-}
-
-impl Input for BufReaderInput {
-    type Iter = BufReaderInputIter;
-    fn line(&self) -> usize {
-        self.line
-    }
-    fn line_mut(&mut self) -> &mut usize {
-        &mut self.line
-    }
-    fn iter_mut(&mut self) -> &mut Peekable<Self::Iter> {
-        &mut self.source
-    }
-}
-
-type BufferInputIter = std::vec::IntoIter<u8>;
-
-struct BufferInput {
-    source: Peekable<BufferInputIter>,
-    line: usize,
-}
-
-impl From<Vec<u8>> for BufferInput {
-    fn from(vec: Vec<u8>) -> BufferInput {
-        BufferInput {
-            source: vec.into_iter().peekable(),
-            line: 0,
-        }
-    }
-}
-
-impl Input for BufferInput {
-    type Iter = BufferInputIter;
-    fn line(&self) -> usize {
-        self.line
-    }
-    fn line_mut(&mut self) -> &mut usize {
-        &mut self.line
-    }
-    fn iter_mut(&mut self) -> &mut Peekable<Self::Iter> {
-        &mut self.source
-    }
-}
-
-type ChainInputIter<T> = Chain<ConsumingStackIterator<u8>, Peekable<T>>;
-
-struct ChainInput<T: Iterator<Item = u8>> {
-    source: Peekable<ChainInputIter<T>>,
-    line: usize,
-}
-
-impl<'a, T: Iterator<Item = u8>> Input for ChainInput<T> {
-    type Iter = ChainInputIter<T>;
-    fn line(&self) -> usize {
-        self.line
-    }
-    fn line_mut(&mut self) -> &mut usize {
-        &mut self.line
-    }
-    fn iter_mut(&mut self) -> &mut Peekable<Self::Iter> {
-        &mut self.source
+        Err(ParseError { why: why, line: 0 })
     }
 }
 
