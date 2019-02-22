@@ -1071,6 +1071,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn preprocess(checker: &mut Checker) -> bool {
+    comment!("preprocessing proof");
     log!(checker, 1, "[preprocess]");
     defer_log!(checker, 1, "[preprocess] done\n");
     for clause in Clause::range(0, checker.lemma) {
@@ -1149,6 +1150,7 @@ fn preprocess(checker: &mut Checker) -> bool {
 
 #[cfg_attr(feature = "flame_it", flame)]
 fn verify(checker: &mut Checker) -> bool {
+    comment!("verifying proof");
     log!(checker, 1, "[verify]");
     defer_log!(checker, 1, "[verify] done\n");
     for i in (0..checker.proof_steps_until_conflict).rev() {
@@ -1912,8 +1914,11 @@ fn print_memory_usage(checker: &Checker) {
         ),
     ];
     let total = usages.iter().fold(0, |sum, tuple| sum + tuple.1);
-    comment!("checker memory usage (in MB)");
-    for tuple in Some(("TOTAL", total)).iter().chain(usages.iter()) {
+    number("memory (MB)", &format_memory_usage(total));
+    if !checker.config.memory_usage_breakdown {
+        return;
+    }
+    for tuple in usages {
         number(
             &format!("memory-{}", tuple.0.replace("_", "-")),
             &format_memory_usage(tuple.1),

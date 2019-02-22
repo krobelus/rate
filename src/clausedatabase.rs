@@ -236,7 +236,6 @@ impl WitnessDatabase {
         witness
     }
     fn close_witness(&mut self) {
-        println!("CLOSE WITNESS");
         self.offset.push(self.data.len())
     }
     pub fn push_literal(&mut self, literal: Literal) {

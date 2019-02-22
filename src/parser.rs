@@ -84,6 +84,7 @@ pub fn parse_files(
 }
 
 fn open_file(filename: &str) -> BufReaderInput {
+    comment!("parsing {}", filename);
     BufReaderInput::new(BufReader::new(
         File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err)),
     ))

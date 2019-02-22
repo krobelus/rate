@@ -12,6 +12,7 @@ pub struct Config {
     pub pivot_is_first_literal: bool,
     pub no_core_first: bool,
     pub lratcheck_compat: bool,
+    pub memory_usage_breakdown: bool,
     pub verbosity: u64,
     pub formula_filename: String,
     pub proof_filename: String,
@@ -103,6 +104,7 @@ impl Config {
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_core_first: matches.is_present("NO_CORE_FIRST"),
             lratcheck_compat: lratcheck_compat,
+            memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {
                     warn!("verbosity can be at most 4");

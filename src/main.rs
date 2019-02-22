@@ -53,7 +53,7 @@ fn main() {
          .help("Ignore deletion of unit clauses."))
     .arg(Arg::with_name("UNMARKED_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
          .help("Do not ignore RAT candidates that are not part of the core."))
-    .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").long("assume-pivot-is-first")
+    .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
          .help("When checking for RAT, only try the first literal as pivot."))
     .arg(Arg::with_name("NO_CORE_FIRST").short("u").long("no-core-first")
          .help("Disable core first unit propagation."))
@@ -66,6 +66,8 @@ fn main() {
          .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
     .arg(Arg::with_name("LRATCHECK_COMPAT").long("--lratcheck-compat")
          .help("Try output LRAT suitable for lratcheck (as opposed to the verified lrat-check)"))
+    .arg(Arg::with_name("MEMORY_USAGE_BREAKDOWN").short("m").long("--memory-breakdown")
+         .help("Output detailled memory usage."))
     .arg(Arg::with_name("LEMMAS_FILE").takes_value(true).short("l").long("lemmas")
          .help("Write the core lemmas to this file."))
     .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat")
@@ -93,19 +95,19 @@ fn main() {
     let mut checker = Checker::new(parser, config);
     comment!("checking for {}", checker.config.redundancy_property);
     let ok = check(&mut checker);
-    checker.print_memory_usage();
-    number("premise-clauses", checker.premise_length);
-    number("proof-steps", checker.proof.size());
-    number("skipped-tautologies", checker.satisfied_count);
-    number("rup-introductions", checker.rup_introductions);
-    number("rat-introductions", checker.rat_introductions);
+    let elapsed_time = start.elapsed().expect("failed to get time");
+    number("premise clauses", checker.premise_length);
+    number("proof steps", checker.proof.size());
+    number("skipped tautologies", checker.satisfied_count);
+    number("RUP introductions", checker.rup_introductions);
+    number("RAT introductions", checker.rat_introductions);
     number("deletions", checker.deletions);
-    number("skipped-deletion", checker.skipped_deletions);
-    number("reason-deletions", checker.reason_deletions);
-    comment!(
-        "elapsed time: {} seconds",
-        start.elapsed().expect("failed to get time").as_secs()
+    number("skipped deletions", checker.skipped_deletions);
+    number("reason deletions", checker.reason_deletions);
+    number("elapsed time (s)",
+          format!("{}.{:03}", elapsed_time.as_secs(), elapsed_time.subsec_millis())
     );
+    checker.print_memory_usage();
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
     #[cfg(feature = "flame_it")]
     flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
