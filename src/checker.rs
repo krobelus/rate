@@ -617,20 +617,21 @@ fn pr(checker: &mut Checker) -> bool {
         }
         let reduct_witness = reduct(checker, &checker.is_in_witness, clause);
         // TODO skip if if reduce == 0?
-        if match reduct_witness {
+        let clause_under_witness = match reduct_witness {
             Reduct::Top => continue,
-            Reduct::Clause(clause_under_witness) => {
-                let reduct_assignment = reduct(checker, &checker.assignment, clause);
-                match reduct_assignment {
-                    Reduct::Top => true,
-                    Reduct::Clause(clause_under_assignment) => is_proper_subset(
-                        clause_under_witness.as_slice(),
-                        clause_under_assignment.as_slice(),
-                    ),
-                }
-            }
+            Reduct::Clause(clause_under_witness) => clause_under_witness,
+        };
+        let reduct_assignment = reduct(checker, &checker.assignment, clause);
+        if match reduct_assignment {
+            Reduct::Top => true,
+            Reduct::Clause(clause_under_assignment) => is_proper_subset(
+                clause_under_witness.as_slice(),
+                clause_under_assignment.as_slice(),
+            ),
         } {
-            let ok = preserve_assignment!(checker, rup(checker, clause, None)) == CONFLICT;
+            let ok =
+                preserve_assignment!(checker, slice_rup(checker, clause_under_witness.as_slice()))
+                    == CONFLICT;
             if !ok {
                 return false;
             }
@@ -676,6 +677,15 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
         }
         if !checker.assignment[-unit] {
             invariant!(unit != Literal::BOTTOM);
+            assign(checker, -unit, Reason::assumed())?;
+        }
+    }
+    propagate(checker)
+}
+
+fn slice_rup(checker: &mut Checker, clause: Slice<Literal>) -> MaybeConflict {
+    for &unit in clause {
+        if !checker.assignment[-unit] {
             assign(checker, -unit, Reason::assumed())?;
         }
     }
