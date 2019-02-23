@@ -8,10 +8,10 @@ clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details)
 by default.
 
 # Features
-- check DRAT and PR proofs
+- check DRAT (default) and PR (file extension `.pr`) proofs
 - output core lemmas as DIMACS or LRAT for accepted proofs
 - output certificate of unsatisfiability for rejected proofs
-- competetive performance due to double-sweep checking with
+- competitive performance due to double-sweep checking with
   core-first unit propagation
 - option to ignore unit deletions (`--skip-unit-deletions`)
 
