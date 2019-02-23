@@ -24,23 +24,6 @@ $ cargo run --release formula.cnf proof.drat
 ```
 Refer to the [cargo documentation](https://doc.rust-lang.org/cargo/) for other use cases.
 
-# Tests
-There are some unit tests that can be run with `cargo test`.
-
-Additionally, there is a system test suite, that compares the output of `rate` to
-previous versions of itself, and to other checkers, in particular
-[rupee](https://github.com/arpj-rebola/rupee).
-This can be run with `pytest test.py`. The requirements are:
-
-- `python3` (version 3.6 or above)
-- `pytest`
-- [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat),
-  [`sick-check`](https://github.com/arpj-rebola/rupee/blob/master/src/check/sickchecker.cpp),
-  `drat-trim`, `rupee`, and `gratgen` need to be executable on your system.
-
-If you're in a hurry use `pytest test.py -k quick` to only run the tests on
-small input files.
-
 # Caveats
 
 Please note that `rate` accepts proof that are technically not fully
@@ -64,6 +47,30 @@ Here are the transformations we do:
   with respect to the current assignment are ignored, as in `drat-trim`.
 - RAT checks are done upon every possible pivot and not just the first literal
   in a clause.
+
+# Tests
+There are some unit tests that can be run with `cargo test`.
+
+Additionally, there is a system test suite, that compares the output of `rate` to
+previous versions of itself, and to other checkers, in particular
+[rupee](https://github.com/arpj-rebola/rupee).
+This can be run with `pytest test.py`. The requirements are:
+
+- `python3` (version 3.6 or above)
+- `pytest`
+- [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat),
+  [`sick-check`](https://github.com/arpj-rebola/rupee/blob/master/src/check/sickchecker.cpp),
+  `drat-trim`, `rupee`, and `gratgen` need to be executable on your system.
+
+If you're in a hurry use `pytest test.py -k quick` to only run the tests on
+small input files.
+
+# Documentation
+
+You can use this to build documentation from doc comments in `target/doc/rate/index.html`.
+```sh
+$ cargo doc --document-private-items -p rate
+```
 
 # Contributing
 
