@@ -80,7 +80,7 @@ pub fn parse_files(
         parse_formula(
             &mut parser,
             &mut clause_ids,
-            TextInput::new(safe_iter(&mmap))
+            TextInput::new(safe_iter(&mmap)),
         )
         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
@@ -124,7 +124,8 @@ fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> std::iter::Cloned<std::slice::Iter<'
         mmap.iter()
     } else {
         [].iter()
-    }.cloned()
+    }
+    .cloned()
 }
 
 fn open_file(filename: &str) -> File {
@@ -277,10 +278,10 @@ struct ParseError {
 }
 
 const OVERFLOW: &str = "overflow while parsing number";
-const NUMBER: & str = "expected number";
-const EOF: & str = "premature end of file";
-const P_CNF: & str = "expected \"p cnf\"";
-const DRAT: & str = "expected DRAT instruction";
+const NUMBER: &str = "expected number";
+const EOF: &str = "premature end of file";
+const P_CNF: &str = "expected \"p cnf\"";
+const DRAT: &str = "expected DRAT instruction";
 
 fn parse_literal(input: &mut impl Input) -> Result<Literal> {
     match input.peek() {

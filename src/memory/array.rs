@@ -175,7 +175,7 @@ impl<I: Offset, T: Clone> Clone for Array<I, T> {
         for i in 0..self.size() {
             unsafe {
                 let value = (*self.ptr().add(i)).clone();
-                write((copy.ptr() as *mut T).add(i ), value);
+                write((copy.ptr() as *mut T).add(i), value);
             }
         }
         copy
@@ -191,9 +191,7 @@ impl<I: Offset, T> Debug for Array<I, T> {
 impl<I: Offset, T: PartialEq> PartialEq for Array<I, T> {
     fn eq(&self, other: &Self) -> bool {
         self.size() == other.size()
-            && (0..self.size()).all(|i| unsafe {
-                (*self.ptr().add(i)) == (*other.ptr().add(i))
-            })
+            && (0..self.size()).all(|i| unsafe { (*self.ptr().add(i)) == (*other.ptr().add(i)) })
     }
 }
 

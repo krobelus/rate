@@ -88,11 +88,12 @@ pub struct Checker {
 bitfield! {
     pub struct ClauseFields(u32);
     impl Debug;
-    pub is_scheduled, set_is_scheduled: 0;
-    pub is_reason, set_is_reason: 1;
-    pub in_watchlist, set_in_watchlist: 2;
-    pub has_revision, set_has_revision: 3;
-    pub deletion_ignored, set_deletion_ignored: 4;
+    is_scheduled, set_is_scheduled: 0;
+    is_reason, set_is_reason: 1;
+    in_watchlist, set_in_watchlist: 2;
+    has_revision, set_has_revision: 3;
+    deletion_ignored, set_deletion_ignored: 4;
+    in_conflict_graph, set_in_conflict_graph: 5;
 }
 
 #[derive(Debug)]
@@ -251,6 +252,12 @@ impl Checker {
     fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
         self.db.fields_mut(clause)
     }
+    fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
+        self.db.fields_from_offset(offset)
+    }
+    fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
+        self.db.fields_mut_from_offset(offset)
+    }
     #[allow(dead_code)]
     fn clause_colorized(&self, clause: Clause) -> String {
         let mut result = String::new();
@@ -353,7 +360,9 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
     if !checker.soft_propagation {
         // This is equivalent to `set_reason_flag(checker, reason, true);` but avoids one indirection.
         invariant!(!reason.is_assumed());
-        checker.db.fields_mut_from_offset(reason.offset()).set_is_reason(true);
+        checker
+            .fields_mut_from_offset(reason.offset())
+            .set_is_reason(true);
         #[cfg(feature = "clause_lifetime_heuristic")]
         {
             let reason_clause = reason.offset();
@@ -484,25 +493,24 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
     }
 }
 
-fn move_to_core(checker: &mut Checker, clause: Clause) {
-    if checker.fields(clause).is_scheduled() {
+fn move_to_core(checker: &mut Checker, offset: usize) {
+    if checker.fields_from_offset(offset).is_scheduled() {
         return;
     }
-    if !checker.fields(clause).in_watchlist() {
+    if !checker.fields_from_offset(offset).in_watchlist() {
         return;
     }
     if checker.config.no_core_first {
         return;
     }
 
-    let head = checker.clause_range(clause).start;
-    let [w1, w2] = checker.watches(head);
-    let d1 = watches_find_and_remove(checker, Mode::NonCore, w1, head);
-    let d2 = watches_find_and_remove(checker, Mode::NonCore, w2, head);
+    let [w1, w2] = checker.watches(offset);
+    let d1 = watches_find_and_remove(checker, Mode::NonCore, w1, offset);
+    let d2 = watches_find_and_remove(checker, Mode::NonCore, w2, offset);
     invariant!(d1 || d2);
 
-    watch_add(checker, Mode::Core, w1, head);
-    watch_add(checker, Mode::Core, w2, head);
+    watch_add(checker, Mode::Core, w1, offset);
+    watch_add(checker, Mode::Core, w2, offset);
 }
 
 macro_rules! preserve_assignment {
@@ -781,53 +789,65 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
     })
 }
 
+fn add_to_conflict_graph(checker: &mut Checker, reason: Reason) {
+    checker
+        .fields_mut_from_offset(reason.offset())
+        .set_in_conflict_graph(true);
+}
+fn remove_from_conflict_graph(checker: &mut Checker, reason: Reason) {
+    checker
+        .fields_mut_from_offset(reason.offset())
+        .set_in_conflict_graph(false);
+}
+fn is_in_conflict_graph(checker: &Checker, reason: Reason) -> bool {
+    checker
+        .fields_from_offset(reason.offset())
+        .in_conflict_graph()
+}
+fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
+    let position = checker.assignment.position_in_trail(literal);
+    let reason = checker.assignment.trail_at(position).1;
+    if !reason.is_assumed() {
+        add_to_conflict_graph(checker, reason);
+    }
+}
+
 fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<usize>) {
     let conflict_literal = checker.assignment.peek().0;
     requires!(
         conflict_literal == Literal::TOP
             || (checker.assignment[conflict_literal] && checker.assignment[-conflict_literal])
     );
-    requires!(checker.implication_graph.empty());
-    fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
-        let position = checker.assignment.position_in_trail(literal);
-        let reason = checker.assignment.trail_at(position).1;
-        if !reason.is_assumed() {
-            checker.implication_graph.push(position, true);
-        }
-    }
     if conflict_literal != Literal::TOP {
         add_cause_of_conflict(checker, conflict_literal);
         add_cause_of_conflict(checker, -conflict_literal);
     }
-    let mut i = 0;
-    while i < checker.implication_graph.len() {
-        let position = checker.implication_graph.stack_at(i);
+    for position in (0..checker.assignment.len()).rev() {
         let (pivot, reason) = checker.assignment.trail_at(position);
-        invariant!(checker.assignment[pivot]);
-        if !reason.is_assumed() {
-            let offset = reason.offset();
-            move_to_core(checker, checker.offset2clause(offset));
-            schedule(checker, checker.offset2clause(offset));
-            for lit_offset in checker.clause_range(checker.offset2clause(offset)) {
-                let lit = checker.db[lit_offset];
-                if lit == pivot {
-                    continue;
-                }
-                let negation_position = checker.assignment.position_in_trail(-lit);
-                let negation_reason = checker.assignment.trail_at(negation_position).1;
-                if !checker.implication_graph[negation_position]
-                    && negation_reason != Reason::assumed()
-                {
-                    checker.implication_graph.push(negation_position, true);
-                }
+        if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
+            continue;
+        }
+        let clause = checker.offset2clause(reason.offset());
+        move_to_core(checker, reason.offset());
+        schedule(checker, clause);
+        for lit_offset in checker.clause_range(clause) {
+            let lit = checker.db[lit_offset];
+            if lit == pivot {
+                continue;
+            }
+            let negation_position = checker.assignment.position_in_trail(-lit);
+            let negation_reason = checker.assignment.trail_at(negation_position).1;
+            if !negation_reason.is_assumed() && !is_in_conflict_graph(checker, negation_reason) {
+                add_to_conflict_graph(checker, negation_reason);
             }
         }
-        i += 1;
     }
-    checker.implication_graph.sort_unstable();
     log!(checker, 3, "Resolution chain:");
-    for &position in &checker.implication_graph {
+    for position in 1..checker.assignment.len() {
         let (literal, reason) = checker.assignment.trail_at(position);
+        if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
+            continue;
+        }
         log!(
             checker,
             3,
@@ -851,9 +871,9 @@ fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<u
                 }
             }
             None => LRATDependency::unit(clause),
-        })
+        });
+        remove_from_conflict_graph(checker, reason);
     }
-    checker.implication_graph.clear();
 }
 
 fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, is_rat: bool) {

@@ -174,20 +174,21 @@ impl ClauseDatabase {
     }
     pub fn fields(&self, clause: Clause) -> &ClauseFields {
         unsafe {
-        &*(&self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding as *const u32
-            as *const ClauseFields)
+            &*(&self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding as *const u32
+                as *const ClauseFields)
         }
     }
     pub fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
         unsafe {
-        &mut *(&mut (self.data[self.offset[clause.as_offset()]
-                    + FIELDS_OFFSET].encoding) as *mut u32 as *mut ClauseFields)
+            &mut *(&mut (self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding)
+                as *mut u32 as *mut ClauseFields)
         }
     }
+    pub fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
+        unsafe { &*(&(self.data[offset - 1].encoding) as *const u32 as *const ClauseFields) }
+    }
     pub fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
-        unsafe {
-            &mut *(&mut (self.data[offset - 1].encoding) as *mut u32 as *mut ClauseFields)
-        }
+        unsafe { &mut *(&mut (self.data[offset - 1].encoding) as *mut u32 as *mut ClauseFields) }
     }
     #[cfg(test)]
     pub fn clear(&mut self) {
