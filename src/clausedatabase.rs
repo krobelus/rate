@@ -184,6 +184,11 @@ impl ClauseDatabase {
                     + FIELDS_OFFSET].encoding) as *mut u32 as *mut ClauseFields)
         }
     }
+    pub fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
+        unsafe {
+            &mut *(&mut (self.data[offset - 1].encoding) as *mut u32 as *mut ClauseFields)
+        }
+    }
     #[cfg(test)]
     pub fn clear(&mut self) {
         self.data.clear();

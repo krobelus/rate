@@ -351,7 +351,9 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
     requires!(!checker.assignment[literal]);
     checker.assignment.push(literal, reason);
     if !checker.soft_propagation {
-        set_reason_flag(checker, reason, true);
+        // This is equivalent to `set_reason_flag(checker, reason, true);` but avoids one indirection.
+        invariant!(!reason.is_assumed());
+        checker.db.fields_mut_from_offset(reason.offset()).set_is_reason(true);
         #[cfg(feature = "clause_lifetime_heuristic")]
         {
             let reason_clause = reason.offset();
