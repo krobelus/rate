@@ -1075,10 +1075,7 @@ fn preprocess(checker: &mut Checker) -> bool {
     log!(checker, 1, "[preprocess]");
     defer_log!(checker, 1, "[preprocess] done\n");
     for clause in Clause::range(0, checker.lemma) {
-        if checker.clause(clause).empty() {
-            return close_proof(checker, 0);
-        }
-        if add_premise(checker, clause) == CONFLICT {
+        if checker.clause(clause).empty() || add_premise(checker, clause) == CONFLICT {
             return close_proof(checker, 0);
         }
     }

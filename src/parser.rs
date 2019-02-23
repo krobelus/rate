@@ -115,20 +115,17 @@ fn mmap_file(filename: &str) -> Option<Mmap> {
     if size == 0 {
         None
     } else {
-        Some(
-    unsafe { MmapOptions::new().map(&file) }.expect("mmap failed")
-    )
+        Some(unsafe { MmapOptions::new().map(&file) }.expect("mmap failed"))
     }
 }
 
-fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> impl Iterator<Item=&'a u8>
-{
+fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> impl Iterator<Item = &'a u8> {
     if let Some(mmap) = mmap {
         mmap.iter()
     } else {
         [].iter()
     }
-    }
+}
 
 fn open_file(filename: &str) -> File {
     File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
