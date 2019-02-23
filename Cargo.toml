@@ -18,6 +18,7 @@ flamer = { version = "0.3", optional = true }
 atty = "0.2"
 static_assertions = "0.3"
 bitfield = "0.13"
+memmap = "0.7"
 
 [features]
 default = []

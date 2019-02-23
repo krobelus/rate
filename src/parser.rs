@@ -10,6 +10,7 @@ use crate::{
 };
 #[cfg(feature = "flame_it")]
 use flamer::flame;
+use memmap::{Mmap, MmapOptions};
 use std::collections::HashMap;
 use std::{
     cmp, fmt,
@@ -75,34 +76,31 @@ pub fn parse_files(
     let mut parser = Parser::new(redundancy_property);
     {
         let _timer = Timer::name("parsing formula");
-        parse_formula(&mut parser, &mut clause_ids, text_file_iter(&formula_file))
-            .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
+        let mmap = mmap_file(&formula_file);
+        parse_formula(
+            &mut parser,
+            &mut clause_ids,
+            TextInput::new(safe_iter(&mmap).map(|&c| c)),
+        )
+        .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
     {
         let _timer = Timer::name("parsing proof");
-        let binary = {
-            is_binary_drat(
-                open_file(&proof_file)
-                    .bytes()
-                    .map(panic_on_error as fn(io::Result<u8>) -> u8)
-                    .take(10),
-            )
-        };
+        let mmap = mmap_file(&proof_file);
+        let binary = is_binary_drat(safe_iter(&mmap).take(10).map(|&c| c));
         if binary {
             comment!("binary proof mode");
-        }
-        if binary {
             parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                binary_file_iter(&proof_file),
+                BinaryInput::new(safe_iter(&mmap).map(|&c| c)),
                 binary,
             )
         } else {
             parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                text_file_iter(&proof_file),
+                TextInput::new(safe_iter(&mmap).map(|&c| c)),
                 binary,
             )
         }
@@ -111,10 +109,32 @@ pub fn parse_files(
     parser
 }
 
+fn mmap_file(filename: &str) -> Option<Mmap> {
+    let file = open_file(&filename);
+    let size = file.metadata().unwrap().len();
+    if size == 0 {
+        None
+    } else {
+        Some(
+    unsafe { MmapOptions::new().map(&file) }.expect("mmap failed")
+    )
+    }
+}
+
+fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> impl Iterator<Item=&'a u8>
+{
+    if let Some(mmap) = mmap {
+        mmap.iter()
+    } else {
+        [].iter()
+    }
+    }
+
 fn open_file(filename: &str) -> File {
     File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
 }
 
+#[allow(dead_code)]
 fn read_file(filename: &str) -> impl Iterator<Item = u8> {
     BufReader::new(open_file(filename))
         .bytes()
@@ -125,10 +145,12 @@ fn panic_on_error(result: io::Result<u8>) -> u8 {
     result.unwrap_or_else(|error| die!("read error: {}", error))
 }
 
+#[allow(dead_code)]
 fn text_file_iter(filename: &str) -> impl Input {
     TextInput::new(read_file(filename))
 }
 
+#[allow(dead_code)]
 fn binary_file_iter(filename: &str) -> impl Input {
     BinaryInput::new(read_file(filename))
 }
