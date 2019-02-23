@@ -35,8 +35,8 @@ impl ClauseDatabase {
     #[cfg(test)]
     pub fn from(data: Stack<Literal>, offset: Stack<usize>) -> ClauseDatabase {
         let mut db = ClauseDatabase {
-            data: data,
-            offset: offset,
+            data,
+            offset,
             have_sentinel: false,
         };
         db.push_sentinel(db.data.len());
@@ -83,8 +83,8 @@ impl ClauseDatabase {
         self.pop_sentinel();
         let clause = Clause::new(id);
         self.offset.push(self.data.len()); // clause
-        let lower = (id & 0x00000000ffffffff) as u32;
-        let upper = ((id & 0xffffffff00000000) >> 32) as u32;
+        let lower = (id & 0x0000_0000_ffff_ffff) as u32;
+        let upper = ((id & 0xffff_ffff_0000_0000) >> 32) as u32;
         self.data.push(Literal::from_raw(lower));
         self.data.push(Literal::from_raw(upper));
         self.data.push(Literal::from_raw(0));
@@ -163,7 +163,7 @@ impl ClauseDatabase {
     pub fn offset2clause(&self, head: usize) -> Clause {
         let lower = self[head - PADDING_START];
         let upper = self[head - PADDING_START + 1];
-        Clause::new((lower.encoding as u64) | (upper.encoding as u64) >> 32)
+        Clause::new(u64::from(lower.encoding) | u64::from(upper.encoding) << 32)
     }
     pub fn swap(&mut self, a: usize, b: usize) {
         self.data.mut_slice().swap(a, b);
@@ -174,16 +174,14 @@ impl ClauseDatabase {
     }
     pub fn fields(&self, clause: Clause) -> &ClauseFields {
         unsafe {
-            std::mem::transmute(
-                &self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding,
-            )
+        &*(&self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding as *const u32
+            as *const ClauseFields)
         }
     }
     pub fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
         unsafe {
-            std::mem::transmute(
-                &mut self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding,
-            )
+        &mut *(&mut (self.data[self.offset[clause.as_offset()]
+                    + FIELDS_OFFSET].encoding) as *mut u32 as *mut ClauseFields)
         }
     }
     #[cfg(test)]
@@ -221,10 +219,7 @@ impl WitnessDatabase {
     }
     #[cfg(test)]
     pub fn from(data: Stack<Literal>, offset: Stack<usize>) -> WitnessDatabase {
-        WitnessDatabase {
-            data: data,
-            offset: offset,
-        }
+        WitnessDatabase { data, offset }
     }
     pub fn empty(&self) -> bool {
         self.offset.empty()

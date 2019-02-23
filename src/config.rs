@@ -103,7 +103,7 @@ impl Config {
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_core_first: matches.is_present("NO_CORE_FIRST"),
-            lratcheck_compat: lratcheck_compat,
+            lratcheck_compat,
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {
@@ -113,10 +113,10 @@ impl Config {
                 i => i,
             },
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
-            proof_filename: proof_filename,
+            proof_filename,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
             lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
-            sick_filename: sick_filename,
+            sick_filename,
         }
     }
 }

@@ -51,7 +51,7 @@ impl<T> Stack<T> {
         let len = vec.len();
         Stack {
             array: Array::from_vec(vec),
-            len: len,
+            len,
         }
     }
     pub fn len(&self) -> usize {

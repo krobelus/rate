@@ -55,7 +55,7 @@ impl Literal {
     }
     /// Create a literal without conversion.
     pub const fn from_raw(encoding: u32) -> Literal {
-        Literal { encoding: encoding }
+        Literal { encoding }
     }
 
     /// Encoded as 0.

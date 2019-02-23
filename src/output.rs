@@ -108,7 +108,7 @@ pub struct Timer {
 impl Timer {
     pub fn name(name: &'static str) -> Timer {
         Timer {
-            name: name,
+            name,
             start: SystemTime::now(),
         }
     }

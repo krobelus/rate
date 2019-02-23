@@ -19,7 +19,7 @@ pub struct SliceMut<'a, T> {
 
 impl<'a, T> Slice<'a, T> {
     pub fn new(slice: &'a [T]) -> Slice<'a, T> {
-        Slice { slice: slice }
+        Slice { slice }
     }
     pub fn from_ref(slice: &'a impl AsRef<[T]>) -> Slice<'a, T> {
         Slice {
@@ -47,7 +47,7 @@ impl<'a, T> Slice<'a, T> {
 
 impl<'a, T> SliceMut<'a, T> {
     pub fn new(slice: &'a mut [T]) -> SliceMut<'a, T> {
-        SliceMut { slice: slice }
+        SliceMut { slice }
     }
     pub fn len(&self) -> usize {
         self.slice.len()
@@ -68,9 +68,8 @@ impl<'a, T> SliceMut<'a, T> {
 
 impl<'a, T: Copy> SliceMut<'a, T> {
     pub fn swap(&mut self, a: usize, b: usize) {
-        let tmp = self[a];
-        self[a] = self[b];
-        self[b] = tmp;
+        let the_b = self[b];
+        self[b] = std::mem::replace(&mut self[a], the_b);
     }
 }
 
@@ -109,7 +108,7 @@ impl<'a, T> IntoIterator for Slice<'a, T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.slice.into_iter()
+        self.slice.iter()
     }
 }
 
@@ -117,7 +116,7 @@ impl<'a, T> IntoIterator for SliceMut<'a, T> {
     type Item = &'a mut T;
     type IntoIter = std::slice::IterMut<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.slice.into_iter()
+        self.slice.iter_mut()
     }
 }
 

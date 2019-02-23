@@ -51,5 +51,5 @@ impl<T: Copy> HeapSpace for T {
 }
 
 pub fn format_memory_usage(bytes: usize) -> String {
-    format!("{:0.2}", (bytes as f64) / (1 << 20) as f64)
+    format!("{:0.2}", (bytes as f64) / f64::from(1 << 20))
 }

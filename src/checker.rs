@@ -143,13 +143,13 @@ impl Checker {
         let assignment = Assignment::new(maxvar);
         let mut checker = Checker {
             processed: assignment.len(),
-            assignment: assignment,
+            assignment,
             clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
             #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Array::from(parser.clause_deleted_at),
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
-            config: config,
+            config,
             db: parser.clause_db,
             witness_db: parser.witness_db,
             soft_propagation: false,
@@ -171,7 +171,7 @@ impl Checker {
                 num_clauses,
                 cmp::min(num_clauses, maxvar.array_size_for_literals()),
             ),
-            maxvar: maxvar,
+            maxvar,
             proof: Array::from(parser.proof),
             optimized_proof: BoundedStack::with_capacity(2 * num_lemmas + num_clauses),
             lemma: parser.proof_start,
@@ -239,11 +239,10 @@ impl Checker {
     fn clause_mode(&self, clause: Clause) -> Mode {
         if self.config.no_core_first {
             Mode::NonCore
+        } else if self.fields(clause).is_scheduled() {
+            Mode::Core
         } else {
-            match self.fields(clause).is_scheduled() {
-                true => Mode::Core,
-                false => Mode::NonCore,
-            }
+            Mode::NonCore
         }
     }
     fn fields(&self, clause: Clause) -> &ClauseFields {
@@ -288,11 +287,11 @@ impl Rejection {
 
 impl fmt::Display for Revision {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Revision:\n")?;
+        writeln!(f, "Revision:")?;
         for (i, literal) in self.cone.iter().enumerate() {
-            write!(
+            writeln!(
                 f,
-                "\t#{}: {} [{}]\n",
+                "\t#{}: {} [{}]",
                 self.position_in_trail[i], literal, self.reason_clause[i]
             )?;
         }
@@ -376,6 +375,7 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
 }
 
 // stolen from gratgen
+#[allow(clippy::cyclomatic_complexity)]
 fn propagate(checker: &mut Checker) -> MaybeConflict {
     let mut processed_core = checker.processed;
     let mut core_mode = !checker.config.no_core_first;
@@ -406,17 +406,14 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 invariant!(checker.assignment[-w2]);
                 invariant!(checker.db[head] == w1);
 
-                match first_non_falsified_raw(checker, head + 2) {
-                    Some(wo) => {
-                        checker.watchlist_core[literal].swap_remove(i);
-                        let w = checker.db[wo];
-                        invariant!(w != literal);
-                        watch_add(checker, Mode::Core, w, head);
-                        checker.db[head + 1] = w;
-                        checker.db[wo] = w2;
-                        continue;
-                    }
-                    None => (),
+                if let Some(wo) = first_non_falsified_raw(checker, head + 2) {
+                    checker.watchlist_core[literal].swap_remove(i);
+                    let w = checker.db[wo];
+                    invariant!(w != literal);
+                    watch_add(checker, Mode::Core, w, head);
+                    checker.db[head + 1] = w;
+                    checker.db[wo] = w2;
+                    continue;
                 }
 
                 checker.db[head + 1] = w2;
@@ -459,17 +456,14 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 invariant!(checker.assignment[-w2]);
                 invariant!(checker.db[head] == w1);
 
-                match first_non_falsified_raw(checker, head + 2) {
-                    Some(wo) => {
-                        checker.watchlist_noncore[literal].swap_remove(i);
-                        let w = checker.db[wo];
-                        invariant!(w != literal);
-                        watch_add(checker, Mode::NonCore, w, head);
-                        checker.db[head + 1] = w;
-                        checker.db[wo] = w2;
-                        continue;
-                    }
-                    None => (),
+                if let Some(wo) = first_non_falsified_raw(checker, head + 2) {
+                    checker.watchlist_noncore[literal].swap_remove(i);
+                    let w = checker.db[wo];
+                    invariant!(w != literal);
+                    watch_add(checker, Mode::NonCore, w, head);
+                    checker.db[head + 1] = w;
+                    checker.db[wo] = w2;
+                    continue;
                 }
 
                 checker.db[head + 1] = w2;
@@ -588,7 +582,7 @@ fn reduct(
                 .clause(clause)
                 .iter()
                 .filter(|&literal| !assignment[-*literal])
-                .map(|l| *l)
+                .cloned()
                 .collect(),
         )
     }
@@ -888,7 +882,7 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_ch
         if checker.dependencies[i].is_unit() {
             continue;
         }
-        for j in (0..i + 1).rev() {
+        for j in (0..=i).rev() {
             let dependency = checker.dependencies[j];
             let clause = if dependency.is_unit() {
                 continue;
@@ -1216,18 +1210,18 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
     if !checker.fields(clause).is_reason() {
         return;
     }
-    checker
+    if let Some(offset) = checker
         .clause_range(clause)
         .find(|&offset| checker.assignment[checker.db[offset]])
-        .map(|offset| {
-            let unit = checker.db[offset];
-            let trail_length = checker.assignment.position_in_trail(unit);
-            while checker.assignment.len() > trail_length {
-                let reason = checker.assignment.pop().1;
-                set_reason_flag(checker, reason, true);
-            }
-            checker.processed = trail_length;
-        });
+    {
+        let unit = checker.db[offset];
+        let trail_length = checker.assignment.position_in_trail(unit);
+        while checker.assignment.len() > trail_length {
+            let reason = checker.assignment.pop().1;
+            set_reason_flag(checker, reason, true);
+        }
+        checker.processed = trail_length;
+    }
 }
 
 /// sortSize in drat-trim
@@ -1264,7 +1258,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
     for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
         if checker.fields(lemma).is_scheduled() {
             write_clause(&mut file, checker.clause(lemma).iter())?;
-            write!(file, "\n")?;
+            writeln!(file)?;
         }
     }
     Ok(())
@@ -1314,7 +1308,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
                 if proof_step.is_deletion() {
                     write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)
                 } else {
-                    write!(file, "0\n")?;
+                    writeln!(file, "0")?;
                     write_lrat_lemma(checker, &mut file, clause)
                 }?;
             }
@@ -1326,7 +1320,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
         };
     }
     if state == State::Deletion {
-        write!(file, "0\n")?;
+        writeln!(file, "0")?;
     }
     Ok(())
 }
@@ -1363,7 +1357,7 @@ fn write_lrat_lemma(
         }?;
         i += 1;
     }
-    write!(file, "0\n")
+    writeln!(file, "0")
 }
 
 fn write_lrat_deletion(
@@ -1424,7 +1418,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
             .pivot
             .map_or("0".to_string(), |pivot| format!("{}", pivot))
     )?;
-    write!(file, "{}\n", step)?;
+    writeln!(file, "{}", step)?;
     write!(file, "n ")?;
     write_clause(&mut file, checker.rejection.lemma.iter())?;
     write!(file, " ")?;
@@ -1433,7 +1427,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
             write!(file, "{} ", literal)?;
         }
     }
-    write!(file, "0\n")?;
+    writeln!(file, "0")?;
     write!(file, "r ")?;
     if let Some(resolved_with) = checker.rejection.resolved_with {
         write_clause(&mut file, checker.clause(resolved_with).iter())?;
@@ -1446,7 +1440,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     } else {
         write!(file, "0 ")?;
     }
-    write!(file, "0\n")?;
+    writeln!(file, "0")?;
     Ok(())
 }
 
@@ -1728,7 +1722,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
         } else {
             loop {
                 invariant!(left_position > 0 && left_position <= checker.assignment.len());
-                left_position = left_position - 1;
+                left_position -= 1;
                 let (lit, current_reason) = checker.assignment.trail_at(left_position);
                 if !checker.literal_is_in_cone_but_already_assigned[lit] {
                     break (lit, current_reason);
@@ -1906,7 +1900,6 @@ fn print_memory_usage(checker: &Checker) {
                 checker.clause_pivot,
             )
             .iter()
-            .map(|x| x.heap_space())
             .sum(),
         ),
     ];

@@ -18,7 +18,7 @@ pub struct Clause {
 impl Clause {
     pub fn new(index: u64) -> Clause {
         requires!(index <= Clause::MAX_INDEX);
-        Clause { index: index }
+        Clause { index }
     }
     pub fn range(start: impl Offset, end: impl Offset) -> impl Iterator<Item = Clause> {
         assert_eq_size!(usize, u64);
@@ -90,10 +90,10 @@ impl ProofStep {
     pub fn deletion(clause: Clause) -> ProofStep {
         ProofStep(Tagged64::new(clause.index).with_bit1())
     }
-    pub fn is_deletion(&self) -> bool {
+    pub fn is_deletion(self) -> bool {
         self.0.bit1()
     }
-    pub fn clause(&self) -> Clause {
+    pub fn clause(self) -> Clause {
         Clause {
             index: self.0.payload(),
         }
@@ -159,22 +159,22 @@ impl LRATDependency {
     pub fn unit(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged64::new(clause.index))
     }
-    pub fn is_unit(&self) -> bool {
+    pub fn is_unit(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
     pub fn forced_unit(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged64::new(clause.index).with_bit1())
     }
-    pub fn is_forced_unit(&self) -> bool {
+    pub fn is_forced_unit(self) -> bool {
         self.0.bit1() && !self.0.bit2()
     }
     pub fn resolution_candidate(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged64::new(clause.index).with_bit1().with_bit2())
     }
-    pub fn is_resolution_candidate(&self) -> bool {
+    pub fn is_resolution_candidate(self) -> bool {
         self.0.bit1() && self.0.bit2()
     }
-    pub fn clause(&self) -> Clause {
+    pub fn clause(self) -> Clause {
         Clause {
             index: self.0.payload(),
         }
@@ -195,22 +195,22 @@ impl LRATLiteral {
     pub fn resolution_candidate(clause: Clause) -> LRATLiteral {
         LRATLiteral(Tagged64::new(clause.index))
     }
-    pub fn is_resolution_candidate(&self) -> bool {
+    pub fn is_resolution_candidate(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
     pub fn hint(clause: Clause) -> LRATLiteral {
         LRATLiteral(Tagged64::new(clause.index).with_bit1())
     }
-    pub fn is_hint(&self) -> bool {
+    pub fn is_hint(self) -> bool {
         self.0.bit1() && !self.0.bit2()
     }
     pub fn zero() -> LRATLiteral {
         LRATLiteral(Tagged64::new(0).with_bit1().with_bit2())
     }
-    pub fn is_zero(&self) -> bool {
+    pub fn is_zero(self) -> bool {
         self.0.bit1() && self.0.bit2()
     }
-    pub fn clause(&self) -> Clause {
+    pub fn clause(self) -> Clause {
         requires!(!self.is_zero());
         Clause {
             index: self.0.payload(),

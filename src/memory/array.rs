@@ -38,11 +38,11 @@ impl<I: Offset, T: Clone> Array<I, T> {
         let data = RawVec::with_capacity(size);
         for i in 0..size {
             unsafe {
-                write((data.ptr() as *mut T).offset(i as isize), value.clone());
+                write((data.ptr() as *mut T).add(i), value.clone());
             }
         }
         Array {
-            data: data,
+            data,
             phantom: PhantomData,
         }
     }
@@ -92,7 +92,7 @@ impl<I: Offset, T> Array<I, T> {
     pub fn size(&self) -> usize {
         self.data.cap()
     }
-    pub fn mut_slice(&self) -> &mut [T] {
+    pub fn mut_slice(&mut self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) }
     }
 }
@@ -175,7 +175,7 @@ impl<I: Offset, T: Clone> Clone for Array<I, T> {
         for i in 0..self.size() {
             unsafe {
                 let value = (*self.ptr().add(i)).clone();
-                write((copy.ptr() as *mut T).offset(i as isize), value);
+                write((copy.ptr() as *mut T).add(i ), value);
             }
         }
         copy
@@ -192,7 +192,7 @@ impl<I: Offset, T: PartialEq> PartialEq for Array<I, T> {
     fn eq(&self, other: &Self) -> bool {
         self.size() == other.size()
             && (0..self.size()).all(|i| unsafe {
-                (*self.ptr().offset(i as isize)) == (*other.ptr().offset(i as isize))
+                (*self.ptr().add(i)) == (*other.ptr().add(i))
             })
     }
 }
@@ -208,7 +208,7 @@ impl<I: Offset, T: HeapSpace> HeapSpace for Array<I, T> {
     fn heap_space(&self) -> usize {
         self.size() * size_of::<T>()
             + (0..self.size()).fold(0, |sum, i| {
-                sum + unsafe { &(*self.ptr().offset(i as isize)) }.heap_space()
+                sum + unsafe { &(*self.ptr().add(i)) }.heap_space()
             })
     }
 }

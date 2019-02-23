@@ -48,7 +48,7 @@ impl Parser {
             }
         }
         Parser {
-            redundancy_property: redundancy_property,
+            redundancy_property,
             maxvar: Variable::new(0),
             clause_db: unsafe { &mut CLAUSE_DATABASE },
             witness_db: unsafe { &mut WITNESS_DATABASE },
@@ -80,27 +80,27 @@ pub fn parse_files(
         parse_formula(
             &mut parser,
             &mut clause_ids,
-            TextInput::new(safe_iter(&mmap).map(|&c| c)),
+            TextInput::new(safe_iter(&mmap))
         )
         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
     {
         let _timer = Timer::name("parsing proof");
         let mmap = mmap_file(&proof_file);
-        let binary = is_binary_drat(safe_iter(&mmap).take(10).map(|&c| c));
+        let binary = is_binary_drat(safe_iter(&mmap).take(10));
         if binary {
             comment!("binary proof mode");
             parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                BinaryInput::new(safe_iter(&mmap).map(|&c| c)),
+                BinaryInput::new(safe_iter(&mmap)),
                 binary,
             )
         } else {
             parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                TextInput::new(safe_iter(&mmap).map(|&c| c)),
+                TextInput::new(safe_iter(&mmap)),
                 binary,
             )
         }
@@ -119,12 +119,12 @@ fn mmap_file(filename: &str) -> Option<Mmap> {
     }
 }
 
-fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> impl Iterator<Item = &'a u8> {
+fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> std::iter::Cloned<std::slice::Iter<'a, u8>> {
     if let Some(mmap) = mmap {
         mmap.iter()
     } else {
         [].iter()
-    }
+    }.cloned()
 }
 
 fn open_file(filename: &str) -> File {
@@ -188,7 +188,7 @@ fn add_literal(
                 let key = ClauseHashEq(clause);
                 clause_ids
                     .entry(key)
-                    .or_insert(SmallStack::empty())
+                    .or_insert_with(SmallStack::empty)
                     .push(clause);
             }
         }
@@ -257,7 +257,7 @@ fn compute_hash(clause: Slice<Literal>) -> usize {
         sum = sum.wrapping_add(literal.as_offset());
         xor ^= literal.as_offset();
     }
-    (1023 * sum + prod ^ (31 * xor))
+    ((1023 * sum + prod) ^ (31 * xor))
 }
 
 fn is_digit(value: u8) -> bool {
@@ -276,11 +276,11 @@ struct ParseError {
     why: &'static str,
 }
 
-const OVERFLOW: &'static str = "overflow while parsing number";
-const NUMBER: &'static str = "expected number";
-const EOF: &'static str = "premature end of file";
-const P_CNF: &'static str = "expected \"p cnf\"";
-const DRAT: &'static str = "expected DRAT instruction";
+const OVERFLOW: &str = "overflow while parsing number";
+const NUMBER: & str = "expected number";
+const EOF: & str = "premature end of file";
+const P_CNF: & str = "expected \"p cnf\"";
+const DRAT: & str = "expected DRAT instruction";
 
 fn parse_literal(input: &mut impl Input) -> Result<Literal> {
     match input.peek() {
@@ -313,7 +313,7 @@ fn parse_u64(input: &mut impl Input) -> Result<u64> {
         value = value
             .checked_mul(10)
             .expect(OVERFLOW)
-            .checked_add((c - b'0') as u64)
+            .checked_add(u64::from(c - b'0'))
             .expect(OVERFLOW);
     }
     Ok(value)
@@ -332,7 +332,7 @@ fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
     while let Some(value) = input.next() {
-        result |= ((value & 0x7f) as u32) << (7 * i);
+        result |= u32::from(value & 0x7f) << (7 * i);
         i += 1;
         if (value & 0x80) == 0 {
             break;
@@ -710,14 +710,14 @@ impl<T: Iterator<Item = u8>> Input for TextInput<T> {
         })
     }
     fn peek(&mut self) -> Option<u8> {
-        self.iter.peek().map(|&c| c)
+        self.iter.peek().cloned()
     }
     fn error<U>(&self, why: &'static str) -> Result<U>
     where
         Self: Sized,
     {
         Err(ParseError {
-            why: why,
+            why,
             line: self.line,
         })
     }
@@ -740,13 +740,13 @@ impl<T: Iterator<Item = u8>> Input for BinaryInput<T> {
         self.iter.next()
     }
     fn peek(&mut self) -> Option<u8> {
-        self.iter.peek().map(|&c| c)
+        self.iter.peek().cloned()
     }
     fn error<U>(&self, why: &'static str) -> Result<U>
     where
         Self: Sized,
     {
-        Err(ParseError { why: why, line: 0 })
+        Err(ParseError { why, line: 0 })
     }
 }
 
