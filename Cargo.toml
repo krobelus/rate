@@ -5,6 +5,7 @@ authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
 description = "DRAT proof checker for DIMACS formulas"
 edition = "2018"
 license = "MIT"
+build = "build.rs"
 
 [dependencies]
 rate-macros = { path = "rate-macros" }
@@ -12,7 +13,6 @@ ansi_term = "0.11"
 derive_more = "0.13"
 clap = "2.32"
 scopeguard = "0.3"
-multimap = "0.4"
 flame = { version = "0.2", optional = true }
 flamer = { version = "0.3", optional = true }
 atty = "0.2"

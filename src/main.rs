@@ -44,7 +44,7 @@ use crate::{
 #[cfg_attr(feature = "flame_it", flame)]
 fn main() {
     let mut app = clap::App::new("rate")
-    .version(env!("CARGO_PKG_VERSION"))
+    .version(concat!(env!("CARGO_PKG_VERSION"), " (git commit ", env!("GIT_COMMIT"), ")"))
     .about(env!("CARGO_PKG_DESCRIPTION"))
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
     .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT format"))
@@ -86,14 +86,15 @@ fn main() {
     }
 
     let config = Config::new(app.get_matches());
-    let timer = Timer::name("elapsed time");
+    number("rate version", env!("GIT_COMMIT"));
+    number("mode", config.redundancy_property);
+    let timer = Timer::name("total time");
     let parser = parse_files(
         &config.formula_filename,
         &config.proof_filename,
         config.redundancy_property,
     );
     let mut checker = Checker::new(parser, config);
-    number("mode", checker.config.redundancy_property);
     let ok = check(&mut checker);
     number("premise clauses", checker.premise_length);
     number("proof steps", checker.proof.size());
