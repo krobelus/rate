@@ -81,7 +81,6 @@ pub struct Checker {
     pub deletions: usize,
     pub skipped_deletions: usize,
     pub reason_deletions: usize,
-
     pub satisfied_count: usize,
 }
 
