@@ -246,7 +246,7 @@ impl PartialEq for ClauseHashEq {
 fn find_clause(clause_ids: &mut HashTable, needle: Clause) -> Option<Clause> {
     clause_ids
         .get_mut(&ClauseHashEq(needle))
-        .map(|clause_db| clause_db.swap_remove(0))
+        .and_then(|clause_db| clause_db.swap_remove(0))
 }
 
 fn compute_hash(clause: Slice<Literal>) -> usize {
@@ -794,15 +794,19 @@ impl<T: Copy + Default> SmallStack<T> {
         }
         unreachable();
     }
-    fn swap_remove(&mut self, index: usize) -> T {
+    fn swap_remove(&mut self, index: usize) -> Option<T> {
         requires!(index == 0);
         if let SmallStackState::One(value) = self.state {
             self.state = SmallStackState::Empty;
-            value
+            Some(value)
         } else if let SmallStackState::Many(stack) = &mut self.state {
-            stack.swap_remove(0)
+            if stack.empty() {
+                None
+            } else {
+                Some(stack.swap_remove(0))
+            }
         } else {
-            unreachable()
+            None
         }
     }
 }
