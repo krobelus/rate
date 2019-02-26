@@ -54,7 +54,6 @@ pub struct Checker {
 
     implication_graph: StackMapping<usize, bool>,
     literal_is_in_cone_preprocess: Array<Literal, bool>,
-    literal_is_in_cone_but_already_assigned: Array<Literal, bool>,
     watchlist_noncore: Array<Literal, Watchlist>,
     watchlist_core: Array<Literal, Watchlist>,
 
@@ -177,10 +176,6 @@ impl Checker {
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
-            literal_is_in_cone_but_already_assigned: Array::new(
-                false,
-                maxvar.array_size_for_literals(),
-            ),
             #[cfg(feature = "clause_lifetime_heuristic")]
             literal_minimal_lifetime: Array::new(0, maxvar.array_size_for_literals()),
             revisions: Stack::new(),
@@ -1145,6 +1140,8 @@ fn preprocess(checker: &mut Checker) -> bool {
                 watches_remove(checker, Mode::NonCore, clause);
                 if checker.fields(clause).is_reason() {
                     revision_create(checker, clause);
+                    let no_conflict = propagate(checker);
+                    invariant!(no_conflict == NO_CONFLICT);
                 }
             }
         } else {
@@ -1720,13 +1717,30 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal,
 
 fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     assignment_invariants(checker);
+    // During the forward pass, after revision_create, we propagate.
+    // That propagation will assign a subset of literals that were in the cone.
+    // This subset needs to be removed before applying the cone.
+    // It could be done with something like this:
+    // ```
+    // while checker.assignment.len() > revision.trail_length_after_removing_cone {
+    //     let (_literal, reason) = checker.assignment.pop();
+    //     invariant!(!reason.is_assumed());
+    //     set_reason_flag(checker, reason, false);
+    // }
+    // let introductions = revision.cone.len();
+    // let mut left_position = checker.assignment.len();
+    // ```
+    // However, instead of popping and pushing later we do that implicitly by
+    // overwriting the latter part of the stack. For this we need a different
+    // value of `introductions` and `left_position`.
+    // This might be an unnecessesarily complex way of doing this without any benefit.
     let mut introductions = 0;
     let mut literals_to_revise = revision.cone.len();
     for &literal in &revision.cone {
         if checker.assignment[literal] {
-            checker.literal_is_in_cone_but_already_assigned[literal] = true;
             let position = checker.assignment.position_in_trail(literal);
             let reason = checker.assignment.trail_at(position).1;
+            invariant!(!reason.is_assumed());
             set_reason_flag(checker, reason, false);
         } else {
             introductions += 1;
@@ -1735,7 +1749,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     log!(checker, 1, "Applying {}{}", revision, checker.assignment);
     let length_after_adding_cone = checker.assignment.len() + introductions;
     let mut right_position = length_after_adding_cone - 1;
-    let mut left_position = checker.assignment.len();
+    let mut left_position = right_position - literals_to_revise + 1;
     checker.assignment.grow_trail(length_after_adding_cone);
     checker.processed = length_after_adding_cone;
     // Re-introduce the assignments that were induced by the deleted unit,
@@ -1751,14 +1765,9 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             set_reason_flag(checker, lit_reason, true);
             (lit, lit_reason)
         } else {
-            loop {
-                invariant!(left_position > 0 && left_position <= checker.assignment.len());
-                left_position -= 1;
-                let (lit, current_reason) = checker.assignment.trail_at(left_position);
-                if !checker.literal_is_in_cone_but_already_assigned[lit] {
-                    break (lit, current_reason);
-                }
-            }
+            invariant!(left_position > 0 && left_position <= checker.assignment.len());
+            left_position -= 1;
+            checker.assignment.trail_at(left_position)
         };
         checker
             .assignment
@@ -1766,9 +1775,6 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
         right_position -= 1;
     }
     log!(checker, 1, "Applied revision:\n{}", checker.assignment);
-    for &literal in &revision.cone {
-        checker.literal_is_in_cone_but_already_assigned[literal] = false;
-    }
     watches_reset(checker, revision);
     assignment_invariants(checker);
 }
@@ -1924,7 +1930,6 @@ fn print_memory_usage(checker: &Checker) {
             heap_space!(
                 checker.assignment,
                 checker.rejection,
-                checker.literal_is_in_cone_but_already_assigned,
                 checker.literal_is_in_cone_preprocess,
                 checker.clause_lrat_id,
                 checker.clause_lrat_offset,

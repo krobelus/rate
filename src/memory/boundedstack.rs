@@ -3,7 +3,7 @@ use crate::memory::{HeapSpace, Slice, SliceMut, Stack, StackIterator};
 use rate_macros::HeapSpace;
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug, Clone, HeapSpace)]
+#[derive(Debug, Clone, HeapSpace, PartialEq)]
 pub struct BoundedStack<T>
 where
     T: HeapSpace,

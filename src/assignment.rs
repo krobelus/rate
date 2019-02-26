@@ -27,6 +27,17 @@ pub struct Assignment {
     position_in_trail: Array<Literal, usize>,
 }
 
+impl PartialEq for Assignment {
+    fn eq(&self, other: &Assignment) -> bool {
+        self.mapping == other.mapping
+            && self.trail == other.trail
+            && (0..self.trail.len()).all(|pos| {
+                let lit = self.trail_at(pos).0;
+                self.position_in_trail[lit] == other.position_in_trail[lit]
+            })
+    }
+}
+
 impl Assignment {
     /// Create an empty assignment.
     pub fn new(maxvar: Variable) -> Assignment {
