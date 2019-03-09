@@ -1473,7 +1473,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
 }
 
 fn assignment_invariants(checker: &Checker) {
-    if !crate::config::ENABLE_EXPENSIVE_ASSERTIONS {
+    if !crate::config::ASSIGNMENT_INVARIANTS {
         return;
     }
     for &(literal, reason) in &checker.assignment {
@@ -1508,7 +1508,7 @@ fn is_assigned(checker: &Checker, lit: Literal) -> bool {
 }
 
 fn watch_invariants(checker: &Checker) {
-    if crate::config::ENABLE_EXPENSIVE_ASSERTIONS {
+    if crate::config::WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
         for &mode in &[Mode::Core, Mode::NonCore] {
             for lit in Literal::all(checker.maxvar) {
