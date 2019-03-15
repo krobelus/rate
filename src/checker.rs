@@ -58,7 +58,7 @@ pub struct Checker {
     watchlist_core: Array<Literal, Watchlist>,
 
     clause_pivot: Array<Clause, Literal>,
-    is_in_witness: StackMapping<Literal, bool>,
+    is_in_witness: Array<Literal, bool>,
 
     revisions: Stack<Revision>,
 
@@ -157,11 +157,7 @@ impl Checker {
                 maxvar.array_size_for_literals(),
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
-            is_in_witness: StackMapping::with_array_value_size_stack_size(
-                false,
-                maxvar.array_size_for_literals(),
-                maxvar.array_size_for_variables(),
-            ),
+            is_in_witness: Array::new(false, maxvar.array_size_for_literals()),
             lrat_id: Clause::new(0),
             clause_lrat_offset: Array::new(usize::max_value(), num_clauses),
             lrat: Stack::new(),
@@ -609,7 +605,7 @@ fn pr(checker: &mut Checker) -> bool {
         for offset in checker.witness_range(lemma) {
             let literal = checker.witness_db[offset];
             invariant!(!checker.is_in_witness[literal]);
-            checker.is_in_witness.push(literal, true);
+            checker.is_in_witness[literal] = true;
         }
         // C u D|w is a rup
         match reduct(checker, &checker.is_in_witness, clause) {
@@ -646,7 +642,11 @@ fn pr(checker: &mut Checker) -> bool {
         //         return false;
         //     }
         // }
-        checker.is_in_witness.clear();
+        for offset in checker.witness_range(lemma) {
+            let literal = checker.witness_db[offset];
+            invariant!(checker.is_in_witness[literal]);
+            checker.is_in_witness[literal] = false;
+        }
     }
     true
 }
