@@ -592,44 +592,60 @@ fn reduct(
     }
 }
 
-fn is_proper_subset(left: Slice<Literal>, right: Slice<Literal>) -> bool {
-    left.len() < right.len()
-        && left.iter().all(|&left_literal| {
-            right
-                .iter()
-                .any(|&right_literal| left_literal == right_literal)
-        })
-}
+// fn is_proper_subset(left: Slice<Literal>, right: Slice<Literal>) -> bool {
+//     left.len() < right.len()
+//         && left.iter().all(|&left_literal| {
+//             right
+//                 .iter()
+//                 .any(|&right_literal| left_literal == right_literal)
+//         })
+// }
 
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
+    let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
+    let lemma_length = tmp.len();
     for clause in Clause::range(0, lemma) {
         for offset in checker.witness_range(lemma) {
             let literal = checker.witness_db[offset];
             invariant!(!checker.is_in_witness[literal]);
             checker.is_in_witness.push(literal, true);
         }
-        let reduct_witness = reduct(checker, &checker.is_in_witness, clause);
-        // TODO skip if if reduce == 0?
-        let clause_under_witness = match reduct_witness {
+        // C u D|w is a rup
+        match reduct(checker, &checker.is_in_witness, clause) {
             Reduct::Top => continue,
-            Reduct::Clause(clause_under_witness) => clause_under_witness,
-        };
-        let reduct_assignment = reduct(checker, &checker.assignment, clause);
-        if match reduct_assignment {
-            Reduct::Top => true,
-            Reduct::Clause(clause_under_assignment) => is_proper_subset(
-                clause_under_witness.as_slice(),
-                clause_under_assignment.as_slice(),
-            ),
-        } {
-            let ok =
-                preserve_assignment!(checker, slice_rup(checker, clause_under_witness.as_slice()))
-                    == CONFLICT;
-            if !ok {
-                return false;
+            Reduct::Clause(reduct_by_witness) => {
+                for &literal in &reduct_by_witness {
+                    tmp.push(literal);
+                }
+                let ok = preserve_assignment!(checker, slice_rup(checker, tmp.as_slice())) == CONFLICT;
+                tmp.truncate(lemma_length);
+                if !ok {
+                    return false;
+                }
             }
         }
+        // let reduct_witness = reduct(checker, &checker.is_in_witness, clause);
+        // TODO skip if if reduce == 0?
+        // let clause_under_witness = match reduct_witness {
+        //     Reduct::Top => continue,
+        //     Reduct::Clause(clause_under_witness) => clause_under_witness,
+        // };
+        // let reduct_assignment = reduct(checker, &checker.assignment, clause);
+        // if match reduct_assignment {
+        //     Reduct::Top => true,
+        //     Reduct::Clause(clause_under_assignment) => is_proper_subset(
+        //         clause_under_witness.as_slice(),
+        //         clause_under_assignment.as_slice(),
+        //     ),
+        // } {
+        //     let ok =
+        //         preserve_assignment!(checker, slice_rup(checker, clause_under_witness.as_slice()))
+        //             == CONFLICT;
+        //     if !ok {
+        //         return false;
+        //     }
+        // }
         checker.is_in_witness.clear();
     }
     true
