@@ -101,6 +101,7 @@ struct Rejection {
     pivot: Option<Literal>,
     resolved_with: Option<Clause>,
     stable_assignment: Option<Assignment>,
+    natural_model_length: Option<usize>,
 }
 
 // Can't derive HeapSpace for Option<T> yet.
@@ -278,6 +279,7 @@ impl Rejection {
             pivot: None,
             resolved_with: None,
             stable_assignment: None,
+            natural_model_length: None,
         }
     }
 }
@@ -663,6 +665,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         write_dependencies_for_lrat(checker, lemma, false);
         return true;
     }
+    let trail_length_after_rup = checker.assignment.len();
     match rat_pivot_index(checker, trail_length_forced) {
         Some(pivot_index) => {
             // Make pivot the first literal in the LRAT proof.
@@ -671,6 +674,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             true
         }
         None => {
+            checker.rejection.natural_model_length = Some(trail_length_after_rup);
             comment!("RAT check failed for {}", checker.clause_to_string(lemma));
             false
         }
@@ -1452,7 +1456,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     } else {
         &checker.assignment
     };
-
+    let natural_model_length = checker.rejection.natural_model_length.unwrap_or(checker.assignment.len());
     write!(file, "v ")?;
     write!(
         file,
@@ -1467,7 +1471,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     write_clause(&mut file, checker.rejection.lemma.iter())?;
     write!(file, " ")?;
     for literal in Literal::all(checker.maxvar) {
-        if assignment[literal] {
+        if assignment[literal] && assignment.position_in_trail(literal) < natural_model_length {
             write!(file, "{} ", literal)?;
         }
     }
