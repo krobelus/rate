@@ -145,6 +145,7 @@ impl fmt::Display for Reason {
     }
 }
 
+/// NOTE: This should be 64 bits but we want to be comparable to drat-trim so 32 it is.
 /// ```
 /// enum LRATDependency {
 ///     Unit(Clause),
@@ -153,30 +154,30 @@ impl fmt::Display for Reason {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct LRATDependency(Tagged64);
+pub struct LRATDependency(Tagged32);
 
 impl LRATDependency {
     pub fn unit(clause: Clause) -> LRATDependency {
-        LRATDependency(Tagged64::new(clause.index))
+        LRATDependency(Tagged32::new(clause.index as u32))
     }
     pub fn is_unit(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
     pub fn forced_unit(clause: Clause) -> LRATDependency {
-        LRATDependency(Tagged64::new(clause.index).with_bit1())
+        LRATDependency(Tagged32::new(clause.index as u32).with_bit1())
     }
     pub fn is_forced_unit(self) -> bool {
         self.0.bit1() && !self.0.bit2()
     }
     pub fn resolution_candidate(clause: Clause) -> LRATDependency {
-        LRATDependency(Tagged64::new(clause.index).with_bit1().with_bit2())
+        LRATDependency(Tagged32::new(clause.index as u32).with_bit1().with_bit2())
     }
     pub fn is_resolution_candidate(self) -> bool {
         self.0.bit1() && self.0.bit2()
     }
     pub fn clause(self) -> Clause {
         Clause {
-            index: self.0.payload(),
+            index: u64::from(self.0.payload()),
         }
     }
 }
@@ -189,23 +190,23 @@ impl LRATDependency {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct LRATLiteral(Tagged64);
+pub struct LRATLiteral(Tagged32);
 
 impl LRATLiteral {
     pub fn resolution_candidate(clause: Clause) -> LRATLiteral {
-        LRATLiteral(Tagged64::new(clause.index))
+        LRATLiteral(Tagged32::new(clause.index as u32))
     }
     pub fn is_resolution_candidate(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
     pub fn hint(clause: Clause) -> LRATLiteral {
-        LRATLiteral(Tagged64::new(clause.index).with_bit1())
+        LRATLiteral(Tagged32::new(clause.index as u32).with_bit1())
     }
     pub fn is_hint(self) -> bool {
         self.0.bit1() && !self.0.bit2()
     }
     pub fn zero() -> LRATLiteral {
-        LRATLiteral(Tagged64::new(0).with_bit1().with_bit2())
+        LRATLiteral(Tagged32::new(0).with_bit1().with_bit2())
     }
     pub fn is_zero(self) -> bool {
         self.0.bit1() && self.0.bit2()
@@ -213,7 +214,7 @@ impl LRATLiteral {
     pub fn clause(self) -> Clause {
         requires!(!self.is_zero());
         Clause {
-            index: self.0.payload(),
+            index: u64::from(self.0.payload()),
         }
     }
 }
@@ -248,12 +249,42 @@ impl Tagged64 {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
+pub struct Tagged32(u32);
+
+impl Tagged32 {
+    const MASK: u32 = Tagged32::MASK1 | Tagged32::MASK2;
+    const MASK1: u32 = 0x80000000;
+    const MASK2: u32 = 0x40000000;
+    const MAX_PAYLOAD: u32 = u32::max_value() & !Tagged32::MASK;
+
+    pub fn new(payload: u32) -> Tagged32 {
+        requires!(payload <= Tagged32::MAX_PAYLOAD);
+        Tagged32(payload)
+    }
+    pub fn with_bit1(self) -> Tagged32 {
+        Tagged32(self.0 | Tagged32::MASK1)
+    }
+    pub fn with_bit2(self) -> Tagged32 {
+        Tagged32(self.0 | Tagged32::MASK2)
+    }
+    pub fn payload(self) -> u32 {
+        self.0 & !Tagged32::MASK
+    }
+    pub fn bit1(self) -> bool {
+        self.0 & Tagged32::MASK1 != 0
+    }
+    pub fn bit2(self) -> bool {
+        self.0 & Tagged32::MASK2 != 0
+    }
+}
+
 #[allow(dead_code)]
 fn assert_primitive_sizes() {
     const_assert!(size_of::<crate::literal::Literal>() == 4);
     const_assert!(size_of::<Clause>() == 8);
     const_assert!(size_of::<Reason>() == 8);
-    const_assert!(size_of::<LRATDependency>() == 8);
-    const_assert!(size_of::<LRATLiteral>() == 8);
+    const_assert!(size_of::<LRATDependency>() == 4);
+    const_assert!(size_of::<LRATLiteral>() == 4);
     const_assert!(size_of::<ProofStep>() == 8);
 }
