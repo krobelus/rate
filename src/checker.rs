@@ -9,7 +9,7 @@ use crate::{
     memory::{
         format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Slice, Stack, StackMapping,
     },
-    output::{number, Timer},
+    output::{self, Timer},
     parser::Parser,
 };
 use ansi_term::Colour;
@@ -1960,14 +1960,14 @@ fn print_memory_usage(checker: &Checker) {
         ),
     ];
     let total = usages.iter().fold(0, |sum, tuple| sum + tuple.1);
-    number("memory (MB)", &format_memory_usage(total));
+    output::value("memory (MB)", format_memory_usage(total));
     if !checker.config.memory_usage_breakdown {
         return;
     }
     for tuple in usages {
-        number(
+        output::value(
             &format!("memory-{}", tuple.0.replace("_", "-")),
-            &format_memory_usage(tuple.1),
+            format_memory_usage(tuple.1),
         );
     }
 }

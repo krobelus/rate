@@ -95,9 +95,9 @@ pub fn solution(verdict: &str) {
     println!("s {}", verdict);
 }
 
-pub fn number(key: &str, value: impl Display) {
+pub fn value(key: &str, value: impl Display) {
     requires!(key.len() < 35);
-    comment!("{:<35} {:>}", format!("{}:", key), value);
+    comment!("{:<35} {:>15}", format!("{}:", key), value);
 }
 
 pub struct Timer {
@@ -117,7 +117,7 @@ impl Timer {
 impl Drop for Timer {
     fn drop(&mut self) {
         let elapsed_time = self.start.elapsed().expect("failed to get time");
-        number(
+        value(
             &format!("{} (s)", self.name),
             format!(
                 "{}.{:03}",

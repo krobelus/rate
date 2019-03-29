@@ -37,7 +37,7 @@ use std::process;
 use crate::{
     checker::{check, Checker},
     config::Config,
-    output::{number, solution, Timer},
+    output::{value, solution, Timer},
     parser::parse_files,
 };
 
@@ -86,8 +86,8 @@ fn main() {
     }
 
     let config = Config::new(app.get_matches());
-    number("rate version", env!("GIT_COMMIT"));
-    number("mode", config.redundancy_property);
+    comment!("rate version: {}", env!("GIT_COMMIT"));
+    comment!("mode: {}", config.redundancy_property);
     let timer = Timer::name("total time");
     let parser = parse_files(
         &config.formula_filename,
@@ -96,14 +96,14 @@ fn main() {
     );
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
-    number("premise clauses", checker.premise_length);
-    number("proof steps", checker.proof.size());
-    number("skipped tautologies", checker.satisfied_count);
-    number("RUP introductions", checker.rup_introductions);
-    number("RAT introductions", checker.rat_introductions);
-    number("deletions", checker.deletions);
-    number("skipped deletions", checker.skipped_deletions);
-    number("reason deletions", checker.reason_deletions);
+    value("premise clauses", checker.premise_length);
+    value("proof steps", checker.proof.size());
+    value("skipped tautologies", checker.satisfied_count);
+    value("RUP introductions", checker.rup_introductions);
+    value("RAT introductions", checker.rat_introductions);
+    value("deletions", checker.deletions);
+    value("skipped deletions", checker.skipped_deletions);
+    value("reason deletions", checker.reason_deletions);
     drop(timer);
     checker.print_memory_usage();
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
