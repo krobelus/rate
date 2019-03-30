@@ -26,7 +26,7 @@ pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug_assertions);
 /// Add command line flag `-v`.
 pub const ENABLE_LOGGING: bool = cfg!(debug_assertions);
 /// Runtime invariant checks.
-pub const ENABLE_ASSERTIONS: bool = true;
+pub const ENABLE_ASSERTIONS: bool = cfg!(debug_assertions);
 /// Check assignment sanity.
 pub const ASSIGNMENT_INVARIANTS : bool = cfg!(debug_assertions);
 /// Check correctness of watches.
