@@ -1882,8 +1882,7 @@ fn watches_reset_list_at(
             return;
         } else {
             // Case B: clause will not be watched on other_lit, but on checker.db[second_offset] instead.
-            let removed = watches_find_and_remove(checker, mode, other_lit, head);
-            invariant!(removed);
+            let _removed = watches_find_and_remove(checker, mode, other_lit, head);
             let tmp = checker.db[second_offset];
             checker.db[offset + 1] = tmp;
             checker.db[second_offset] = other_lit;
@@ -1898,8 +1897,7 @@ fn watches_reset_list_at(
         watch_add(checker, mode, checker.db[offset], head); // Case C: additionally, clause will still be watched on other_lit
         if offset + 1 != first_offset {
             // Case D: additionally, clause will not be watched on other_lit, but on checker.db[offset + 1] instead.
-            let removed = watches_find_and_remove(checker, mode, other_lit, head);
-            invariant!(removed);
+            let _removed = watches_find_and_remove(checker, mode, other_lit, head);
             checker.db[offset + 1] = checker.db[first_offset];
             checker.db[first_offset] = other_lit;
             watch_add(checker, mode, checker.db[offset + 1], head);
