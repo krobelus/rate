@@ -164,7 +164,8 @@ def compare_acceptance(a, b, *, instances=drat_inputs()):
         if INITIAL_COMMIT in b[0]:
             if name in (
                 'benchmarks/crafted/falsified',
-                    'benchmarks/crafted/crlf'):
+                    'benchmarks/crafted/crlf',
+                    'benchmarks/crafted/crash'):
                 continue  # does not skip unused lemmas
         if (INITIAL_COMMIT in b[0]
                 and name in ('benchmarks/crafted/marked-environment',

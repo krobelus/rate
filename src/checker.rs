@@ -120,6 +120,7 @@ struct Revision {
     cone: Stack<Literal>,
     position_in_trail: Stack<usize>,
     reason_clause: Stack<Clause>,
+    trail_length_after_removing_cone: usize,
 }
 
 #[cfg(test)]
@@ -1630,6 +1631,7 @@ fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
 
 fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
+    watch_invariants(checker);
     log!(checker, 1, "{}", checker.assignment);
     let unit = *checker
         .clause(clause)
@@ -1643,6 +1645,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         cone: Stack::new(),
         position_in_trail: Stack::new(),
         reason_clause: Stack::new(),
+        trail_length_after_removing_cone: usize::max_value(),
     };
     add_to_revision(checker, &mut revision, unit, unit_reason);
     let mut next_position_to_overwrite = unit_position;
@@ -1658,6 +1661,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         }
     }
     let length_after_removing_cone = next_position_to_overwrite;
+    revision.trail_length_after_removing_cone = length_after_removing_cone;
     checker.assignment.shrink_trail(length_after_removing_cone);
     checker.processed = length_after_removing_cone;
     for &literal in &revision.cone {
@@ -1670,6 +1674,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     }
     checker.revisions.push(revision);
     assignment_invariants(checker);
+    watch_invariants(checker);
 }
 
 fn watchlist_revise(checker: &mut Checker, lit: Literal) {
@@ -1708,10 +1713,25 @@ fn watches_revise(
         }
         Some(offset) => {
             let new_literal = checker.db[offset];
-            checker.db.swap(my_offset, offset);
-            watch_remove_at(checker, mode, lit, *position_in_watchlist);
-            *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-            invariant!(mode == checker.clause_mode(clause));
+            // We know that  lit is the literal that was unassigned in this revision.
+            // Additionally, other_literal is falsified.
+            //
+            // Invariant 1 states: a falsified watch implies that the other watch is satisfied.
+            // If we replace lit with firstlit, then we need to ensure this, so this is
+            // only possible if firstlit is satisfied.
+            //
+            // Otherwise we simply replace the falsified other_literal after which both watches are
+            // non-falsified. (This is more expensive because we have to find the watch).
+
+            if checker.assignment[new_literal] {
+                checker.db.swap(my_offset, offset);
+                watch_remove_at(checker, mode, lit, *position_in_watchlist);
+                *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
+                invariant!(mode == checker.clause_mode(clause));
+            } else {
+                checker.db.swap(other_literal_offset, offset);
+                let _removed = watches_find_and_remove(checker, mode, other_literal, head);
+            }
             watch_add(checker, mode, new_literal, head);
         }
     };
