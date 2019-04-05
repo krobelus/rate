@@ -320,7 +320,9 @@ impl ops::Try for MaybeConflict {
 
 fn schedule(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.fields(clause).is_scheduled() {
-        checker.optimized_proof.push(ProofStep::deletion(clause));
+        if checker.config.lrat_filename.is_some() {
+            checker.optimized_proof.push(ProofStep::deletion(clause));
+        }
     }
     checker.fields_mut(clause).set_is_scheduled(true);
 }
@@ -1053,7 +1055,9 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     write_dependencies_for_lrat(checker, empty_clause, false);
     schedule(checker, empty_clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::lemma(empty_clause);
-    checker.optimized_proof.push(ProofStep::lemma(empty_clause));
+    if checker.config.lrat_filename.is_some() {
+        checker.optimized_proof.push(ProofStep::lemma(empty_clause));
+    }
     true
 }
 
@@ -1198,7 +1202,9 @@ fn verify(checker: &mut Checker) -> bool {
             checker.rejection.failed_proof_step = i;
             return false;
         }
-        checker.optimized_proof.push(proof_step)
+        if checker.config.lrat_filename.is_some() {
+            checker.optimized_proof.push(proof_step)
+        }
     }
     true
 }
