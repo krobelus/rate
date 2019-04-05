@@ -247,12 +247,6 @@ def test_quick_default():
         rate(flags=['--assume-pivot-is-first']), instances=small_drat_inputs())
 
 
-def test_quick_no_core_first():
-    double_check(
-        rate(flags=['--assume-pivot-is-first', '--no-core-first']),
-        instances=small_drat_inputs())
-
-
 def test_quick_skip_unit_deletions():
     double_check(
         rate(flags=['--assume-pivot-is-first', '--skip-unit-deletions']),

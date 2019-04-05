@@ -55,8 +55,6 @@ fn main() {
          .help("Do not ignore RAT candidates that are not part of the core."))
     .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
          .help("When checking for RAT, only try the first literal as pivot."))
-    .arg(Arg::with_name("NO_CORE_FIRST").short("u").long("no-core-first")
-         .help("Disable core first unit propagation."))
     .arg(Arg::with_name("CHECK_SATISFIED_LEMMAS").short("s").long("check-satisfied-lemmas")
          .help("Do not skip lemmas that are satisfied by the partial UP-model."))
 

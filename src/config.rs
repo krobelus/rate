@@ -10,7 +10,6 @@ pub struct Config {
     pub skip_unit_deletions: bool,
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
-    pub no_core_first: bool,
     pub lratcheck_compat: bool,
     pub memory_usage_breakdown: bool,
     pub verbosity: u64,
@@ -104,7 +103,6 @@ impl Config {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
-            no_core_first: matches.is_present("NO_CORE_FIRST"),
             lratcheck_compat,
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             verbosity: match matches.occurrences_of("v") {

@@ -230,9 +230,7 @@ impl Checker {
         self.db.clause2offset(clause)
     }
     fn clause_mode(&self, clause: Clause) -> Mode {
-        if self.config.no_core_first {
-            Mode::NonCore
-        } else if self.fields(clause).is_scheduled() {
+        if self.fields(clause).is_scheduled() {
             Mode::Core
         } else {
             Mode::NonCore
@@ -382,7 +380,7 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
 #[allow(clippy::cyclomatic_complexity)]
 fn propagate(checker: &mut Checker) -> MaybeConflict {
     let mut processed_core = checker.processed;
-    let mut core_mode = !checker.config.no_core_first;
+    let mut core_mode = true;
     let mut noncore_watchlist_index = 0;
     loop {
         if core_mode {
@@ -493,9 +491,6 @@ fn move_to_core(checker: &mut Checker, offset: usize) {
     if !checker.fields_from_offset(offset).in_watchlist() {
         return;
     }
-    if checker.config.no_core_first {
-        return;
-    }
 
     let [w1, w2] = checker.watches(offset);
     let d1 = watches_find_and_remove(checker, Mode::NonCore, w1, offset);
@@ -519,11 +514,7 @@ macro_rules! preserve_assignment {
 }
 
 fn watchlist_filter_core(checker: &Checker) -> &Array<Literal, Watchlist> {
-    if checker.config.no_core_first {
-        &checker.watchlist_noncore
-    } else {
-        &checker.watchlist_core
-    }
+    &checker.watchlist_core
 }
 
 fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Clause> {
@@ -532,14 +523,8 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
         for i in 0..watchlist_filter_core(checker)[lit].len() {
             let head = watchlist_filter_core(checker)[lit][i];
             let clause = checker.offset2clause(head);
-            let want = if checker.config.no_core_first {
-                checker.fields(clause).is_scheduled()
-            } else {
-                invariant!(checker.fields(clause).is_scheduled());
-                true
-            };
-            if want
-                && checker.clause(clause)[0] == lit
+            invariant!(checker.fields(clause).is_scheduled());
+            if  checker.clause(clause)[0] == lit
                 && checker
                     .clause(clause)
                     .iter()
