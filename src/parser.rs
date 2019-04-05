@@ -37,6 +37,7 @@ pub struct Parser {
     pub clause_deleted_at: Stack<usize>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
+    pub max_proof_steps: Option<usize>,
 }
 
 impl Parser {
@@ -57,6 +58,7 @@ impl Parser {
             clause_deleted_at: Stack::new(),
             proof_start: Clause::new(0),
             proof: Stack::new(),
+            max_proof_steps: None,
         }
     }
     pub fn is_pr(&self) -> bool {
@@ -64,16 +66,25 @@ impl Parser {
     }
 }
 
-type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
+pub type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
 
-#[cfg_attr(feature = "flame_it", flame)]
 pub fn parse_files(
     formula_file: &str,
     proof_file: &str,
     redundancy_property: RedundancyProperty,
 ) -> Parser {
-    let mut clause_ids = HashTable::new();
     let mut parser = Parser::new(redundancy_property);
+    let mut clause_ids = HashTable::new();
+    run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
+    parser
+}
+
+pub fn run_parser(
+    mut parser: &mut Parser,
+    formula_file: &str,
+    proof_file: &str,
+    mut clause_ids: &mut HashTable,
+) {
     {
         let _timer = Timer::name("parsing formula");
         let mmap = mmap_file(&formula_file);
@@ -106,7 +117,6 @@ pub fn parse_files(
         }
         .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
     }
-    parser
 }
 
 fn mmap_file(filename: &str) -> Option<Mmap> {
@@ -223,7 +233,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
 }
 
 #[derive(Debug, Eq, Clone, Copy)]
-struct ClauseHashEq(Clause);
+pub struct ClauseHashEq(pub Clause);
 
 impl Hash for ClauseHashEq {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
@@ -246,7 +256,8 @@ impl PartialEq for ClauseHashEq {
 fn find_clause(clause_ids: &mut HashTable, needle: Clause) -> Option<Clause> {
     clause_ids
         .get_mut(&ClauseHashEq(needle))
-        .and_then(|clause_db| clause_db.swap_remove(0))
+        // TODO why not just pop
+        .and_then(|clause_stack| clause_stack.swap_remove(0))
 }
 
 fn compute_hash(clause: Slice<Literal>) -> usize {
@@ -473,51 +484,59 @@ fn parse_proof(
     let mut state = ParserState::Start;
     let mut lemma_head = true;
     let mut first_literal = None;
-    while let Some(c) = input.peek() {
-        if !binary && is_space(c) {
-            input.next();
-            continue;
-        }
-        if state == ParserState::Start {
-            state = match c {
-                b'd' => {
-                    input.next();
-                    open_clause(parser, ParserState::Deletion);
-                    ParserState::Deletion
-                }
-                b'c' => {
-                    parse_comment(&mut input);
-                    ParserState::Start
-                }
-                c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
-                    if binary {
+    if parser.max_proof_steps != Some(0) {
+        while let Some(c) = input.peek() {
+            if !binary && is_space(c) {
+                input.next();
+                continue;
+            }
+            if state == ParserState::Start {
+                state = match c {
+                    b'd' => {
                         input.next();
+                        open_clause(parser, ParserState::Deletion);
+                        ParserState::Deletion
                     }
-                    lemma_head = true;
-                    let clause = open_clause(parser, ParserState::Clause);
-                    parser.proof.push(ProofStep::lemma(clause));
-                    ParserState::Clause
+                    b'c' => {
+                        parse_comment(&mut input);
+                        ParserState::Start
+                    }
+                    c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
+                        if binary {
+                            input.next();
+                        }
+                        lemma_head = true;
+                        let clause = open_clause(parser, ParserState::Clause);
+                        parser.proof.push(ProofStep::lemma(clause));
+                        ParserState::Clause
+                    }
+                    _ => return input.error(DRAT),
+                };
+                continue;
+            }
+            let literal = literal_parser(&mut input)?;
+            if parser.is_pr() && state == ParserState::Clause && first_literal == Some(literal) {
+                first_literal = None;
+                state = ParserState::Witness;
+            }
+            if state == ParserState::Clause && lemma_head {
+                parser.clause_pivot.push(literal);
+                #[cfg(feature = "clause_lifetime_heuristic")]
+                parser.clause_deleted_at.push(usize::max_value());
+                first_literal = Some(literal);
+                lemma_head = false;
+            }
+            invariant!(state != ParserState::Start);
+            add_literal(parser, clause_ids, state, literal);
+            if literal.is_zero() {
+                state = ParserState::Start;
+                if parser
+                    .max_proof_steps
+                    .map_or(false, |max_steps| parser.proof.len() == max_steps)
+                {
+                    break;
                 }
-                _ => return input.error(DRAT),
-            };
-            continue;
-        }
-        let literal = literal_parser(&mut input)?;
-        if parser.is_pr() && state == ParserState::Clause && first_literal == Some(literal) {
-            first_literal = None;
-            state = ParserState::Witness;
-        }
-        if state == ParserState::Clause && lemma_head {
-            parser.clause_pivot.push(literal);
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            parser.clause_deleted_at.push(usize::max_value());
-            first_literal = Some(literal);
-            lemma_head = false;
-        }
-        invariant!(state != ParserState::Start);
-        add_literal(parser, clause_ids, state, literal);
-        if literal.is_zero() {
-            state = ParserState::Start;
+            }
         }
     }
     // patch missing zero terminators
@@ -759,7 +778,7 @@ enum SmallStackState<T> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct SmallStack<T> {
+pub struct SmallStack<T> {
     state: SmallStackState<T>,
 }
 
@@ -794,7 +813,7 @@ impl<T: Copy + Default> SmallStack<T> {
         }
         unreachable();
     }
-    fn swap_remove(&mut self, index: usize) -> Option<T> {
+    pub fn swap_remove(&mut self, index: usize) -> Option<T> {
         requires!(index == 0);
         if let SmallStackState::One(value) = self.state {
             self.state = SmallStackState::Empty;
@@ -808,6 +827,19 @@ impl<T: Copy + Default> SmallStack<T> {
         } else {
             None
         }
+    }
+    #[allow(dead_code)]
+    pub fn to_vec(&self) -> Vec<T> {
+        if let SmallStackState::Empty = self.state {
+            return vec![];
+        }
+        if let SmallStackState::One(value) = self.state {
+            return vec![value];
+        }
+        if let SmallStackState::Many(stack) = &self.state {
+            return stack.to_vec();
+        }
+        unreachable();
     }
 }
 

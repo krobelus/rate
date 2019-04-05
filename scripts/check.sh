@@ -5,27 +5,19 @@ set -u
 name=`dirname "$1"`/`basename "$1" | sed 's/\.[^.]*$//'`
 shift
 
-rate="cargo run --release -- $name.cnf $name.drat --assume-pivot-is-first $@"
+test -f "$name".drat && prext=drat
+test -f "$name".pr && prext=pr
+
+rate="cargo run -- $name.cnf $name."$prext" --assume-pivot-is-first $@"
 
 output="$($rate -L "$name".lrat -i "$name".sick)"
+
+echo "$output"
+
 echo "$output" | grep -q '^s VERIFIED$' && {
   exec lrat-check "$name".{cnf,lrat} nil t
 }
 
 echo "$output" | grep -q '^s NOT VERIFIED$' && {
-    echo SICK witness
-    cat "$name".sick
-    echo sickcheck
-    sickcheck_output="$(sickcheck "$name".{cnf,drat,sick})"
-    echo "$sickcheck_output"
-    echo "$sickcheck_output" | grep -qE '(^e|REJECTED)' && {
-        echo
-        echo RUPEE
-        rupee "$name".{cnf,drat} -i rupee.sick
-        echo SICK WITNESS
-        cat rupee.sick
-        exec sickcheck "$name".{cnf,drat} rupee.sick
-    } || exit 1
+    exec cargo run --bin sickcheck "$name".{cnf,"$prext",sick}
 }
-
-echo "$output"

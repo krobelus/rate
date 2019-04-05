@@ -1,6 +1,10 @@
 //! Variable and literal representations
 
 use crate::memory::Offset;
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::{fmt, fmt::Display, ops};
 
 /// A variable, encoded as 32 bit unsigned integer.
@@ -43,6 +47,12 @@ impl Offset for Variable {
     /// We simply use the variable index, so offset 0 will be generally unused.
     fn as_offset(&self) -> usize {
         self.0 as usize
+    }
+}
+
+impl Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.literal())
     }
 }
 
@@ -129,6 +139,24 @@ impl Offset for Literal {
     }
 }
 
+// Note: it might be more idiomatic to use [`std::ops::Not`] (`!`).
+/// Negate a literal with operator `-`.
+///
+///
+/// # Examples
+///
+/// ```
+/// assert!(-Literal::TOP == Literal::BOTTOM);
+/// ```
+impl ops::Neg for Literal {
+    type Output = Literal;
+    fn neg(self) -> Literal {
+        Literal {
+            encoding: self.encoding ^ 1,
+        }
+    }
+}
+
 /// # Examples
 ///
 /// ```
@@ -153,20 +181,65 @@ impl Display for Literal {
     }
 }
 
-// Note: it might be more idiomatic to use [`std::ops::Not`] (`!`).
-/// Negate a literal with operator `-`.
-///
-///
-/// # Examples
-///
-/// ```
-/// assert!(-Literal::TOP == Literal::BOTTOM);
-/// ```
-impl ops::Neg for Literal {
-    type Output = Literal;
-    fn neg(self) -> Literal {
-        Literal {
-            encoding: self.encoding ^ 1,
+impl Serialize for Literal {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        requires!(
+            !self.is_constant(),
+            "serialization of boolean constants is not supported"
+        );
+        serializer.serialize_i32(self.decode())
+    }
+}
+
+impl<'de> Deserialize<'de> for Literal {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let result = Literal::new(deserializer.deserialize_i32(I32Visitor)?);
+        requires!(
+            !result.is_constant(),
+            "deserialization of boolean constants is not supported"
+        );
+        Ok(result)
+    }
+}
+
+struct I32Visitor;
+
+impl<'de> Visitor<'de> for I32Visitor {
+    type Value = i32;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("an integer between -2^31 and 2^31")
+    }
+
+    fn visit_i8<E>(self, value: i8) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(i32::from(value))
+    }
+
+    fn visit_i32<E>(self, value: i32) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(value)
+    }
+
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        use std::i32;
+        if value >= i64::from(i32::MIN) && value <= i64::from(i32::MAX) {
+            Ok(value as i32)
+        } else {
+            Err(E::custom(format!("i32 out of range: {}", value)))
         }
     }
 }

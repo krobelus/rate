@@ -220,21 +220,7 @@ def double_check(drat_checker,
             assert lrat_checker_accepts(
                 lrat_checker + [args[0], args[3], 'nil', 't'], name)
         elif sick:
-            # TODO hack sickcheck to handle some edge cases
-            if name == 'benchmarks/crafted/empty':
-                continue
-            if name == 'benchmarks/crafted/comments':
-                continue
-            if name == 'benchmarks/crafted/crlf':
-                continue
-            if name == 'benchmarks/crafted/multi-delete':
-                continue
-            if name == 'benchmarks/crafted/no-conflict':
-                continue
-            if name in ('benchmarks/crafted/missing-last-zero',
-                        'benchmarks/crafted/missing-last-zero2'):
-                continue
-            assert sick_checker_accepts(['sickcheck'] + args[:2] + [args[-1]],
+            assert sick_checker_accepts(['target/release/sickcheck'] + args[:2] + [args[-1]],
                                         name)
 
 

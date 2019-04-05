@@ -40,7 +40,7 @@ fn incompatible_options(what: &str) {
     die!("incompatible options: {}", what);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RedundancyProperty {
     RAT,
     PR,
@@ -94,7 +94,7 @@ impl Config {
         Config {
             redundancy_property: if proof_filename.ends_with(".drat") {
                 RedundancyProperty::RAT
-            } else if proof_filename.ends_with(".pr") {
+            } else if proof_filename.ends_with(".pr") || proof_filename.ends_with(".dpr") {
                 RedundancyProperty::PR
             } else {
                 comment!("unknown file extension, defaulting to RAT checking");

@@ -13,10 +13,6 @@
     stmt_expr_attributes
 )]
 
-#[macro_use(defer)]
-extern crate scopeguard;
-extern crate alloc;
-
 #[macro_use]
 mod output;
 #[macro_use]
@@ -28,6 +24,12 @@ mod clausedatabase;
 mod config;
 mod literal;
 mod parser;
+
+#[macro_use(defer)]
+extern crate scopeguard;
+extern crate alloc;
+#[macro_use(Serialize, Deserialize)]
+extern crate serde_derive;
 
 use clap::Arg;
 #[cfg(feature = "flame_it")]

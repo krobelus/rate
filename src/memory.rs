@@ -39,6 +39,18 @@ impl Offset for usize {
     }
 }
 
+impl Offset for u64 {
+    fn as_offset(&self) -> usize {
+        *self as usize
+    }
+}
+
+impl Offset for i32 {
+    fn as_offset(&self) -> usize {
+        *self as usize
+    }
+}
+
 /// Report memory usage
 pub trait HeapSpace {
     fn heap_space(&self) -> usize;

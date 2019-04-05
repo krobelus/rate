@@ -12,7 +12,7 @@ use std::{
 /// The index of a clause or lemma, immutable during the lifetime of the program.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash, Default)]
 pub struct Clause {
-    index: u64,
+    pub index: u64,
 }
 
 impl Clause {
@@ -254,8 +254,8 @@ pub struct Tagged32(u32);
 
 impl Tagged32 {
     const MASK: u32 = Tagged32::MASK1 | Tagged32::MASK2;
-    const MASK1: u32 = 0x80000000;
-    const MASK2: u32 = 0x40000000;
+    const MASK1: u32 = 0x80_00_00_00;
+    const MASK2: u32 = 0x40_00_00_00;
     const MAX_PAYLOAD: u32 = u32::max_value() & !Tagged32::MASK;
 
     pub fn new(payload: u32) -> Tagged32 {

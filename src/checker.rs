@@ -123,19 +123,6 @@ struct Revision {
     trail_length_after_removing_cone: usize,
 }
 
-#[cfg(test)]
-#[test]
-fn test_revision_memory_usage() {
-    let mut rev = Revision {
-        cone: Stack::new(),
-        position_in_trail: Stack::new(),
-        reason_clause: Stack::new(),
-    };
-    assert_eq!(rev.heap_space(), 0);
-    rev.cone.push(Literal::TOP);
-    assert_eq!(rev.heap_space(), 64);
-}
-
 impl Checker {
     pub fn new(parser: Parser, config: Config) -> Checker {
         let num_clauses = parser.clause_db.number_of_clauses() as usize;
@@ -597,7 +584,7 @@ fn pr(checker: &mut Checker) -> bool {
         }
         // C u D|w is a rup
         match reduct(checker, &checker.is_in_witness, clause) {
-            Reduct::Top => continue,
+            Reduct::Top => (),
             Reduct::Clause(reduct_by_witness) => {
                 for &literal in &reduct_by_witness {
                     tmp.push(literal);
@@ -1163,6 +1150,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                     checker.clause_to_string(clause)
                 );
                 checker.rejection.failed_proof_step = i;
+                checker.rejection.natural_model_length = Some(checker.assignment.len());
                 return false;
             }
             checker.lemma += 1;
@@ -1440,8 +1428,12 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
+    let proof_format = match checker.config.redundancy_property {
+        RedundancyProperty::RAT => "DRAT-arbitrary-pivot",
+        RedundancyProperty::PR => "PR",
+    };
+    let proof_step = checker.rejection.failed_proof_step;
 
-    let step = checker.rejection.failed_proof_step + checker.premise_length + 1;
     let assignment = if let Some(stable) = &checker.rejection.stable_assignment {
         stable
     } else {
@@ -1450,39 +1442,51 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     let natural_model_length = checker
         .rejection
         .natural_model_length
-        .unwrap_or(checker.assignment.len());
-    write!(file, "v ")?;
-    write!(
+        .unwrap_or_else(|| checker.assignment.len());
+    write!(file, "# Failed to prove lemma")?;
+    for &literal in &checker.rejection.lemma {
+        if literal != Literal::BOTTOM {
+            write!(file, " {}", literal)?;
+        }
+    }
+    writeln!(file, " 0")?;
+    writeln!(file, "proof_format   = \"{}\"", proof_format)?;
+    writeln!(
         file,
-        "{} ",
-        checker
-            .rejection
-            .pivot
-            .map_or("0".to_string(), |pivot| format!("{}", pivot))
+        "proof_step     = {} # Failed line in the proof",
+        proof_step + 1
     )?;
-    writeln!(file, "{}", step)?;
-    write!(file, "n ")?;
-    write_clause(&mut file, checker.rejection.lemma.iter())?;
-    write!(file, " ")?;
+    write!(file, "natural_model  = [")?;
     for literal in Literal::all(checker.maxvar) {
         if assignment[literal] && assignment.position_in_trail(literal) < natural_model_length {
-            write!(file, "{} ", literal)?;
+            write!(file, "{}, ", literal)?;
         }
     }
-    writeln!(file, "0")?;
-    write!(file, "r ")?;
-    if let Some(resolved_with) = checker.rejection.resolved_with {
-        write_clause(&mut file, checker.clause(resolved_with).iter())?;
-        write!(file, " ")?;
+    writeln!(file, "]")?;
+    // TODO
+    if let Some(pivot) = checker.rejection.pivot {
+        writeln!(file, "[[witness]]")?;
+        write!(file, "failing_clause = [")?;
+        if let Some(failing_clause) = checker.rejection.resolved_with {
+            for &literal in checker.clause(failing_clause) {
+                if literal != Literal::BOTTOM {
+                    write!(file, "{}, ", literal)?;
+                }
+            }
+        } else {
+            // TODO
+        }
+        writeln!(file, "]")?;
+        write!(file, "failing_model  = [")?;
         for literal in Literal::all(checker.maxvar) {
-            if assignment[literal] {
-                write!(file, "{} ", literal)?;
+            if assignment[literal] && assignment.position_in_trail(literal) >= natural_model_length
+            {
+                write!(file, "{}, ", literal)?;
             }
         }
-    } else {
-        write!(file, "0 ")?;
+        writeln!(file, "]")?;
+        writeln!(file, "pivot          = {}", pivot)?;
     }
-    writeln!(file, "0")?;
     Ok(())
 }
 
