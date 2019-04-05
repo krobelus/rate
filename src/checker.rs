@@ -1527,10 +1527,6 @@ enum Mode {
     NonCore,
 }
 
-fn is_assigned(checker: &Checker, lit: Literal) -> bool {
-    checker.assignment[lit] || checker.assignment[-lit]
-}
-
 fn watch_invariants(checker: &Checker) {
     if crate::config::WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
@@ -1553,11 +1549,11 @@ fn watch_invariant(checker: &Checker, lit: Literal, head: usize) {
         head,
     );
     invariant!(
-        is_assigned(checker, w1)
-            || is_assigned(checker, w2)
-            || (!is_assigned(checker, -w1) && !is_assigned(checker, -w2)),
+        checker.assignment[w1]
+            || checker.assignment[w2]
+            || (!checker.assignment[-w1] && !checker.assignment[-w2]),
         format!(
-            "each watched clause needs at least one unassigned literal: violated in [@{}] - {}",
+            "watched clause needs two unassigned watches or at least one satisfied watch: violated in [@{}] - {}",
             head, checker.assignment
         )
     );
