@@ -616,7 +616,8 @@ fn pr(checker: &mut Checker) -> bool {
                 for &literal in &reduct_by_witness {
                     tmp.push(literal);
                 }
-                let ok = preserve_assignment!(checker, slice_rup(checker, tmp.as_slice())) == CONFLICT;
+                let ok =
+                    preserve_assignment!(checker, slice_rup(checker, tmp.as_slice())) == CONFLICT;
                 tmp.truncate(lemma_length);
                 if !ok {
                     return false;
@@ -1456,7 +1457,10 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     } else {
         &checker.assignment
     };
-    let natural_model_length = checker.rejection.natural_model_length.unwrap_or(checker.assignment.len());
+    let natural_model_length = checker
+        .rejection
+        .natural_model_length
+        .unwrap_or(checker.assignment.len());
     write!(file, "v ")?;
     write!(
         file,

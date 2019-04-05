@@ -37,7 +37,7 @@ use std::process;
 use crate::{
     checker::{check, Checker},
     config::Config,
-    output::{value, solution, Timer},
+    output::{solution, value, Timer},
     parser::parse_files,
 };
 

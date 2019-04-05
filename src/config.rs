@@ -28,7 +28,7 @@ pub const ENABLE_LOGGING: bool = cfg!(debug_assertions);
 /// Runtime invariant checks.
 pub const ENABLE_ASSERTIONS: bool = cfg!(debug_assertions);
 /// Check assignment sanity.
-pub const ASSIGNMENT_INVARIANTS : bool = cfg!(debug_assertions);
+pub const ASSIGNMENT_INVARIANTS: bool = cfg!(debug_assertions);
 /// Check correctness of watches.
 pub const WATCH_INVARIANTS: bool = false;
 

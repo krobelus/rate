@@ -157,10 +157,14 @@ def compare_acceptance(a, b, *, instances=drat_inputs()):
             if name == 'benchmarks/crafted/example1b':
                 continue
         if 'drat-trim' in b[0]:
-            if name in ('benchmarks/crafted/faux-conflict', 'benchmarks/crafted/crlf'):
+            if name in (
+                'benchmarks/crafted/faux-conflict',
+                    'benchmarks/crafted/crlf'):
                 continue  # drat-trim uses binary mode here
         if INITIAL_COMMIT in b[0]:
-            if name in ('benchmarks/crafted/falsified', 'benchmarks/crafted/crlf'):
+            if name in (
+                'benchmarks/crafted/falsified',
+                    'benchmarks/crafted/crlf'):
                 continue  # does not skip unused lemmas
         if (INITIAL_COMMIT in b[0]
                 and name in ('benchmarks/crafted/marked-environment',
