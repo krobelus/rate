@@ -524,7 +524,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
             let head = watchlist_filter_core(checker)[lit][i];
             let clause = checker.offset2clause(head);
             invariant!(checker.fields(clause).is_scheduled());
-            if  checker.clause(clause)[0] == lit
+            if checker.clause(clause)[0] == lit
                 && checker
                     .clause(clause)
                     .iter()
@@ -789,9 +789,11 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
                         checker.rejection.stable_assignment = Some(checker.assignment.clone());
                         false
                     } else {
-                        checker
-                            .dependencies
-                            .push(LRATDependency::resolution_candidate(resolution_candidate));
+                        if checker.config.lrat_filename.is_some() {
+                            checker
+                                .dependencies
+                                .push(LRATDependency::resolution_candidate(resolution_candidate));
+                        }
                         extract_dependencies(checker, Some(trail_length_before_rat));
                         true
                     }
@@ -873,16 +875,18 @@ fn extract_dependencies(checker: &mut Checker, trail_length_before_rat: Option<u
         // TODO accomodate for lratcheck
         let position_in_trail = checker.assignment.position_in_trail(literal);
         // add_dependency(checker, clause, position_in_trail);
-        checker.dependencies.push(match trail_length_before_rat {
-            Some(trail_length) => {
-                if position_in_trail < trail_length {
-                    LRATDependency::forced_unit(clause)
-                } else {
-                    LRATDependency::unit(clause)
+        if checker.config.lrat_filename.is_some() {
+            checker.dependencies.push(match trail_length_before_rat {
+                Some(trail_length) => {
+                    if position_in_trail < trail_length {
+                        LRATDependency::forced_unit(clause)
+                    } else {
+                        LRATDependency::unit(clause)
+                    }
                 }
-            }
-            None => LRATDependency::unit(clause),
-        });
+                None => LRATDependency::unit(clause),
+            });
+        }
         remove_from_conflict_graph(checker, reason);
     }
 }
