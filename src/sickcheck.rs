@@ -97,10 +97,10 @@ fn main() {
     };
 
     let mut toml_str = String::new();
-    let mut sick_file = File::open(sick_filename).expect("Failed to open SICK certificate.");
+    let mut sick_file = File::open(sick_filename).unwrap_or_else(|err| die!("Failed to open SICK certificate: {}", err));
     sick_file
         .read_to_string(&mut toml_str)
-        .expect("Failed to read SICK file");
+        .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));
     let sick: Sick =
         toml::from_str(&toml_str).unwrap_or_else(|err| die!("Failed to parse SICK file: {}", err));
     let redundancy_property = match sick.proof_format.as_ref() {
