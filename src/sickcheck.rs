@@ -36,7 +36,7 @@ use crate::{
     clause::{Clause, Reason},
     config::RedundancyProperty,
     literal::Literal,
-    memory::Array,
+    memory::{Array, Offset},
     output::solution,
     parser::{run_parser, ClauseHashEq, HashTable, Parser},
 };
@@ -54,11 +54,6 @@ struct Witness {
     failing_clause: Vec<Literal>,
     failing_model: Vec<Literal>,
     pivot: Option<Literal>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ProofFormat {
-    redundancy_property: RedundancyProperty,
 }
 
 #[allow(clippy::cyclomatic_complexity)]
@@ -102,8 +97,13 @@ fn main() {
         .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));
     let sick: Sick =
         toml::from_str(&toml_str).unwrap_or_else(|err| die!("Failed to parse SICK file: {}", err));
+    let mut need_pivot = false;
     let redundancy_property = match sick.proof_format.as_ref() {
-        "DRAT-arbitrary-pivot" => RedundancyProperty::RAT,
+        "DRAT-arbitrary-pivot" => {
+            need_pivot = true;
+            RedundancyProperty::RAT
+        }
+        "DRAT-pivot-is-first-literal" => RedundancyProperty::RAT,
         "PR" => RedundancyProperty::PR,
         format => die!("Unsupported proof format: {}", format),
     };
@@ -196,7 +196,11 @@ fn main() {
         }
         let resolvent: Vec<Literal> = match redundancy_property {
             RedundancyProperty::RAT => {
-                let pivot = witness.pivot.expect("Format requires to specify pivot");
+                let pivot = if need_pivot {
+                    witness.pivot.expect("Format requires to specify pivot")
+                } else {
+                    parser.clause_pivot[lemma.as_offset()]
+                };
                 lemma_slice
                     .iter()
                     .chain(witness.failing_clause.iter())

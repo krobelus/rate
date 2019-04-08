@@ -652,19 +652,17 @@ fn add_rup_conflict_for_grat(checker: &mut Checker) {
     requires!(checker.config.grat_filename.is_some());
     let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
     let reason = if conflict_literal_reason.is_assumed() {
-                checker
-                    .assignment
-                    .trail_at(
-                        checker
-                            .assignment
-                            .position_in_trail(-conflict_literal),
-                    )
-                    .1
-            } else {
-                conflict_literal_reason
-            };
+        checker
+            .assignment
+            .trail_at(checker.assignment.position_in_trail(-conflict_literal))
+            .1
+    } else {
+        conflict_literal_reason
+    };
     let reason_clause = checker.offset2clause(reason.offset());
-    checker.grat_pending.push(GRATLiteral::from_clause(reason_clause));
+    checker
+        .grat_pending
+        .push(GRATLiteral::from_clause(reason_clause));
 }
 
 fn rup_or_rat(checker: &mut Checker) -> bool {
@@ -992,17 +990,17 @@ fn extract_dependencies(
                 continue;
             }
             let clause = checker.offset2clause(reason.offset());
-                checker
-                    .dependencies
-                    .push(if trail_length_before_rat.is_some() {
-                        if position < trail_length_before_rup {
-                            LRATDependency::forced_unit(clause)
-                        } else {
-                            LRATDependency::unit(clause)
-                        }
+            checker
+                .dependencies
+                .push(if trail_length_before_rat.is_some() {
+                    if position < trail_length_before_rup {
+                        LRATDependency::forced_unit(clause)
                     } else {
                         LRATDependency::unit(clause)
-                    });
+                    }
+                } else {
+                    LRATDependency::unit(clause)
+                });
         }
     }
     log!(checker, 3, "Resolution chain:");
@@ -1793,7 +1791,13 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         None => return Ok(()),
     };
     let proof_format = match checker.config.redundancy_property {
-        RedundancyProperty::RAT => "DRAT-arbitrary-pivot",
+        RedundancyProperty::RAT => {
+            if checker.config.pivot_is_first_literal {
+                "DRAT-pivot-is-first-literal"
+            } else {
+                "DRAT-arbitrary-pivot"
+            }
+        }
         RedundancyProperty::PR => "PR",
     };
     let proof_step = checker.rejection.failed_proof_step;
@@ -1827,7 +1831,6 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         }
     }
     writeln!(file, "]")?;
-    // TODO
     if let Some(pivot) = checker.rejection.pivot {
         writeln!(file, "[[witness]]")?;
         write!(file, "failing_clause = [")?;
@@ -1838,7 +1841,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
                 }
             }
         } else {
-            // TODO
+            invariant!(false);
         }
         writeln!(file, "]")?;
         write!(file, "failing_model  = [")?;
@@ -1849,7 +1852,9 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
             }
         }
         writeln!(file, "]")?;
-        writeln!(file, "pivot          = {}", pivot)?;
+        if !checker.config.pivot_is_first_literal {
+            writeln!(file, "pivot          = {}", pivot)?;
+        }
     }
     Ok(())
 }
