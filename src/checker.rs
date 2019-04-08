@@ -976,7 +976,26 @@ fn extract_dependencies(
             checker.grat_pending.push(GRATLiteral::ZERO);
         }
     }
-    // TODO only above forced
+    if checker.config.lrat_filename.is_some() {
+        for position in 1..checker.assignment.len() {
+            let (literal, reason) = checker.assignment.trail_at(position);
+            if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
+                continue;
+            }
+            let clause = checker.offset2clause(reason.offset());
+                checker
+                    .dependencies
+                    .push(if trail_length_before_rat.is_some() {
+                        if position < trail_length_before_rup {
+                            LRATDependency::forced_unit(clause)
+                        } else {
+                            LRATDependency::unit(clause)
+                        }
+                    } else {
+                        LRATDependency::unit(clause)
+                    });
+        }
+    }
     log!(checker, 3, "Resolution chain:");
     for position in 1..checker.assignment.len() {
         let (literal, reason) = checker.assignment.trail_at(position);
@@ -990,21 +1009,6 @@ fn extract_dependencies(
             literal,
             checker.clause_to_string(checker.offset2clause(reason.offset()))
         );
-        let clause = checker.offset2clause(reason.offset());
-        let position_in_trail = checker.assignment.position_in_trail(literal);
-        if checker.config.lrat_filename.is_some() {
-            checker
-                .dependencies
-                .push(if trail_length_before_rat.is_some() {
-                    if position_in_trail < trail_length_before_rup {
-                        LRATDependency::forced_unit(clause)
-                    } else {
-                        LRATDependency::unit(clause)
-                    }
-                } else {
-                    LRATDependency::unit(clause)
-                });
-        }
         remove_from_conflict_graph(checker, reason);
     }
 }
