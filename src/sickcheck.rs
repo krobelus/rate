@@ -97,7 +97,8 @@ fn main() {
     };
 
     let mut toml_str = String::new();
-    let mut sick_file = File::open(sick_filename).unwrap_or_else(|err| die!("Failed to open SICK certificate: {}", err));
+    let mut sick_file = File::open(sick_filename)
+        .unwrap_or_else(|err| die!("Failed to open SICK certificate: {}", err));
     sick_file
         .read_to_string(&mut toml_str)
         .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));
@@ -111,7 +112,7 @@ fn main() {
     requires!(redundancy_property == proof_file_redundancy_property);
     let mut clause_ids = HashTable::new();
     let mut parser = Parser::new(proof_file_redundancy_property);
-    parser.max_proof_steps = Some(sick.proof_step - 1);
+    parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
         &mut parser,
         formula_filename,
@@ -205,7 +206,7 @@ fn main() {
                 lemma_slice
                     .iter()
                     .chain(witness.failing_clause.iter())
-                    .filter(|&&lit| lit != pivot)
+                    .filter(|&&lit| lit.variable() != pivot.variable())
                     .cloned()
                     .collect()
             }
