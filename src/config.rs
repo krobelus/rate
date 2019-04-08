@@ -17,6 +17,7 @@ pub struct Config {
     pub proof_filename: String,
     pub lemmas_filename: Option<String>,
     pub lrat_filename: Option<String>,
+    pub grat_filename: Option<String>,
     pub sick_filename: Option<String>,
 }
 
@@ -116,6 +117,7 @@ impl Config {
             proof_filename,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
             lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
+            grat_filename: matches.value_of("GRAT_FILE").map(String::from),
             sick_filename,
         }
     }

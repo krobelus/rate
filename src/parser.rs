@@ -673,6 +673,7 @@ c comment
                         ProofStep::deletion(Clause::new(0)),
                         ProofStep::lemma(Clause::new(3)),
                     ),
+                    max_proof_steps: None,
                 }
             );
         })

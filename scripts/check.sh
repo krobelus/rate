@@ -10,12 +10,13 @@ test -f "$name".pr && prext=pr
 
 rate="cargo run -- $name.cnf $name."$prext" --assume-pivot-is-first $@"
 
-output="$($rate -L "$name".lrat -i "$name".sick)"
+output="$($rate -L "$name".lrat -G "$name".grat -i "$name".sick)"
 
 echo "$output"
 
 echo "$output" | grep -q '^s VERIFIED$' && {
-  exec lrat-check "$name".{cnf,lrat} nil t
+  lrat-check "$name".{cnf,lrat} nil t | awk '{print} /^s VERIFIED$/ {ok=1} END{exit !ok}' && \
+  exec gratchk unsat "$name".{cnf,grat}
 }
 
 echo "$output" | grep -q '^s NOT VERIFIED$' && {

@@ -128,6 +128,15 @@ def lrat_checker_accepts(checker, name):
 
 
 @timed
+def gratchk_accepts(args, name):
+    stdout, _ = process_expansion(['gratchk', 'unsat'] + args)
+    ok = b's VERIFIED UNSAT' in stdout
+    if not ok:
+        print(str(stdout, 'utf8'))
+    return ok
+
+
+@timed
 def sick_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
     ok = b's ACCEPTED\n' in stdout
@@ -200,7 +209,7 @@ def double_check(drat_checker,
         if pr:
             args += [f'{name}.pr']
         else:
-            args += [f'{name}.drat', '-L', f'{name}.lrat']
+            args += [f'{name}.drat', '-L', f'{name}.lrat', '-G', f'{name}.grat']
             if sick:
                 args += ['--recheck', f'{name}.sick']
         if pr:
@@ -219,6 +228,7 @@ def double_check(drat_checker,
                     continue
             assert lrat_checker_accepts(
                 lrat_checker + [args[0], args[3], 'nil', 't'], name)
+            assert gratchk_accepts([args[0], args[5]], name)
         elif sick:
             assert sick_checker_accepts(['target/release/sickcheck'] + args[:2] + [args[-1]],
                                         name)

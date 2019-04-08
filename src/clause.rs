@@ -219,6 +219,34 @@ impl LRATLiteral {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct GRATLiteral(pub i32);
+
+
+impl GRATLiteral {
+    pub const ZERO: Self = Self(0);
+    pub const UNIT_PROP: Self = Self(1);
+    pub const DELETION: Self = Self(2);
+    pub const RUP_LEMMA: Self = Self(3);
+    pub const RAT_LEMMA: Self = Self(4);
+    pub const CONFLICT: Self = Self(5);
+    pub const RAT_COUNTS: Self = Self(6);
+    pub fn from_clause(clause: Clause) -> GRATLiteral {
+        requires!(clause.index + 1 < u64::from(u32::max_value()));
+        Self((clause.index + 1) as i32)
+    }
+    pub fn to_clause(self) -> Clause {
+        requires!(self.0 != 0);
+        Clause::new((self.0 - 1) as u64)
+    }
+}
+
+impl fmt::Display for GRATLiteral {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct Tagged64(u64);
 

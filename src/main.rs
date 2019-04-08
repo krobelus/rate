@@ -72,6 +72,8 @@ fn main() {
          .help("Write the core lemmas to this file."))
     .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat")
          .help("Write the core lemmas as LRAT certificate to this file."))
+    .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
+         .help("Write the GRAT certificate to this file."))
     .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
          .help("Write the recheck incorrectness witness."))
     ;
