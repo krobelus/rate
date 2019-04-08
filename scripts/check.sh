@@ -20,5 +20,5 @@ echo "$output" | grep -q '^s VERIFIED$' && {
 }
 
 echo "$output" | grep -q '^s NOT VERIFIED$' && {
-    exec cargo run --bin sickcheck "$name".{cnf,"$prext",sick}
+    exec cargo run --bin sick-check "$name".{cnf,"$prext",sick}
 }

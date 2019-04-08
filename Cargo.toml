@@ -12,8 +12,8 @@ build = "build.rs"
 default-run = "rate"
 
 [[bin]]
-name = "sickcheck"
-path = "src/sickcheck.rs"
+name = "sick-check"
+path = "src/sick-check.rs"
 
 [dependencies]
 rate-macros = { path = "rate-macros" }
