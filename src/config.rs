@@ -67,6 +67,7 @@ impl Config {
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
+        let grat = matches.is_present("GRAT_FILE");
 
         let lratcheck_compat = matches.is_present("LRATCHECK_COMPAT");
         let sick_filename = matches.value_of("SICK_FILE").map(String::from);
@@ -78,6 +79,9 @@ impl Config {
             warn!(
                 "--recheck can produce an incorrect SICK witness when used along --skip-unit-deletions."
             );
+        }
+        if !skip_unit_deletions && grat {
+            warn!("GRAT does not support unit deletions, I might generated invalid certificates.");
         }
         if rupee && skip_unit_deletions {
             incompatible_options("--rupee --skip-unit-deletions");

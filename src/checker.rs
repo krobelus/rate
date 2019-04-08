@@ -558,12 +558,19 @@ fn check_inference(checker: &mut Checker) -> bool {
     };
     if checker.config.grat_filename.is_some() {
         if !checker.grat_pending_deletions.empty() {
-            checker.grat.push(GRATLiteral::DELETION);
+            if !checker.grat_in_deletion {
+                checker.grat.push(GRATLiteral::DELETION);
+            }
             for &clause in &checker.grat_pending_deletions {
                 checker.grat.push(GRATLiteral::from_clause(clause));
             }
             checker.grat.push(GRATLiteral::ZERO);
+            checker.grat_in_deletion = false;
             checker.grat_pending_deletions.clear();
+        }
+        if checker.grat_in_deletion {
+            checker.grat.push(GRATLiteral::ZERO);
+            checker.grat_in_deletion = false;
         }
         for &literal in &checker.grat_pending_prerat {
             checker.grat.push(literal);
@@ -1352,16 +1359,11 @@ fn verify(checker: &mut Checker) -> bool {
                 watches_add(checker, Stage::Verification, clause);
             }
             if checker.config.grat_filename.is_some() {
-                // TODO
-                // if !checker.grat_in_deletion {
-                checker.grat.push(GRATLiteral::DELETION);
-                // checker.grat_in_deletion = true;
-                // }
+                if !checker.grat_in_deletion {
+                    checker.grat.push(GRATLiteral::DELETION);
+                }
                 checker.grat.push(GRATLiteral::from_clause(clause));
-                // if checker.grat_in_deletion {
-                checker.grat.push(GRATLiteral::ZERO);
-                // checker.grat_in_deletion = false;
-                // }
+                checker.grat_in_deletion = true;
             }
             true
         } else {
@@ -1398,6 +1400,9 @@ fn verify(checker: &mut Checker) -> bool {
         }
     }
     if checker.config.grat_filename.is_some() {
+        if checker.grat_in_deletion {
+            checker.grat.push(GRATLiteral::ZERO);
+        }
         checker.grat.push(GRATLiteral::UNIT_PROP);
         for position in 1..checker.assignment.len() {
             let reason = checker.assignment.trail_at(position).1;
@@ -1430,7 +1435,6 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
             for position in trail_length..checker.assignment.len() {
                 let reason = checker.assignment.trail_at(position).1;
                 let reason_clause = checker.offset2clause(reason.offset());
-                // TODO?
                 if checker.fields(reason_clause).is_scheduled() {
                     checker.grat.push(GRATLiteral::from_clause(reason_clause));
                 }
