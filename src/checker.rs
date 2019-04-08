@@ -642,6 +642,7 @@ fn pr(checker: &mut Checker) -> bool {
 }
 
 fn add_rup_conflict_for_grat(checker: &mut Checker) {
+    requires!(checker.config.grat_filename.is_some());
     let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
     let reason = if conflict_literal_reason.is_assumed() {
                 checker
@@ -978,7 +979,7 @@ fn extract_dependencies(
     }
     if checker.config.lrat_filename.is_some() {
         for position in 1..checker.assignment.len() {
-            let (literal, reason) = checker.assignment.trail_at(position);
+            let (_literal, reason) = checker.assignment.trail_at(position);
             if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
                 continue;
             }
@@ -1014,7 +1015,7 @@ fn extract_dependencies(
 }
 
 fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, is_rat: bool) {
-    if checker.config.lrat_filename.is_none() {
+    if !checker.config.lrat_filename.is_some() {
         return;
     }
     write_dependencies_for_lrat_aux(checker, clause, is_rat);
@@ -1214,18 +1215,9 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     checker.db.make_clause_empty(empty_clause);
     invariant!(checker.clause(empty_clause).empty());
     invariant!((checker.maxvar == Variable(0)) == (checker.assignment.peek().0 == Literal::TOP));
-    // TODO
-    // if checker.config.grat_filename.is_some() {
-    //     checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
-    //     checker.grat_pending.push(GRATLiteral::from_clause(checker.lemma));
-    // }
     let grat_pending_length = checker.grat_pending.len();
     extract_dependencies(checker, checker.assignment.len(), None);
-    // TODO
     checker.grat_pending.truncate(grat_pending_length);
-    // if checker.config.grat_filename.is_some() {
-    //     checker.grat_pending.push(GRATLiteral::ZERO);
-    // }
     write_dependencies_for_lrat(checker, empty_clause, false);
     schedule(checker, empty_clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::lemma(empty_clause);
