@@ -565,8 +565,14 @@ fn check_inference(checker: &mut Checker) -> bool {
             checker.grat.push(GRATLiteral::ZERO);
             checker.grat_pending_deletions.clear();
         }
-        for &literal in &checker.grat_pending_prerat { checker.grat.push(literal); } checker.grat_pending_prerat.clear();
-        for &literal in &checker.grat_pending { checker.grat.push(literal); } checker.grat_pending.clear();
+        for &literal in &checker.grat_pending_prerat {
+            checker.grat.push(literal);
+        }
+        checker.grat_pending_prerat.clear();
+        for &literal in &checker.grat_pending {
+            checker.grat.push(literal);
+        }
+        checker.grat_pending.clear();
     }
     checker.soft_propagation = false;
     ok
@@ -635,15 +641,26 @@ fn pr(checker: &mut Checker) -> bool {
     true
 }
 
-fn add_grat_conflict_clause(checker: &mut Checker, _start: usize) {
-    if !checker.config.grat_filename.is_some() {
-        return
-    }
-    let (_conflict_literal, conflict_reason) = checker.assignment.peek();
-    requires!(!conflict_reason.is_assumed());
-    let conflict_clause = checker.offset2clause(conflict_reason.offset());
-    checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
-}
+// TODO
+// fn add_rup_conflict_for_grat(checker: &mut Checker) {
+//     if !checker.config.grat_filename.is_some() {
+//         return
+//     }
+//     let (_conflict_literal, reason) = checker.assignment.peek();
+//     if !reason.is_assumed() {
+//         let conflict_clause = checker.offset2clause(reason.offset());
+//         checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
+//     } else {
+//         let (_negated_conflict_literal, reason) = checker.assignment.trail_at(checker.assignment.len() - 2);
+//         if reason.is_assumed() {
+//             println!("TAUT RESOLVENT AT {}", checker.clause_to_string(checker.lemma));
+//             return
+//         }
+//         invariant!(!reason.is_assumed(), "Tautological resolvents should be handled already");
+//         let conflict_clause = checker.offset2clause(reason.offset());
+//         checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
+//     }
+// }
 
 fn rup_or_rat(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
@@ -655,17 +672,43 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         checker.rup_introductions += 1;
         if checker.config.grat_filename.is_some() {
             checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
-            checker.grat_pending.push(GRATLiteral::from_clause(checker.lemma));
+            checker
+                .grat_pending
+                .push(GRATLiteral::from_clause(checker.lemma));
         }
         extract_dependencies(checker, trail_length_forced, None);
-        add_grat_conflict_clause(checker, trail_length_forced);
+        {
+            // let (_conflict_literal, conflict_reason) = checker.assignment.peek();
+            // invariant!(!conflict_reason.is_assumed());
+            // let conflict_clause = checker.offset2clause(conflict_reason.offset());
+            // checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
+            // TODO dedup
+            let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
+            checker.grat_pending.push(GRATLiteral::from_clause(
+                checker.offset2clause(
+                    if conflict_literal_reason.is_assumed() {
+                        println!("getting reverse LITERAL FOR {}", conflict_literal);
+                        println!("{}", checker.assignment);
+                        checker
+                            .assignment
+                            .trail_at(checker.assignment.position_in_trail(-conflict_literal))
+                            .1
+                    } else {
+                        conflict_literal_reason
+                    }
+                    .offset(),
+                ),
+            ));
+        }
         write_dependencies_for_lrat(checker, lemma, false);
         return true;
     }
     let trail_length_after_rup = checker.assignment.len();
     if checker.config.grat_filename.is_some() {
         checker.grat_pending_prerat.push(GRATLiteral::RAT_LEMMA);
-        checker.grat_pending_prerat.push(GRATLiteral::from_clause(lemma));
+        checker
+            .grat_pending_prerat
+            .push(GRATLiteral::from_clause(lemma));
     }
     match rat_pivot_index(checker, trail_length_forced) {
         Some(pivot_index) => {
@@ -675,12 +718,14 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             checker.grat_rat_counts[pivot] += 1;
             checker.db.swap(head, head + pivot_index);
             if checker.config.grat_filename.is_some() {
-                for position in trail_length_forced .. trail_length_after_rup {
+                for position in trail_length_forced..trail_length_after_rup {
                     let reason = checker.assignment.trail_at(position).1;
                     if !reason.is_assumed() {
                         let reason_clause = checker.offset2clause(reason.offset());
                         if checker.grat_prerat[reason_clause] {
-                            checker.grat_pending_prerat.push(GRATLiteral::from_clause(reason_clause));
+                            checker
+                                .grat_pending_prerat
+                                .push(GRATLiteral::from_clause(reason_clause));
                             checker.grat_prerat[reason_clause] = false;
                         }
                     }
@@ -764,10 +809,10 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
     checker.clause_range(lemma).position(|offset| {
         let pivot = checker.db[offset];
         if checker.config.grat_filename.is_some() {
-            checker.grat_pending
-            .truncate(grat_pending_length);
-            checker.grat_pending_deletions
-            .truncate(grat_pending_deletions_length);
+            checker.grat_pending.truncate(grat_pending_length);
+            checker
+                .grat_pending_deletions
+                .truncate(grat_pending_deletions_length);
         }
         pivot != Literal::BOTTOM && rat_on_pivot(checker, pivot, trail_length_forced)
     })
@@ -785,15 +830,24 @@ fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: 
     );
     invariant!(checker.assignment[-pivot]);
     let resolution_candidates = collect_resolution_candidates(checker, pivot);
-    rat(checker, pivot, resolution_candidates, trail_length_before_rat) && {
+    rat(
+        checker,
+        pivot,
+        resolution_candidates,
+        trail_length_before_rat,
+    ) && {
         checker.rat_introductions += 1;
         write_dependencies_for_lrat(checker, lemma, true);
         true
     }
 }
 
-fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Clause>,
-      trail_length_before_rat: usize) -> bool {
+fn rat(
+    checker: &mut Checker,
+    pivot: Literal,
+    resolution_candidates: Stack<Clause>,
+    trail_length_before_rat: usize,
+) -> bool {
     assignment_invariants(checker);
     checker.dependencies.clear();
     let trail_length_before_rup = checker.assignment.len();
@@ -833,18 +887,43 @@ fn rat(checker: &mut Checker, pivot: Literal, resolution_candidates: Stack<Claus
                                 .dependencies
                                 .push(LRATDependency::resolution_candidate(resolution_candidate));
                         }
+                        let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
+                        let resolvent_is_tautological = conflict_literal_reason.is_assumed()
+                            && checker
+                                .assignment
+                                .trail_at(checker.assignment.position_in_trail(-conflict_literal))
+                                .1
+                                .is_assumed();
                         if checker.config.grat_filename.is_some() {
-                            let (_conflict_literal, reason) = checker.assignment.peek();
-                            if !reason.is_assumed() {
-                                checker.grat_pending.push(GRATLiteral::from_clause(resolution_candidate));
+                            if !resolvent_is_tautological {
+                                checker
+                                    .grat_pending
+                                    .push(GRATLiteral::from_clause(resolution_candidate));
                             }
                         }
-                        extract_dependencies(checker, trail_length_before_rup, Some(trail_length_before_rat));
-                        if checker.config.grat_filename.is_some() {
-                            let (_conflict_literal, reason) = checker.assignment.peek();
-                            if !reason.is_assumed() {
-                                add_grat_conflict_clause(checker, trail_length_before_rat);
-                            }
+                        extract_dependencies(
+                            checker,
+                            trail_length_before_rup,
+                            Some((trail_length_before_rat, resolvent_is_tautological)),
+                        );
+                        if !resolvent_is_tautological {
+                            checker.grat_pending.push(GRATLiteral::from_clause(
+                                checker.offset2clause(
+                                    if conflict_literal_reason.is_assumed() {
+                                        checker
+                                            .assignment
+                                            .trail_at(
+                                                checker
+                                                    .assignment
+                                                    .position_in_trail(-conflict_literal),
+                                            )
+                                            .1
+                                    } else {
+                                        conflict_literal_reason
+                                    }
+                                    .offset(),
+                                ),
+                            ));
                         }
                         true
                     }
@@ -876,10 +955,11 @@ fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
     }
 }
 
-fn extract_dependencies(checker: &mut Checker,
-                       trail_length_before_rup: usize,
-                       trail_length_before_rat: Option<usize>,
-                       ) {
+fn extract_dependencies(
+    checker: &mut Checker,
+    trail_length_before_rup: usize,
+    trail_length_before_rat: Option<(usize, bool)>,
+) {
     let conflict_literal = checker.assignment.peek().0;
     requires!(
         conflict_literal == Literal::TOP
@@ -910,10 +990,10 @@ fn extract_dependencies(checker: &mut Checker,
         }
     }
     if checker.config.grat_filename.is_some() {
-        let (_conflict_literal, conflict_reason) = checker.assignment.peek();
-        if !conflict_reason.is_assumed() {
+        let resolvent_is_tautological = trail_length_before_rat.map_or(false, |tuple| tuple.1);
+        if !resolvent_is_tautological {
             match trail_length_before_rat {
-                Some(trail_length) => {
+                Some((trail_length, _resolvent_is_tautological)) => {
                     for position in trail_length..trail_length_before_rup {
                         let (_literal, reason) = checker.assignment.trail_at(position);
                         if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
@@ -923,9 +1003,9 @@ fn extract_dependencies(checker: &mut Checker,
                         checker.grat_prerat[clause] = true;
                     }
                 }
-                None => ()
+                None => (),
             }
-            for position in trail_length_before_rup .. checker.assignment.len()-1 {
+            for position in trail_length_before_rup..checker.assignment.len() - 1 {
                 let (_literal, reason) = checker.assignment.trail_at(position);
                 if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
                     continue;
@@ -936,6 +1016,7 @@ fn extract_dependencies(checker: &mut Checker,
             checker.grat_pending.push(GRATLiteral::ZERO);
         }
     }
+    // TODO only above forced
     log!(checker, 3, "Resolution chain:");
     for position in 1..checker.assignment.len() {
         let (literal, reason) = checker.assignment.trail_at(position);
@@ -952,16 +1033,17 @@ fn extract_dependencies(checker: &mut Checker,
         let clause = checker.offset2clause(reason.offset());
         let position_in_trail = checker.assignment.position_in_trail(literal);
         if checker.config.lrat_filename.is_some() {
-            checker.dependencies.push(match trail_length_before_rat {
-                Some(trail_length) => {
-                    if position_in_trail < trail_length {
+            checker
+                .dependencies
+                .push(if trail_length_before_rat.is_some() {
+                    if position_in_trail < trail_length_before_rup {
                         LRATDependency::forced_unit(clause)
                     } else {
                         LRATDependency::unit(clause)
                     }
-                }
-                None => LRATDependency::unit(clause),
-            });
+                } else {
+                    LRATDependency::unit(clause)
+                });
         }
         remove_from_conflict_graph(checker, reason);
     }
@@ -1188,9 +1270,11 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     }
     if checker.config.grat_filename.is_some() {
         let reason = checker.assignment.pop().1;
+        // let reason = checker.assignment.peek().1;
         if reason.is_assumed() {
-            let empty_clause_in_premise =
-                Clause::range(0, checker.lemma).find(|&clause| checker.clause(clause).empty()).unwrap();
+            let empty_clause_in_premise = Clause::range(0, checker.lemma)
+                .find(|&clause| checker.clause(clause).empty())
+                .unwrap();
             schedule(checker, empty_clause_in_premise);
             checker.grat_conflict_clause = empty_clause_in_premise;
         } else {
@@ -1314,13 +1398,13 @@ fn verify(checker: &mut Checker) -> bool {
             if checker.config.grat_filename.is_some() {
                 // TODO
                 // if !checker.grat_in_deletion {
-                    checker.grat.push(GRATLiteral::DELETION);
-                    // checker.grat_in_deletion = true;
+                checker.grat.push(GRATLiteral::DELETION);
+                // checker.grat_in_deletion = true;
                 // }
                 checker.grat.push(GRATLiteral::from_clause(clause));
                 // if checker.grat_in_deletion {
-                    checker.grat.push(GRATLiteral::ZERO);
-                    // checker.grat_in_deletion = false;
+                checker.grat.push(GRATLiteral::ZERO);
+                // checker.grat_in_deletion = false;
                 // }
             }
             true
@@ -1477,7 +1561,8 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
                 loop {
                     i += 1;
                     let grat_clause = checker.grat[i];
-                    n+= 1; write!(file, " {}", grat_clause)?;
+                    n += 1;
+                    write!(file, " {}", grat_clause)?;
                     if grat_clause == GRATLiteral::ZERO {
                         break;
                         // let next_is_deletion_too = i + 1 < checker.grat.len()
@@ -1488,7 +1573,7 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
                         // i += 1;
                     }
                 }
-            },
+            }
             GRATLiteral::RUP_LEMMA => {
                 i += 1;
                 let lemma = checker.grat[i];
@@ -1512,50 +1597,62 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
                     }
                 }
                 i += 1;
-                n+=1; write!(file, " {}", checker.grat[i])?; // conflict
+                n += 1;
+                write!(file, " {}", checker.grat[i])?; // conflict
             }
             GRATLiteral::RAT_LEMMA => {
                 i += 1;
                 let lemma = checker.grat[i];
                 let clause_slice = checker.clause(lemma.to_clause());
-                n+=1; write!(file, " {}", clause_slice[0])?;
-                n+=1; write!(file, " {}", lemma)?;
+                n += 1;
+                write!(file, " {}", clause_slice[0])?;
+                n += 1;
+                write!(file, " {}", lemma)?;
                 for &literal in clause_slice {
                     if literal != Literal::BOTTOM {
-n+=1;                         write!(file, " {}", literal)?;
+                        n += 1;
+                        write!(file, " {}", literal)?;
                     }
                 }
-                n+=1; write!(file, " 0")?;
+                n += 1;
+                write!(file, " 0")?;
                 loop {
                     i += 1;
                     let unit = checker.grat[i];
                     if unit == GRATLiteral::ZERO {
-                        break
+                        break;
                     }
-                    n+=1; write!(file, " {}", unit)?;
+                    n += 1;
+                    write!(file, " {}", unit)?;
                 }
-                n+=1; write!(file, " 0")?;
+                n += 1;
+                write!(file, " 0")?;
                 loop {
                     i += 1;
                     let candidate = checker.grat[i];
                     if candidate == GRATLiteral::ZERO {
                         break;
                     }
-                    n+=1; write!(file, " {}", candidate)?;
+                    n += 1;
+                    write!(file, " {}", candidate)?;
                     loop {
                         i += 1;
                         let unit = checker.grat[i];
                         if unit == GRATLiteral::ZERO {
                             break;
                         }
-                        n+=1; write!(file, " {}", unit)?;
+                        n += 1;
+                        write!(file, " {}", unit)?;
                     }
                     i += 1;
-                    n+=1; write!(file, " 0")?;
-                    n+=1; write!(file, " {}", checker.grat[i])?; // conflict
+                    n += 1;
+                    write!(file, " 0")?;
+                    n += 1;
+                    write!(file, " {}", checker.grat[i])?; // conflict
                 }
-                n+=1; write!(file, " 0")?;
-            },
+                n += 1;
+                write!(file, " 0")?;
+            }
             GRATLiteral::RAT_COUNTS => unreachable(),
             _ => unreachable(),
         }
@@ -1563,25 +1660,31 @@ n+=1;                         write!(file, " {}", literal)?;
         i += 1;
     }
     {
-        let mut n = 1; write!(file, "{}", GRATLiteral::DELETION)?;
+        let mut n = 1;
+        write!(file, "{}", GRATLiteral::DELETION)?;
         // delete lemmas that were never used
         for clause in Clause::range(0, checker.lemma) {
             if !checker.fields(clause).is_scheduled() {
-                n += 1; write!(file, " {}", GRATLiteral::from_clause(clause))?;
+                n += 1;
+                write!(file, " {}", GRATLiteral::from_clause(clause))?;
             }
         }
-        n += 1; write!(file, " 0")?;
+        n += 1;
+        write!(file, " 0")?;
         writeln!(file, " {}", n)?;
     }
     {
-        let mut n = 1; write!(file, "{}", GRATLiteral::RAT_COUNTS)?;
+        let mut n = 1;
+        write!(file, "{}", GRATLiteral::RAT_COUNTS)?;
         for literal in Literal::all(checker.maxvar) {
             let count = checker.grat_rat_counts[literal];
             if count != 0 {
-                n += 2; write!(file, " {} {}", literal, count)?;
+                n += 2;
+                write!(file, " {} {}", literal, count)?;
             }
         }
-        n += 1; write!(file, " 0")?;
+        n += 1;
+        write!(file, " 0")?;
         writeln!(file, " {}", n)?;
     }
     Ok(())

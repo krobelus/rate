@@ -222,7 +222,6 @@ impl LRATLiteral {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GRATLiteral(pub i32);
 
-
 impl GRATLiteral {
     pub const ZERO: Self = Self(0);
     pub const UNIT_PROP: Self = Self(1);

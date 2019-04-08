@@ -202,36 +202,43 @@ def double_check(drat_checker,
                  instances=drat_inputs()):
     build_release()
     [ensure_executable(command) for command in (drat_checker, lrat_checker)]
-    sick = not (any('--skip-unit-deletions' in arg for arg in drat_checker))
+    skip_unit_deletions = any(
+        '--skip-unit-deletions' in arg for arg in drat_checker)
+    sick = not skip_unit_deletions
     for name in instances:
         pr = os.path.exists(f'{name}.pr')
         args = [f'{name}.cnf']
         if pr:
             args += [f'{name}.pr']
         else:
-            args += [f'{name}.drat', '-L', f'{name}.lrat', '-G', f'{name}.grat']
+            args += [f'{name}.drat', '-L',
+                     f'{name}.lrat', '-G', f'{name}.grat']
             if sick:
                 args += ['--recheck', f'{name}.sick']
         if pr:
             assert accepts(drat_checker + args, name)
             return
         if accepts(drat_checker + args, name):
-            if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[
-                    0]:
-                continue  # rejects tautological formulas
-            if 'lrat-check' in lrat_checker[0]:
-                if name == 'benchmarks/crafted/tautological':
-                    continue
-                if name == 'benchmarks/crafted/duplicate-literals':
-                    continue
-                if name == 'benchmarks/crafted/bottom':
-                    continue
-            assert lrat_checker_accepts(
-                lrat_checker + [args[0], args[3], 'nil', 't'], name)
-            assert gratchk_accepts([args[0], args[5]], name)
+            # if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[
+            #         0]:
+            #     continue  # rejects tautological formulas
+            assert 'lrat-check' in lrat_checker[0]
+            if name not in {f'benchmarks/crafted/{x}' for x in (
+                'tautological',
+                'duplicate-literals',
+                'bottom',
+            )}:
+                assert lrat_checker_accepts(
+                    lrat_checker + [args[0], args[3], 'nil', 't'], name)
+            if ('rate' not in checker[0] or skip_unit_deletions or
+                    name not in {f'benchmarks/rupee/{x}' for x in (
+                        'tricky-2',  # looks like gratchk cannot delete units
+                    )}
+                ):
+                assert gratchk_accepts([args[0], args[5]], name)
         elif sick:
-            assert sick_checker_accepts(['target/release/sickcheck'] + args[:2] + [args[-1]],
-                                        name)
+            assert sick_checker_accepts(
+                ['target/release/sickcheck'] + args[:2] + [args[-1]], name)
 
 
 def test_pr():
