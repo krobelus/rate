@@ -1432,6 +1432,10 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
         let trail_length = checker.assignment.position_in_trail(unit);
         invariant!(trail_length < checker.assignment.len());
         if checker.config.grat_filename.is_some() {
+            if checker.grat_in_deletion {
+                checker.grat_in_deletion = false;
+                checker.grat.push(GRATLiteral::ZERO);
+            }
             checker.grat.push(GRATLiteral::UNIT_PROP);
             for position in trail_length..checker.assignment.len() {
                 let reason = checker.assignment.trail_at(position).1;
