@@ -178,10 +178,10 @@ impl ClauseDatabase {
         &mut self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
     }
     pub fn fields_from_offset(&self, offset: usize) -> &u32 {
-        unsafe { &*(self.data[offset - 1].encoding as *const u32) }
+        &self.data[offset - 1].encoding
     }
     pub fn fields_mut_from_offset(&mut self, offset: usize) -> &mut u32 {
-        unsafe { &mut *(&mut self.data[offset - 1].encoding as *mut u32) }
+        &mut self.data[offset - 1].encoding
     }
     #[cfg(test)]
     pub fn clear(&mut self) {
