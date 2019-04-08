@@ -614,7 +614,6 @@ fn reduct(
 }
 
 fn pr(checker: &mut Checker) -> bool {
-    requires!(!checker.config.grat_filename.is_some(), "TODO");
     let lemma = checker.lemma;
     let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
     let lemma_length = tmp.len();

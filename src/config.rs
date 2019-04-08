@@ -66,8 +66,8 @@ impl Config {
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
+        let lrat = matches.is_present("LRAT_FILE");
         let grat = matches.is_present("GRAT_FILE");
-
         let sick_filename = matches.value_of("SICK_FILE").map(String::from);
 
         if skip_unit_deletions && sick_filename.is_some() {
@@ -88,15 +88,19 @@ impl Config {
             incompatible_options("--drat-trim --assume-pivot-is-first");
         }
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
+        let redundancy_property = if proof_filename.ends_with(".drat") {
+            RedundancyProperty::RAT
+        } else if proof_filename.ends_with(".pr") || proof_filename.ends_with(".dpr") {
+            if lrat || grat {
+                die!("LRAT and GRAT generation is not possible for PR")
+            }
+            RedundancyProperty::PR
+        } else {
+            comment!("unknown file extension, defaulting to RAT checking");
+            RedundancyProperty::RAT
+        };
         Config {
-            redundancy_property: if proof_filename.ends_with(".drat") {
-                RedundancyProperty::RAT
-            } else if proof_filename.ends_with(".pr") || proof_filename.ends_with(".dpr") {
-                RedundancyProperty::PR
-            } else {
-                comment!("unknown file extension, defaulting to RAT checking");
-                RedundancyProperty::RAT
-            },
+            redundancy_property,
             skip_unit_deletions: drat_trim || skip_unit_deletions,
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
