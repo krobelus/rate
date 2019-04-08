@@ -5,7 +5,7 @@ use crate::{
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{HeapSpace, Offset, Slice, Stack},
+    memory::{HeapSpace, Offset, Slice, SmallStack, Stack},
     output::Timer,
 };
 #[cfg(feature = "flame_it")]
@@ -18,8 +18,8 @@ use std::{
     fs::File,
     hash::{Hash, Hasher},
     io::{self, BufReader, Read},
-    iter::{FromIterator, Peekable},
-    panic, str,
+    iter::Peekable,
+    panic,
 };
 
 // This needs to be static so that ClauseHashEq can access it.
@@ -199,7 +199,7 @@ fn add_literal(
                 let key = ClauseHashEq(clause);
                 clause_ids
                     .entry(key)
-                    .or_insert_with(SmallStack::empty)
+                    .or_insert_with(SmallStack::new)
                     .push(clause);
             }
         }
@@ -617,16 +617,16 @@ c comment
             let expected_clause_ids = [
                 (
                     ClauseHashEq(Clause::new(1)),
-                    SmallStack::one(Clause::new(1)),
+                    SmallStack::singleton(Clause::new(1)),
                 ),
                 (
                     ClauseHashEq(Clause::new(2)),
-                    SmallStack::one(Clause::new(2)),
+                    SmallStack::singleton(Clause::new(2)),
                 ),
-                (ClauseHashEq(Clause::new(0)), SmallStack::empty()),
+                (ClauseHashEq(Clause::new(0)), SmallStack::new()),
                 (
                     ClauseHashEq(Clause::new(3)),
-                    SmallStack::one(Clause::new(3)),
+                    SmallStack::singleton(Clause::new(3)),
                 ),
             ]
             .iter()
@@ -768,84 +768,5 @@ impl<T: Iterator<Item = u8>> Input for BinaryInput<T> {
         Self: Sized,
     {
         Err(ParseError { why, line: 0 })
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-enum SmallStackState<T> {
-    Empty,
-    One(T),
-    Many(Stack<T>),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct SmallStack<T> {
-    state: SmallStackState<T>,
-}
-
-impl<T: Copy + Default> SmallStack<T> {
-    fn empty() -> SmallStack<T> {
-        SmallStack {
-            state: SmallStackState::Empty,
-        }
-    }
-    #[allow(dead_code)]
-    fn one(value: T) -> SmallStack<T> {
-        SmallStack {
-            state: SmallStackState::One(value),
-        }
-    }
-    fn many(stack: Stack<T>) -> SmallStack<T> {
-        SmallStack {
-            state: SmallStackState::Many(stack),
-        }
-    }
-    fn push(&mut self, new_value: T) {
-        if let SmallStackState::Empty = self.state {
-            self.state = SmallStackState::One(new_value);
-            return;
-        }
-        if let SmallStackState::One(value) = self.state {
-            self.state = SmallStackState::Many(stack!(value));
-        }
-        if let SmallStackState::Many(stack) = &mut self.state {
-            stack.push(new_value);
-            return;
-        }
-        unreachable();
-    }
-    pub fn swap_remove(&mut self, index: usize) -> Option<T> {
-        requires!(index == 0);
-        if let SmallStackState::One(value) = self.state {
-            self.state = SmallStackState::Empty;
-            Some(value)
-        } else if let SmallStackState::Many(stack) = &mut self.state {
-            if stack.empty() {
-                None
-            } else {
-                Some(stack.swap_remove(0))
-            }
-        } else {
-            None
-        }
-    }
-    #[allow(dead_code)]
-    pub fn to_vec(&self) -> Vec<T> {
-        if let SmallStackState::Empty = self.state {
-            return vec![];
-        }
-        if let SmallStackState::One(value) = self.state {
-            return vec![value];
-        }
-        if let SmallStackState::Many(stack) = &self.state {
-            return stack.to_vec();
-        }
-        unreachable();
-    }
-}
-
-impl<T: Copy + Default> FromIterator<T> for SmallStack<T> {
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> SmallStack<T> {
-        SmallStack::many(Stack::from_iter(iter))
     }
 }

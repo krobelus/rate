@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(unused_macros)]
 #![feature(
     try_trait,
     alloc,
@@ -16,15 +17,12 @@ mod output;
 #[macro_use]
 mod memory;
 mod assignment;
-mod checker;
 mod clause;
 mod clausedatabase;
 mod config;
 mod literal;
 mod parser;
 
-#[macro_use(defer)]
-extern crate scopeguard;
 extern crate alloc;
 #[macro_use(Serialize, Deserialize)]
 extern crate serde_derive;

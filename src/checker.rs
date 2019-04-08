@@ -244,16 +244,16 @@ impl Checker {
         }
     }
     fn fields(&self, clause: Clause) -> &ClauseFields {
-        self.db.fields(clause)
+        unsafe { &*(self.db.fields(clause) as *const u32 as *const ClauseFields) }
     }
     fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
-        self.db.fields_mut(clause)
+        unsafe { &mut *(self.db.fields_mut(clause) as *mut u32 as *mut ClauseFields) }
     }
     fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
-        self.db.fields_from_offset(offset)
+        unsafe { &*(self.db.fields_from_offset(offset) as *const u32 as *const ClauseFields) }
     }
     fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
-        self.db.fields_mut_from_offset(offset)
+        unsafe { &mut *(self.db.fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields) }
     }
     #[allow(dead_code)]
     fn clause_colorized(&self, clause: Clause) -> String {
@@ -651,9 +651,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         checker.rup_introductions += 1;
         if checker.config.grat_filename.is_some() {
             checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
-            checker
-                .grat_pending
-                .push(GRATLiteral::from_clause(lemma));
+            checker.grat_pending.push(GRATLiteral::from_clause(lemma));
         }
         extract_dependencies(checker, trail_length_forced, None);
         {

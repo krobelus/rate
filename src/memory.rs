@@ -18,12 +18,14 @@ mod boundedstack;
 mod slice;
 #[macro_use]
 mod stack;
+mod smallstack;
 mod stackmapping;
 
 pub use crate::memory::{
     array::{assert_in_bounds, Array},
     boundedstack::BoundedStack,
     slice::{Slice, SliceMut},
+    smallstack::SmallStack,
     stack::{ConsumingStackIterator, Stack, StackIterator},
     stackmapping::StackMapping,
 };

@@ -1,6 +1,5 @@
 ///! Container for clauses
 use crate::{
-    checker::ClauseFields,
     clause::Clause,
     literal::Literal,
     memory::{Offset, Slice, Stack},
@@ -87,7 +86,7 @@ impl ClauseDatabase {
         let upper = ((id & 0xffff_ffff_0000_0000) >> 32) as u32;
         self.data.push(Literal::from_raw(lower));
         self.data.push(Literal::from_raw(upper));
-        self.data.push(Literal::from_raw(0));
+        self.data.push(Literal::from_raw(0)); // fields
         clause
     }
     fn close_clause(&mut self) {
@@ -172,23 +171,17 @@ impl ClauseDatabase {
         self.offset[target.as_offset() + 1] =
             self.offset[target.as_offset()] + PADDING_START + PADDING_END;
     }
-    pub fn fields(&self, clause: Clause) -> &ClauseFields {
-        unsafe {
-            &*(&self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding as *const u32
-                as *const ClauseFields)
-        }
+    pub fn fields(&self, clause: Clause) -> &u32 {
+        &self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
     }
-    pub fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
-        unsafe {
-            &mut *(&mut (self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding)
-                as *mut u32 as *mut ClauseFields)
-        }
+    pub fn fields_mut(&mut self, clause: Clause) -> &mut u32 {
+        &mut self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding
     }
-    pub fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
-        unsafe { &*(&(self.data[offset - 1].encoding) as *const u32 as *const ClauseFields) }
+    pub fn fields_from_offset(&self, offset: usize) -> &u32 {
+        unsafe { &*(self.data[offset - 1].encoding as *const u32) }
     }
-    pub fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
-        unsafe { &mut *(&mut (self.data[offset - 1].encoding) as *mut u32 as *mut ClauseFields) }
+    pub fn fields_mut_from_offset(&mut self, offset: usize) -> &mut u32 {
+        unsafe { &mut *(&mut self.data[offset - 1].encoding as *mut u32) }
     }
     #[cfg(test)]
     pub fn clear(&mut self) {
