@@ -34,11 +34,11 @@ use std::{fs::File, io::Read, process::exit};
 use toml;
 
 use crate::{
-    assignment::Assignment,
+    assignment::{stable_under_unit_propagation, Assignment},
     clause::{Clause, Reason},
     config::RedundancyProperty,
     literal::Literal,
-    memory::{Array, Slice},
+    memory::Array,
     output::solution,
     parser::{run_parser, ClauseHashEq, HashTable, Parser},
 };
@@ -154,9 +154,14 @@ fn main() {
     clause_ids
         .get_mut(&ClauseHashEq(lemma))
         .map(|clause_stack| clause_stack.swap_remove(0));
+    fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
+        clause_ids
+            .get(&ClauseHashEq(needle))
+            .map_or(false, |stack| !stack.to_vec().is_empty())
+    }
     for clause in Clause::range(0, lemma) {
         if clause_is_active(&clause_ids, clause) {
-            if !UP_models(&assignment, parser.clause_db.clause(clause)) {
+            if !stable_under_unit_propagation(&assignment, parser.clause_db.clause(clause)) {
                 die!(
                     "Natural model is not a UP-model for clause {}",
                     parser.clause_db.clause_to_string(clause)
@@ -174,14 +179,12 @@ fn main() {
         let failing_clause = clause_ids
             .get(&ClauseHashEq(failing_clause_tmp))
             .and_then(|stack| stack.to_vec().get(0).cloned())
-            .unwrap_or_else(
-                || {
-                    die!(
-                        "Failing clause is not present in the formula: {}",
-                        parser.clause_db.clause_to_string(failing_clause_tmp),
-                    )
-                }
-            );
+            .unwrap_or_else(|| {
+                die!(
+                    "Failing clause is not present in the formula: {}",
+                    parser.clause_db.clause_to_string(failing_clause_tmp),
+                )
+            });
         parser.clause_db.pop_clause();
         let lemma_slice = parser.clause_db.clause(lemma);
         for &literal in &witness.failing_model {
@@ -242,7 +245,7 @@ fn main() {
         }
         for clause in Clause::range(0, lemma) {
             if clause_is_active(&clause_ids, clause) {
-                if !UP_models(&assignment, parser.clause_db.clause(clause)) {
+                if !stable_under_unit_propagation(&assignment, parser.clause_db.clause(clause)) {
                     die!(
                         "Failing model is not a UP-model for clause {}",
                         parser.clause_db.clause_to_string(clause)
@@ -255,18 +258,4 @@ fn main() {
         }
     }
     solution("ACCEPTED");
-}
-
-#[allow(non_snake_case)]
-fn UP_models(assignment: &Assignment, clause: Slice<Literal>) -> bool {
-    let clause_is_satisfied = clause.iter().any(|&literal| assignment[literal]);
-    let unknown_count = clause
-        .iter()
-        .filter(|&&literal| !assignment[literal] && !assignment[-literal])
-        .count();
-    clause_is_satisfied || unknown_count >= 2
-}
-
-fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
-    clause_ids.get(&ClauseHashEq(needle)).map_or(false, |stack| !stack.to_vec().is_empty())
 }

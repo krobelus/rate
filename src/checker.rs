@@ -1,7 +1,7 @@
 //! Proof checking logic.
 
 use crate::{
-    assignment::Assignment,
+    assignment::{stable_under_unit_propagation, Assignment},
     clause::{Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, Config, RedundancyProperty},
@@ -1893,16 +1893,6 @@ enum Mode {
     NonCore,
 }
 
-#[allow(non_snake_case)]
-fn UP_models(assignment: &Assignment, clause: Slice<Literal>) -> bool {
-    let clause_is_satisfied = clause.iter().any(|&literal| assignment[literal]);
-    let unknown_count = clause
-        .iter()
-        .filter(|&&literal| !assignment[literal] && !assignment[-literal])
-        .count();
-    clause_is_satisfied || unknown_count >= 2
-}
-
 fn watch_invariants(checker: &Checker) {
     if crate::config::WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
@@ -1935,9 +1925,10 @@ fn watch_invariant(checker: &Checker, lit: Literal, head: usize) {
     );
     let clause = checker.offset2clause(head);
     invariant!(
-        UP_models(&checker.assignment, checker.clause(clause)),
-        "Model is not stable for {}", checker.clause_colorized(clause)
-        );
+        stable_under_unit_propagation(&checker.assignment, checker.clause(clause)),
+        "Model is not stable for {}",
+        checker.clause_colorized(clause)
+    );
 }
 
 fn watchlist(checker: &Checker, mode: Mode) -> &Array<Literal, Watchlist> {

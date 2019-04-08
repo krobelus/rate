@@ -7,7 +7,7 @@
 use crate::{
     clause::Reason,
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack, HeapSpace, StackIterator},
+    memory::{Array, BoundedStack, HeapSpace, Slice, StackIterator},
 };
 use std::{fmt, fmt::Display, ops::Index};
 
@@ -148,4 +148,14 @@ impl HeapSpace for Assignment {
     fn heap_space(&self) -> usize {
         self.mapping.heap_space() + self.trail.heap_space() + self.position_in_trail.heap_space()
     }
+}
+
+/// UP-models in rupee
+pub fn stable_under_unit_propagation(assignment: &Assignment, clause: Slice<Literal>) -> bool {
+    let clause_is_satisfied = clause.iter().any(|&literal| assignment[literal]);
+    let unknown_count = clause
+        .iter()
+        .filter(|&&literal| !assignment[literal] && !assignment[-literal])
+        .count();
+    clause_is_satisfied || unknown_count >= 2
 }
