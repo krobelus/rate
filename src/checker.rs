@@ -641,6 +641,24 @@ fn pr(checker: &mut Checker) -> bool {
     true
 }
 
+fn add_rup_conflict_for_grat(checker: &mut Checker) {
+    let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
+    let reason = if conflict_literal_reason.is_assumed() {
+                checker
+                    .assignment
+                    .trail_at(
+                        checker
+                            .assignment
+                            .position_in_trail(-conflict_literal),
+                    )
+                    .1
+            } else {
+                conflict_literal_reason
+            };
+    let reason_clause = checker.offset2clause(reason.offset());
+    checker.grat_pending.push(GRATLiteral::from_clause(reason_clause));
+}
+
 fn rup_or_rat(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
     assignment_invariants(checker);
@@ -654,22 +672,9 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             checker.grat_pending.push(GRATLiteral::from_clause(lemma));
         }
         extract_dependencies(checker, trail_length_forced, None);
+        if checker.config.grat_filename.is_some()
         {
-            // TODO dedup
-            let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
-            checker.grat_pending.push(GRATLiteral::from_clause(
-                checker.offset2clause(
-                    if conflict_literal_reason.is_assumed() {
-                        checker
-                            .assignment
-                            .trail_at(checker.assignment.position_in_trail(-conflict_literal))
-                            .1
-                    } else {
-                        conflict_literal_reason
-                    }
-                    .offset(),
-                ),
-            ));
+            add_rup_conflict_for_grat(checker);
         }
         write_dependencies_for_lrat(checker, lemma, false);
         return true;
@@ -878,23 +883,7 @@ fn rat(
                             Some((trail_length_before_rat, resolvent_is_tautological)),
                         );
                         if !resolvent_is_tautological {
-                            checker.grat_pending.push(GRATLiteral::from_clause(
-                                checker.offset2clause(
-                                    if conflict_literal_reason.is_assumed() {
-                                        checker
-                                            .assignment
-                                            .trail_at(
-                                                checker
-                                                    .assignment
-                                                    .position_in_trail(-conflict_literal),
-                                            )
-                                            .1
-                                    } else {
-                                        conflict_literal_reason
-                                    }
-                                    .offset(),
-                                ),
-                            ));
+                            add_rup_conflict_for_grat(checker);
                         }
                         true
                     }
