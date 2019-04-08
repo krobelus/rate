@@ -641,27 +641,6 @@ fn pr(checker: &mut Checker) -> bool {
     true
 }
 
-// TODO
-// fn add_rup_conflict_for_grat(checker: &mut Checker) {
-//     if !checker.config.grat_filename.is_some() {
-//         return
-//     }
-//     let (_conflict_literal, reason) = checker.assignment.peek();
-//     if !reason.is_assumed() {
-//         let conflict_clause = checker.offset2clause(reason.offset());
-//         checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
-//     } else {
-//         let (_negated_conflict_literal, reason) = checker.assignment.trail_at(checker.assignment.len() - 2);
-//         if reason.is_assumed() {
-//             println!("TAUT RESOLVENT AT {}", checker.clause_to_string(checker.lemma));
-//             return
-//         }
-//         invariant!(!reason.is_assumed(), "Tautological resolvents should be handled already");
-//         let conflict_clause = checker.offset2clause(reason.offset());
-//         checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
-//     }
-// }
-
 fn rup_or_rat(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
     assignment_invariants(checker);
@@ -674,21 +653,15 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
             checker
                 .grat_pending
-                .push(GRATLiteral::from_clause(checker.lemma));
+                .push(GRATLiteral::from_clause(lemma));
         }
         extract_dependencies(checker, trail_length_forced, None);
         {
-            // let (_conflict_literal, conflict_reason) = checker.assignment.peek();
-            // invariant!(!conflict_reason.is_assumed());
-            // let conflict_clause = checker.offset2clause(conflict_reason.offset());
-            // checker.grat_pending.push(GRATLiteral::from_clause(conflict_clause));
             // TODO dedup
             let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
             checker.grat_pending.push(GRATLiteral::from_clause(
                 checker.offset2clause(
                     if conflict_literal_reason.is_assumed() {
-                        println!("getting reverse LITERAL FOR {}", conflict_literal);
-                        println!("{}", checker.assignment);
                         checker
                             .assignment
                             .trail_at(checker.assignment.position_in_trail(-conflict_literal))
@@ -1337,6 +1310,7 @@ fn preprocess(checker: &mut Checker) -> bool {
                     revision_create(checker, clause);
                     let no_conflict = propagate(checker);
                     invariant!(no_conflict == NO_CONFLICT);
+                    watch_invariants(checker);
                 }
             }
         } else {
@@ -1369,7 +1343,6 @@ fn verify(checker: &mut Checker) -> bool {
     defer_log!(checker, 1, "[verify] done\n");
     let _timer = Timer::name("verifying proof");
     for i in (0..checker.proof_steps_until_conflict).rev() {
-        watch_invariants(checker);
         let proof_step = checker.proof[i];
         let clause = proof_step.clause();
         let accepted = if proof_step.is_deletion() {
@@ -1920,6 +1893,16 @@ enum Mode {
     NonCore,
 }
 
+#[allow(non_snake_case)]
+fn UP_models(assignment: &Assignment, clause: Slice<Literal>) -> bool {
+    let clause_is_satisfied = clause.iter().any(|&literal| assignment[literal]);
+    let unknown_count = clause
+        .iter()
+        .filter(|&&literal| !assignment[literal] && !assignment[-literal])
+        .count();
+    clause_is_satisfied || unknown_count >= 2
+}
+
 fn watch_invariants(checker: &Checker) {
     if crate::config::WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
@@ -1950,6 +1933,11 @@ fn watch_invariant(checker: &Checker, lit: Literal, head: usize) {
             head, checker.assignment
         )
     );
+    let clause = checker.offset2clause(head);
+    invariant!(
+        UP_models(&checker.assignment, checker.clause(clause)),
+        "Model is not stable for {}", checker.clause_colorized(clause)
+        );
 }
 
 fn watchlist(checker: &Checker, mode: Mode) -> &Array<Literal, Watchlist> {
@@ -2066,7 +2054,6 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     }
     checker.revisions.push(revision);
     assignment_invariants(checker);
-    watch_invariants(checker);
 }
 
 fn watchlist_revise(checker: &mut Checker, lit: Literal) {
@@ -2282,9 +2269,9 @@ fn watches_reset_list_at(
     //   C) first_offset is in 1, second_offset is in >=2
     //   D) both first_offset and second_offset are in >=2
     if offset == first_offset {
-        if offset + 1 == second_offset ||
+        if offset + 1 == second_offset
             // TODO why
-            offset == second_offset
+            || offset == second_offset
         {
             // Case A: nothing to do!
             return;

@@ -171,23 +171,16 @@ fn main() {
         }
         parser.clause_db.push_literal(Literal::new(0));
         let failing_clause_tmp = parser.clause_db.last_clause();
-        // let have_failing_clause = clause_is_active(&clause_ids, failing_clause_tmp);
-        // if !have_failing_clause {
-        //     die!(
-        //         "Failing clause is not present in the formula: {}",
-        //         parser.clause_db.clause_to_string(failing_clause_tmp)
-        //     );
-        // }
         let failing_clause = clause_ids
             .get(&ClauseHashEq(failing_clause_tmp))
-            .map_or_else(
+            .and_then(|stack| stack.to_vec().get(0).cloned())
+            .unwrap_or_else(
                 || {
                     die!(
                         "Failing clause is not present in the formula: {}",
                         parser.clause_db.clause_to_string(failing_clause_tmp),
                     )
-                },
-                |clause_stack| clause_stack.to_vec()[0],
+                }
             );
         parser.clause_db.pop_clause();
         let lemma_slice = parser.clause_db.clause(lemma);
@@ -275,5 +268,5 @@ fn UP_models(assignment: &Assignment, clause: Slice<Literal>) -> bool {
 }
 
 fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
-    clause_ids.contains_key(&ClauseHashEq(needle))
+    clause_ids.get(&ClauseHashEq(needle)).map_or(false, |stack| !stack.to_vec().is_empty())
 }
