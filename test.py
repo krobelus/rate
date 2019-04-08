@@ -230,7 +230,7 @@ def double_check(drat_checker,
             )}:
                 assert lrat_checker_accepts(
                     lrat_checker + [args[0], args[3], 'nil', 't'], name)
-            if ('rate' not in checker[0] or skip_unit_deletions or
+            if ('rate' not in drat_checker[0] or skip_unit_deletions or
                     name not in {f'benchmarks/rupee/{x}' for x in (
                         'tricky-2',  # looks like gratchk cannot delete units
                     )}
