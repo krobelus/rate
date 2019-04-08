@@ -680,8 +680,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             checker.grat_pending.push(GRATLiteral::from_clause(lemma));
         }
         extract_dependencies(checker, trail_length_forced, None);
-        if checker.config.grat_filename.is_some()
-        {
+        if checker.config.grat_filename.is_some() {
             add_rup_conflict_for_grat(checker);
         }
         write_dependencies_for_lrat(checker, lemma, false);
@@ -890,8 +889,10 @@ fn rat(
                             trail_length_before_rup,
                             Some((trail_length_before_rat, resolvent_is_tautological)),
                         );
-                        if !resolvent_is_tautological {
-                            add_rup_conflict_for_grat(checker);
+                        if checker.config.grat_filename.is_some() {
+                            if !resolvent_is_tautological {
+                                add_rup_conflict_for_grat(checker);
+                            }
                         }
                         true
                     }
