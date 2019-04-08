@@ -839,18 +839,6 @@ fn rat(
                 && !checker.fields(resolution_candidate).is_scheduled())
                 || {
                     watch_invariants(checker);
-                    // During the RUP check, -pivot was an assumption. ACL2
-                    // lrat-check does use these semantics, while lratcheck
-                    // expects that -pivot was the result of propagating the
-                    // resolution candidate.
-                    if checker.config.lratcheck_compat {
-                        let position = checker.assignment.position_in_trail(-pivot);
-                        checker.assignment.set_trail_at(
-                            position,
-                            -pivot,
-                            Reason::forced(checker.clause2offset(resolution_candidate)),
-                        );
-                    }
                     log!(
                         checker,
                         2,

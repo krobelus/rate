@@ -10,7 +10,6 @@ pub struct Config {
     pub skip_unit_deletions: bool,
     pub unmarked_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
-    pub lratcheck_compat: bool,
     pub memory_usage_breakdown: bool,
     pub verbosity: u64,
     pub formula_filename: String,
@@ -69,12 +68,8 @@ impl Config {
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
         let grat = matches.is_present("GRAT_FILE");
 
-        let lratcheck_compat = matches.is_present("LRATCHECK_COMPAT");
         let sick_filename = matches.value_of("SICK_FILE").map(String::from);
 
-        if lratcheck_compat {
-            warn!("option --lratcheck-compat is most likely broken.");
-        }
         if skip_unit_deletions && sick_filename.is_some() {
             warn!(
                 "--recheck can produce an incorrect SICK witness when used along --skip-unit-deletions."
@@ -92,9 +87,6 @@ impl Config {
         if drat_trim && pivot_is_first_literal {
             incompatible_options("--drat-trim --assume-pivot-is-first");
         }
-        if drat_trim && lratcheck_compat {
-            incompatible_options("--drat-trim --lratcheck_compat");
-        }
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Config {
             redundancy_property: if proof_filename.ends_with(".drat") {
@@ -108,7 +100,6 @@ impl Config {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
             unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
-            lratcheck_compat,
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {

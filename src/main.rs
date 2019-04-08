@@ -64,8 +64,6 @@ fn main() {
          .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions and --noncore-rat-candidates"))
     .arg(Arg::with_name("RUPEE").long("--rupee")
          .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
-    .arg(Arg::with_name("LRATCHECK_COMPAT").long("--lratcheck-compat")
-         .help("Try output LRAT suitable for lratcheck (as opposed to the verified lrat-check)"))
     .arg(Arg::with_name("MEMORY_USAGE_BREAKDOWN").short("m").long("--memory-breakdown")
          .help("Output detailled memory usage."))
     .arg(Arg::with_name("LEMMAS_FILE").takes_value(true).short("l").long("lemmas")
