@@ -78,6 +78,11 @@ pub fn run_parser(
     proof_file: &str,
     mut clause_ids: &mut HashTable,
 ) {
+    parser.redundancy_property = proof_format_by_extension(&proof_file);
+    comment!("mode: {}", parser.redundancy_property);
+    if parser.redundancy_property != RedundancyProperty::RAT {
+        parser.witness_db.initialize();
+    }
     {
         let _timer = Timer::name("parsing formula");
         let formula_input = read_file(formula_file);
@@ -87,11 +92,6 @@ pub fn run_parser(
             TextInput::new(Box::new(formula_input)),
         )
         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
-    }
-    parser.redundancy_property = proof_format_by_extension(&proof_file);
-    comment!("mode: {}", parser.redundancy_property);
-    if parser.redundancy_property != RedundancyProperty::RAT {
-        parser.witness_db.initialize();
     }
     {
         let _timer = Timer::name("parsing proof");
@@ -155,7 +155,15 @@ pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
 
 fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let file = open_file(filename);
-    match compression_format_by_extension(filename).1 {
+    let (_basename, compression_format) = compression_format_by_extension(filename);
+    if compression_format == "" {
+        return Box::new(
+            mmap_file(file)
+                .map_or(vec![], |mmap| mmap.to_owned())
+                .into_iter(),
+        );
+    }
+    match compression_format {
         ZSTD => {
             let de = zstd::stream::read::Decoder::new(file)
                 .unwrap_or_else(|err| die!("failed to decompress ZST archive: {}", err));
@@ -174,14 +182,10 @@ fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
             Box::new(de.bytes().map(panic_on_error))
         }
         LZ4 => {
-            let de = lz4::Decoder::new(file).unwrap_or_else(|err| die!("Failed to decode LZ4 archive: {}", err));
+            let de = lz4::Decoder::new(file)
+                .unwrap_or_else(|err| die!("Failed to decode LZ4 archive: {}", err));
             Box::new(de.bytes().map(panic_on_error))
         }
-        "" => Box::new(
-            mmap_file(file)
-                .map_or(vec![], |mmap| mmap.to_owned())
-                .into_iter(),
-        ),
         _ => unreachable(),
     }
 }

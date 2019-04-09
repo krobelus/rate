@@ -25,6 +25,7 @@ mod clausedatabase;
 mod config;
 mod literal;
 mod parser;
+mod sick;
 
 #[macro_use(defer)]
 extern crate scopeguard;
@@ -90,8 +91,13 @@ fn main() {
     comment!("rate version: {}", env!("GIT_COMMIT"));
     let timer = Timer::name("total time");
     let parser = parse_files(&config.formula_filename, &config.proof_filename);
-    if parser.is_pr() && (config.lrat_filename.is_some() || config.grat_filename.is_some()) {
-        die!("LRAT and GRAT generation is not possible for PR")
+    if parser.is_pr() {
+        if config.lrat_filename.is_some() || config.grat_filename.is_some() {
+            die!("LRAT and GRAT generation is not possible for PR")
+        }
+        if config.sick_filename.is_some() {
+            die!("LRAT and GRAT generation is not possible for PR")
+        }
     }
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);

@@ -113,6 +113,9 @@ impl Assignment {
         self.trail[offset] = (literal, reason);
         self.position_in_trail[literal] = offset;
     }
+    pub fn iter<'a>(&'a self) -> StackIterator<'a, (Literal, Reason)> {
+        self.into_iter()
+    }
 }
 
 /// Iterate over the literals in the trail, from oldest to newest.

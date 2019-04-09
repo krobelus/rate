@@ -11,6 +11,7 @@ use crate::{
     },
     output::{self, Timer},
     parser::Parser,
+    sick::{Sick, Witness},
 };
 use ansi_term::Colour;
 use bitfield::bitfield;
@@ -22,6 +23,7 @@ use std::{
     fs::File,
     io,
     io::{BufWriter, Write},
+    iter::FromIterator,
     ops::{self, Index},
 };
 
@@ -53,7 +55,8 @@ pub struct Checker {
     lemma: Clause, // current lemma / first lemma of proof
     proof_steps_until_conflict: usize,
     soft_propagation: bool,
-    rejection: Rejection,
+    rejection: Sick,
+    rejection_lemma: Stack<Literal>,
 
     implication_graph: StackMapping<usize, bool>,
     literal_is_in_cone_preprocess: Array<Literal, bool>,
@@ -105,27 +108,6 @@ bitfield! {
     has_revision, set_has_revision: 3;
     deletion_ignored, set_deletion_ignored: 4;
     in_conflict_graph, set_in_conflict_graph: 5;
-}
-
-#[derive(Debug)]
-struct Rejection {
-    lemma: Stack<Literal>,
-    failed_proof_step: usize,
-    pivot: Option<Literal>,
-    resolved_with: Option<Clause>,
-    stable_assignment: Option<Assignment>,
-    natural_model_length: Option<usize>,
-}
-
-// Can't derive HeapSpace for Option<T> yet.
-impl HeapSpace for Rejection {
-    fn heap_space(&self) -> usize {
-        self.lemma.heap_space()
-            + match &self.stable_assignment {
-                None => 0,
-                Some(assignment) => assignment.heap_space(),
-            }
-    }
 }
 
 #[derive(Debug, HeapSpace, Default, Clone)]
@@ -218,7 +200,8 @@ impl Checker {
             revisions: Stack::new(),
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
-            rejection: Rejection::new(),
+            rejection: Sick::default(),
+            rejection_lemma: Stack::new(),
 
             premise_length: parser.proof_start.as_offset(),
             rup_introductions: 0,
@@ -238,6 +221,9 @@ impl Checker {
                 checker.lrat_id += 1;
                 checker.clause_lrat_id[clause] = checker.lrat_id;
             }
+        }
+        if checker.config.sick_filename.is_some() {
+            checker.rejection.witness = Some(Stack::new())
         }
         checker
     }
@@ -308,19 +294,6 @@ impl Checker {
         requires!(self.proof_steps_until_conflict != usize::max_value());
         let proof_step = self.proof[self.proof_steps_until_conflict];
         proof_step.clause()
-    }
-}
-
-impl Rejection {
-    fn new() -> Rejection {
-        Rejection {
-            lemma: Stack::new(),
-            failed_proof_step: usize::max_value(),
-            pivot: None,
-            resolved_with: None,
-            stable_assignment: None,
-            natural_model_length: None,
-        }
     }
 }
 
@@ -752,7 +725,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             true
         }
         None => {
-            checker.rejection.natural_model_length = Some(trail_length_after_rup);
+            extract_natural_model(checker, trail_length_after_rup);
             comment!("RAT check failed for {}", checker.clause_to_string(lemma));
             false
         }
@@ -795,42 +768,39 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
             checker.clause_to_string(lemma),
             pivot
         );
-        checker.rejection.pivot = Some(pivot);
         let resolution_candidates = collect_resolution_candidates(checker, pivot);
         invariant!(
             !resolution_candidates.empty()
                 || (checker.config.skip_unit_deletions && checker.fields(lemma).is_reason())
         );
-        if !resolution_candidates.empty() {
-            checker.rejection.resolved_with = Some(resolution_candidates[0]);
-        }
-        checker.rejection.stable_assignment = Some(checker.assignment.clone());
+        invariant!(false, "PIVOT FALSIFIED");
         return None;
     }
-
-    let pivot_index = checker
-        .clause(lemma)
-        .iter()
-        .position(|&literal| literal == pivot)
-        .unwrap();
 
     let grat_pending_length = checker.grat_pending.len();
     let grat_pending_deletions_length = checker.grat_pending_deletions.len();
     if rat_on_pivot(checker, pivot, trail_length_forced) {
+        let pivot_index = checker
+            .clause(lemma)
+            .iter()
+            .position(|&literal| literal == pivot)
+            .unwrap();
         return Some(pivot_index);
     }
     if checker.config.pivot_is_first_literal {
         return None;
     }
     checker.clause_range(lemma).position(|offset| {
-        let pivot = checker.db[offset];
-        if checker.config.grat_filename.is_some() {
-            checker.grat_pending.truncate(grat_pending_length);
-            checker
-                .grat_pending_deletions
-                .truncate(grat_pending_deletions_length);
+        let fallback_pivot = checker.db[offset];
+        fallback_pivot != Literal::BOTTOM && fallback_pivot != pivot && {
+            if checker.config.grat_filename.is_some() {
+                checker.grat_pending.truncate(grat_pending_length);
+                checker
+                    .grat_pending_deletions
+                    .truncate(grat_pending_deletions_length);
+            }
+            rat_on_pivot(checker, fallback_pivot, trail_length_forced)
         }
-        pivot != Literal::BOTTOM && rat_on_pivot(checker, pivot, trail_length_forced)
     })
 }
 
@@ -881,9 +851,30 @@ fn rat(
                         checker.clause_to_string(resolution_candidate)
                     );
                     if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
-                        checker.rejection.pivot = Some(pivot);
-                        checker.rejection.resolved_with = Some(resolution_candidate);
-                        checker.rejection.stable_assignment = Some(checker.assignment.clone());
+                        if checker.config.sick_filename.is_some() {
+                            let failing_clause = Stack::from_iter(
+                                checker
+                                    .clause(resolution_candidate)
+                                    .iter()
+                                    .filter(|&literal| literal != &Literal::BOTTOM)
+                                    .cloned(),
+                            );
+                            let failing_model = checker
+                                .assignment
+                                .iter()
+                                .skip(trail_length_before_rup)
+                                .map(|&(literal, _reason)| literal)
+                                .collect();
+                            let pivot = Some(pivot);
+                            if let Some(witnesses) = checker.rejection.witness.as_mut() {
+                                invariant!(checker.config.sick_filename.is_some());
+                                witnesses.push(Witness {
+                                    failing_clause,
+                                    failing_model,
+                                    pivot,
+                                })
+                            }
+                        }
                         false
                     } else {
                         if checker.config.lrat_filename.is_some() {
@@ -1099,6 +1090,18 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_ch
         });
     }
     checker.lrat.push(LRATLiteral::zero());
+}
+
+fn extract_natural_model(checker: &mut Checker, trail_length: usize) {
+    if checker.config.sick_filename.is_some() {
+        checker.rejection.natural_model = checker
+            .assignment
+            .iter()
+            .skip(1)
+            .take(trail_length - 1)
+            .map(|&(literal, _reason)| literal)
+            .collect();
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1332,8 +1335,10 @@ fn preprocess(checker: &mut Checker) -> bool {
                     "conflict claimed but not detected in {}",
                     checker.clause_to_string(clause)
                 );
-                checker.rejection.failed_proof_step = i;
-                checker.rejection.natural_model_length = Some(checker.assignment.len());
+                if checker.config.sick_filename.is_some() {
+                    checker.rejection.proof_step = i;
+                }
+                extract_natural_model(checker, checker.assignment.len());
                 return false;
             }
             checker.lemma += 1;
@@ -1414,7 +1419,9 @@ fn verify(checker: &mut Checker) -> bool {
             }
         };
         if !accepted {
-            checker.rejection.failed_proof_step = i;
+            if checker.config.sick_filename.is_some() {
+                checker.rejection.proof_step = i;
+            }
             return false;
         }
         if checker.config.lrat_filename.is_some() {
@@ -1479,10 +1486,14 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
 fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
-    checker.rejection.lemma.clear();
+    if checker.config.sick_filename.is_some() {
+        checker.rejection_lemma.clear();
+    }
     for offset in checker.clause_range(clause) {
         let literal = checker.db[offset];
-        checker.rejection.lemma.push(literal);
+        if checker.config.sick_filename.is_some() {
+            checker.rejection_lemma.push(literal);
+        }
         if checker.config.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
         }
@@ -1494,7 +1505,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
         }
     }
     // Sick witness would be incorrect because of this modification.
-    // That's why we copy it to checker.rejection.lemma.
+    // That's why we copy it to checker.rejection_lemma.
     for offset in effective_end..checker.clause_range(clause).end {
         checker.db[offset] = Literal::BOTTOM;
     }
@@ -1815,19 +1826,10 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         }
         RedundancyProperty::PR => "PR",
     };
-    let proof_step = checker.rejection.failed_proof_step;
+    let proof_step = checker.rejection.proof_step;
 
-    let assignment = if let Some(stable) = &checker.rejection.stable_assignment {
-        stable
-    } else {
-        &checker.assignment
-    };
-    let natural_model_length = checker
-        .rejection
-        .natural_model_length
-        .unwrap_or_else(|| checker.assignment.len());
     write!(file, "# Failed to prove lemma")?;
-    for &literal in &checker.rejection.lemma {
+    for &literal in &checker.rejection_lemma {
         if literal != Literal::BOTTOM {
             write!(file, " {}", literal)?;
         }
@@ -1840,34 +1842,24 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         proof_step + 1
     )?;
     write!(file, "natural_model  = [")?;
-    for literal in Literal::all(checker.maxvar) {
-        if assignment[literal] && assignment.position_in_trail(literal) < natural_model_length {
-            write!(file, "{}, ", literal)?;
-        }
+    for &literal in &checker.rejection.natural_model {
+        write!(file, "{}, ", literal)?;
     }
     writeln!(file, "]")?;
-    if let Some(pivot) = checker.rejection.pivot {
+    for witness in checker.rejection.witness.as_ref().unwrap() {
         writeln!(file, "[[witness]]")?;
         write!(file, "failing_clause = [")?;
-        if let Some(failing_clause) = checker.rejection.resolved_with {
-            for &literal in checker.clause(failing_clause) {
-                if literal != Literal::BOTTOM {
-                    write!(file, "{}, ", literal)?;
-                }
-            }
-        } else {
-            invariant!(false);
+        for &literal in &witness.failing_clause {
+            invariant!(literal != Literal::BOTTOM);
+            write!(file, "{}, ", literal)?;
         }
         writeln!(file, "]")?;
         write!(file, "failing_model  = [")?;
-        for literal in Literal::all(checker.maxvar) {
-            if assignment[literal] && assignment.position_in_trail(literal) >= natural_model_length
-            {
-                write!(file, "{}, ", literal)?;
-            }
+        for &literal in &witness.failing_model {
+            write!(file, "{}, ", literal)?;
         }
         writeln!(file, "]")?;
-        if !checker.config.pivot_is_first_literal {
+        if let Some(pivot) = witness.pivot {
             writeln!(file, "pivot          = {}", pivot)?;
         }
     }

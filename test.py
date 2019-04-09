@@ -233,11 +233,11 @@ def double_check(drat_checker,
                 assert lrat_checker_accepts(
                     lrat_checker + [args[0], args[3], 'nil', 't'], name)
             if (grat_checker is not None and (
-            ('rate' not in drat_checker[0]) or skip_unit_deletions or
+                ('rate' not in drat_checker[0]) or skip_unit_deletions or
                 (name not in {f'benchmarks/rupee/{x}' for x in (
-                            'tricky-2',  # looks like gratchk cannot delete units
-                        )})
-                )):
+                    'tricky-2',  # looks like gratchk cannot delete units
+                )})
+            )):
                 assert gratchk_accepts(grat_checker + [args[0], args[5]], name)
         elif sick:
             assert sick_checker_accepts(
@@ -253,6 +253,11 @@ def test_quick_default():
         rate(flags=['--assume-pivot-is-first']), instances=small_drat_inputs())
 
 
+def test_quick_arbitrary_pivot():
+    double_check(
+        rate(), instances=small_drat_inputs())
+
+
 def test_quick_skip_unit_deletions():
     double_check(
         rate(flags=['--assume-pivot-is-first', '--skip-unit-deletions']),
@@ -264,11 +269,15 @@ def test_compression():
         (f'benchmarks/crafted/example1.cnf.{x}',
          f'benchmarks/crafted/example1.drat.{x}') for x in (
             'zst', 'gz', 'bz2', 'xz', 'lz4')]
-    double_check(rate(), instances=compressed_inputs, lrat_checker=None, grat_checker=None)
+    double_check(
+        rate(),
+        instances=compressed_inputs,
+        lrat_checker=None,
+        grat_checker=None)
 
 
 def test_full():
-    double_check(rate(flags=['--assume-pivot-is-first']),
+    double_check(rate(),
                  instances=set(drat_inputs()) - set(small_drat_inputs()))
 
 

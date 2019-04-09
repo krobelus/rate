@@ -4,6 +4,7 @@
 
 use crate::memory::{assert_in_bounds, Array, HeapSpace, Slice, SliceMut};
 use alloc::raw_vec::RawVec;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     cmp::max,
     iter::FromIterator,
@@ -314,5 +315,23 @@ impl<T> Drop for ConsumingStackIterator<T> {
 
         // RawVec handles deallocation
         let _ = unsafe { RawVec::from_raw_parts(self.buf, self.cap) };
+    }
+}
+
+impl<T: Clone + Serialize> Serialize for Stack<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_vec().serialize(serializer)
+    }
+}
+
+impl<'de, T: Clone + Deserialize<'de>> Deserialize<'de> for Stack<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::deserialize(deserializer).map(|vec| Stack::from_vec(vec))
     }
 }
