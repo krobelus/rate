@@ -4,7 +4,7 @@ use crate::memory::{Array, BoundedStack, Offset, StackIterator};
 use rate_macros::HeapSpace;
 use std::{fmt::Debug, iter::IntoIterator, ops::Index};
 
-#[derive(Debug, HeapSpace)]
+#[derive(Debug, HeapSpace, Default)]
 pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {
     default_value: T,
     array: Array<Key, T>,

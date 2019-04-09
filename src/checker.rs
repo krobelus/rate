@@ -141,10 +141,14 @@ impl Checker {
         let num_lemmas = parser.proof.len();
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
+        let lrat = config.lrat_filename.is_some();
+        let grat = config.grat_filename.is_some();
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
-            clause_lrat_id: Array::new(Clause::UNINITIALIZED, num_clauses),
+            clause_lrat_id: if lrat{Array::new(Clause::UNINITIALIZED, num_clauses)}else{
+                Array::default()
+                },
             #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Array::from(parser.clause_deleted_at),
             clause_pivot: Array::from(parser.clause_pivot),
@@ -159,23 +163,25 @@ impl Checker {
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
             is_in_witness: Array::new(false, maxvar.array_size_for_literals()),
-            lrat_id: Clause::new(0),
-            clause_lrat_offset: Array::new(usize::max_value(), num_clauses),
+            lrat_id: if lrat{Clause::new(0)}else{Clause::UNINITIALIZED},
+            clause_lrat_offset: if lrat{Array::new(usize::max_value(), num_clauses)}
+            else {Array::default()},
             lrat: Stack::new(),
-            prerat_clauses: StackMapping::with_array_value_size_stack_size(
+            prerat_clauses: if lrat{StackMapping::with_array_value_size_stack_size(
                 false,
                 num_clauses,
                 cmp::min(num_clauses, maxvar.array_size_for_literals()),
-            ),
-            optimized_proof: BoundedStack::with_capacity(2 * num_lemmas + num_clauses),
+            )}else{StackMapping::default()},
+            optimized_proof: if lrat{BoundedStack::with_capacity(2 * num_lemmas + num_clauses)}
+            else {BoundedStack::default()},
             grat: Stack::new(),
             grat_conflict_clause: Clause::UNINITIALIZED,
             grat_in_deletion: false,
-            grat_rat_counts: Array::new(0, maxvar.array_size_for_literals()),
+            grat_rat_counts: if grat{Array::new(0, maxvar.array_size_for_literals())}else{ Array::default() },
             grat_pending: Stack::new(),
             grat_pending_prerat: Stack::new(),
             grat_pending_deletions: Stack::new(),
-            grat_prerat: Array::new(false, num_clauses),
+            grat_prerat: if grat{Array::new(false, num_clauses)}else{Array::default()},
             maxvar,
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
@@ -201,9 +207,11 @@ impl Checker {
             checker.literal_minimal_lifetime[Literal::TOP] = usize::max_value();
             checker.literal_minimal_lifetime[Literal::BOTTOM] = usize::max_value();
         }
-        for clause in Clause::range(0, checker.lemma) {
-            checker.lrat_id += 1;
-            checker.clause_lrat_id[clause] = checker.lrat_id;
+        if lrat {
+            for clause in Clause::range(0, checker.lemma) {
+                checker.lrat_id += 1;
+                checker.clause_lrat_id[clause] = checker.lrat_id;
+            }
         }
         checker
     }
@@ -695,7 +703,9 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             // Make pivot the first literal in the LRAT proof.
             let head = checker.clause_range(lemma).start;
             let pivot = checker.db[head + pivot_index];
-            checker.grat_rat_counts[pivot] += 1;
+            if checker.config.grat_filename.is_some() {
+                checker.grat_rat_counts[pivot] += 1;
+            }
             checker.db.swap(head, head + pivot_index);
             if checker.config.grat_filename.is_some() {
                 for position in trail_length_forced..trail_length_after_rup {
@@ -1515,12 +1525,6 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
                     write!(file, " {}", grat_clause)?;
                     if grat_clause == GRATLiteral::ZERO {
                         break;
-                        // let next_is_deletion_too = i + 1 < checker.grat.len()
-                        // && checker.grat[i + 1] == GRATLiteral::DELETION;
-                        // if !next_is_deletion_too {
-                        //     break
-                        // }
-                        // i += 1;
                     }
                 }
             }
