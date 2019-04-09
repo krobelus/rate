@@ -9,7 +9,8 @@
     const_vec_new,
     vec_resize_default,
     result_map_or_else,
-    stmt_expr_attributes
+    stmt_expr_attributes,
+    existential_type
 )]
 
 #[macro_use]
@@ -38,7 +39,7 @@ use crate::{
     literal::Literal,
     memory::{Array, Offset},
     output::solution,
-    parser::{run_parser, ClauseHashEq, HashTable, Parser},
+    parser::{proof_format_by_extension, run_parser, ClauseHashEq, HashTable, Parser},
 };
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -80,14 +81,7 @@ fn main() {
     let formula_filename = matches.value_of("INPUT").unwrap();
     let proof_filename = matches.value_of("PROOF").unwrap();
     let sick_filename = matches.value_of("CERTIFICATE").unwrap();
-    let proof_file_redundancy_property = if proof_filename.ends_with(".drat") {
-        RedundancyProperty::RAT
-    } else if proof_filename.ends_with(".pr") || proof_filename.ends_with(".dpr") {
-        RedundancyProperty::PR
-    } else {
-        comment!("unknown file extension, defaulting to RAT checking");
-        RedundancyProperty::RAT
-    };
+    let proof_file_redundancy_property = proof_format_by_extension(proof_filename);
 
     let mut toml_str = String::new();
     let mut sick_file = File::open(sick_filename)
@@ -109,7 +103,7 @@ fn main() {
     };
     requires!(redundancy_property == proof_file_redundancy_property);
     let mut clause_ids = HashTable::new();
-    let mut parser = Parser::new(proof_file_redundancy_property);
+    let mut parser = Parser::new();
     parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
         &mut parser,

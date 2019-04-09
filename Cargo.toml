@@ -28,9 +28,13 @@ static_assertions = "0.3"
 bitfield = "0.13"
 memmap = "0.7"
 toml = "0.4"
-# serde = { version = "1.0", features = ["derive"] }
 serde = "1.0"
 serde_derive = "1.0"
+zstd = "0.4"
+flate2 = "1.0"
+bzip2 = "0.3"
+lz4 = "1.23"
+xz2 = "0.1"
 
 [features]
 default = []

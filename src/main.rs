@@ -10,7 +10,8 @@
     const_vec_new,
     vec_resize_default,
     result_map_or_else,
-    stmt_expr_attributes
+    stmt_expr_attributes,
+    existential_type
 )]
 
 #[macro_use]
@@ -87,13 +88,11 @@ fn main() {
 
     let config = Config::new(app.get_matches());
     comment!("rate version: {}", env!("GIT_COMMIT"));
-    comment!("mode: {}", config.redundancy_property);
     let timer = Timer::name("total time");
-    let parser = parse_files(
-        &config.formula_filename,
-        &config.proof_filename,
-        config.redundancy_property,
-    );
+    let parser = parse_files(&config.formula_filename, &config.proof_filename);
+    if parser.is_pr() && (config.lrat_filename.is_some() || config.grat_filename.is_some()) {
+        die!("LRAT and GRAT generation is not possible for PR")
+    }
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
     value("premise clauses", checker.premise_length);

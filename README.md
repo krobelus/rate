@@ -8,12 +8,13 @@ clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details)
 by default.
 
 # Features
-- check DRAT (default) and PR (file extension `.pr`) proofs
+- check DRAT (default) and PR (file extension `.pr` or `.dpr`) proofs
 - output core lemmas as DIMACS or LRAT for accepted proofs
 - output certificate of unsatisfiability for rejected proofs
 - competitive performance due to double-sweep checking with
   core-first unit propagation
 - option to ignore unit deletions (`--skip-unit-deletions`)
+- decompress inputs (Gzip, Zstandard, Bzip2, XZ, LZ4)
 
 # Building
 Install [Rust](https://www.rust-lang.org/en-US/install.html). Then you should be
@@ -78,6 +79,5 @@ Please let us know if `rate` behaves in a way that is unexpected to you,
 or if you need some feature. Possible features include:
 
 - expose Rust (and possibly C) API
-- On-the-fly decompression
 - Resolution candidate caching (can speed up RAT checks)
 - Strict input validation

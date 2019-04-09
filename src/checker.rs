@@ -45,6 +45,7 @@ pub struct Checker {
     witness_db: &'static mut WitnessDatabase,
     pub proof: Array<usize, ProofStep>,
     pub config: Config,
+    redundancy_property: RedundancyProperty,
 
     maxvar: Variable,
     assignment: Assignment,
@@ -146,14 +147,17 @@ impl Checker {
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
-            clause_lrat_id: if lrat{Array::new(Clause::UNINITIALIZED, num_clauses)}else{
+            clause_lrat_id: if lrat {
+                Array::new(Clause::UNINITIALIZED, num_clauses)
+            } else {
                 Array::default()
-                },
+            },
             #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Array::from(parser.clause_deleted_at),
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
             config,
+            redundancy_property: parser.redundancy_property,
             db: parser.clause_db,
             witness_db: parser.witness_db,
             soft_propagation: false,
@@ -163,25 +167,47 @@ impl Checker {
                 maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
             ),
             is_in_witness: Array::new(false, maxvar.array_size_for_literals()),
-            lrat_id: if lrat{Clause::new(0)}else{Clause::UNINITIALIZED},
-            clause_lrat_offset: if lrat{Array::new(usize::max_value(), num_clauses)}
-            else {Array::default()},
+            lrat_id: if lrat {
+                Clause::new(0)
+            } else {
+                Clause::UNINITIALIZED
+            },
+            clause_lrat_offset: if lrat {
+                Array::new(usize::max_value(), num_clauses)
+            } else {
+                Array::default()
+            },
             lrat: Stack::new(),
-            prerat_clauses: if lrat{StackMapping::with_array_value_size_stack_size(
-                false,
-                num_clauses,
-                cmp::min(num_clauses, maxvar.array_size_for_literals()),
-            )}else{StackMapping::default()},
-            optimized_proof: if lrat{BoundedStack::with_capacity(2 * num_lemmas + num_clauses)}
-            else {BoundedStack::default()},
+            prerat_clauses: if lrat {
+                StackMapping::with_array_value_size_stack_size(
+                    false,
+                    num_clauses,
+                    cmp::min(num_clauses, maxvar.array_size_for_literals()),
+                )
+            } else {
+                StackMapping::default()
+            },
+            optimized_proof: if lrat {
+                BoundedStack::with_capacity(2 * num_lemmas + num_clauses)
+            } else {
+                BoundedStack::default()
+            },
             grat: Stack::new(),
             grat_conflict_clause: Clause::UNINITIALIZED,
             grat_in_deletion: false,
-            grat_rat_counts: if grat{Array::new(0, maxvar.array_size_for_literals())}else{ Array::default() },
+            grat_rat_counts: if grat {
+                Array::new(0, maxvar.array_size_for_literals())
+            } else {
+                Array::default()
+            },
             grat_pending: Stack::new(),
             grat_pending_prerat: Stack::new(),
             grat_pending_deletions: Stack::new(),
-            grat_prerat: if grat{Array::new(false, num_clauses)}else{Array::default()},
+            grat_prerat: if grat {
+                Array::new(false, num_clauses)
+            } else {
+                Array::default()
+            },
             maxvar,
             proof: Array::from(parser.proof),
             lemma: parser.proof_start,
@@ -560,7 +586,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
 
 fn check_inference(checker: &mut Checker) -> bool {
     checker.soft_propagation = true;
-    let ok = match checker.config.redundancy_property {
+    let ok = match checker.redundancy_property {
         RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
         RedundancyProperty::PR => pr(checker),
     };
@@ -1517,17 +1543,15 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
                     break;
                 }
             },
-            GRATLiteral::DELETION => {
-                loop {
-                    i += 1;
-                    let grat_clause = checker.grat[i];
-                    n += 1;
-                    write!(file, " {}", grat_clause)?;
-                    if grat_clause == GRATLiteral::ZERO {
-                        break;
-                    }
+            GRATLiteral::DELETION => loop {
+                i += 1;
+                let grat_clause = checker.grat[i];
+                n += 1;
+                write!(file, " {}", grat_clause)?;
+                if grat_clause == GRATLiteral::ZERO {
+                    break;
                 }
-            }
+            },
             GRATLiteral::RUP_LEMMA => {
                 i += 1;
                 let lemma = checker.grat[i];
@@ -1781,7 +1805,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
-    let proof_format = match checker.config.redundancy_property {
+    let proof_format = match checker.redundancy_property {
         RedundancyProperty::RAT => {
             if checker.config.pivot_is_first_literal {
                 "DRAT-pivot-is-first-literal"

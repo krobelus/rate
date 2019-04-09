@@ -17,7 +17,7 @@ use std::{
     fmt::{Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
-    io::{self, BufReader, Read},
+    io::{self, Read},
     iter::Peekable,
     panic,
 };
@@ -41,15 +41,12 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(redundancy_property: RedundancyProperty) -> Parser {
+    pub fn new() -> Parser {
         unsafe {
             CLAUSE_DATABASE.initialize();
-            if redundancy_property == RedundancyProperty::PR {
-                WITNESS_DATABASE.initialize();
-            }
         }
         Parser {
-            redundancy_property,
+            redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
             clause_db: unsafe { &mut CLAUSE_DATABASE },
             witness_db: unsafe { &mut WITNESS_DATABASE },
@@ -68,12 +65,8 @@ impl Parser {
 
 pub type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
 
-pub fn parse_files(
-    formula_file: &str,
-    proof_file: &str,
-    redundancy_property: RedundancyProperty,
-) -> Parser {
-    let mut parser = Parser::new(redundancy_property);
+pub fn parse_files(formula_file: &str, proof_file: &str) -> Parser {
+    let mut parser = Parser::new();
     let mut clause_ids = HashTable::new();
     run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
     parser
@@ -87,31 +80,36 @@ pub fn run_parser(
 ) {
     {
         let _timer = Timer::name("parsing formula");
-        let mmap = mmap_file(&formula_file);
+        let formula_input = read_file(formula_file);
         parse_formula(
             &mut parser,
             &mut clause_ids,
-            TextInput::new(safe_iter(&mmap)),
+            TextInput::new(Box::new(formula_input)),
         )
         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
+    parser.redundancy_property = proof_format_by_extension(&proof_file);
+    comment!("mode: {}", parser.redundancy_property);
+    if parser.redundancy_property != RedundancyProperty::RAT {
+        parser.witness_db.initialize();
+    }
     {
         let _timer = Timer::name("parsing proof");
-        let mmap = mmap_file(&proof_file);
-        let binary = is_binary_drat(safe_iter(&mmap).take(10));
+        let binary = is_binary_drat(read_file(proof_file).take(10));
+        let proof_input = Box::new(read_file(&proof_file));
         if binary {
             comment!("binary proof mode");
             parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                BinaryInput::new(safe_iter(&mmap)),
+                BinaryInput::new(proof_input),
                 binary,
             )
         } else {
             parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                TextInput::new(safe_iter(&mmap)),
+                TextInput::new(proof_input),
                 binary,
             )
         }
@@ -119,48 +117,86 @@ pub fn run_parser(
     }
 }
 
-fn mmap_file(filename: &str) -> Option<Mmap> {
-    let file = open_file(&filename);
-    let size = file.metadata().unwrap().len();
-    if size == 0 {
-        None
-    } else {
-        Some(unsafe { MmapOptions::new().map(&file) }.expect("mmap failed"))
-    }
-}
-
-fn safe_iter<'a>(mmap: &'a Option<Mmap>) -> std::iter::Cloned<std::slice::Iter<'a, u8>> {
-    if let Some(mmap) = mmap {
-        mmap.iter()
-    } else {
-        [].iter()
-    }
-    .cloned()
-}
-
 fn open_file(filename: &str) -> File {
     File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
 }
 
-#[allow(dead_code)]
-fn read_file(filename: &str) -> impl Iterator<Item = u8> {
-    BufReader::new(open_file(filename))
-        .bytes()
-        .map(panic_on_error as fn(io::Result<u8>) -> u8)
+const ZSTD: &'static str = ".zst";
+const GZIP: &'static str = ".gz";
+const BZIP2: &'static str = ".bz2";
+const LZ4: &'static str = ".lz4";
+const XZ: &'static str = ".xz";
+
+fn compression_format_by_extension(filename: &str) -> (&str, &str) {
+    let mut basename = filename;
+    let mut compression_format = "";
+    for extension in &[ZSTD, GZIP, BZIP2, LZ4, XZ] {
+        if filename.ends_with(extension) {
+            compression_format = extension;
+            basename = &filename[0..filename.len() - extension.len()];
+            break;
+        }
+    }
+    (basename, compression_format)
+}
+
+pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
+    let (basename, _compression_format) = compression_format_by_extension(proof_filename);
+    let redundancy_property = if basename.ends_with(".drat") {
+        RedundancyProperty::RAT
+    } else if basename.ends_with(".pr") || basename.ends_with(".dpr") {
+        RedundancyProperty::PR
+    } else {
+        comment!("unknown file extension, defaulting to RAT checking");
+        RedundancyProperty::RAT
+    };
+    redundancy_property
+}
+
+fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
+    let file = open_file(filename);
+    match compression_format_by_extension(filename).1 {
+        ZSTD => {
+            let de = zstd::stream::read::Decoder::new(file)
+                .unwrap_or_else(|err| die!("failed to decompress ZST archive: {}", err));
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        GZIP => {
+            let de = flate2::read::GzDecoder::new(file);
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        BZIP2 => {
+            let de = bzip2::read::BzDecoder::new(file);
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        XZ => {
+            let de = xz2::read::XzDecoder::new(file);
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        LZ4 => {
+            let de = lz4::Decoder::new(file).unwrap_or_else(|err| die!("Failed to decode LZ4 archive: {}", err));
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        "" => Box::new(
+            mmap_file(file)
+                .map_or(vec![], |mmap| mmap.to_owned())
+                .into_iter(),
+        ),
+        _ => unreachable(),
+    }
 }
 
 fn panic_on_error(result: io::Result<u8>) -> u8 {
     result.unwrap_or_else(|error| die!("read error: {}", error))
 }
 
-#[allow(dead_code)]
-fn text_file_iter(filename: &str) -> impl Input {
-    TextInput::new(read_file(filename))
-}
-
-#[allow(dead_code)]
-fn binary_file_iter(filename: &str) -> impl Input {
-    BinaryInput::new(read_file(filename))
+fn mmap_file(file: File) -> Option<Mmap> {
+    let size = file.metadata().unwrap().len();
+    if size == 0 {
+        None
+    } else {
+        Some(unsafe { MmapOptions::new().map(&file) }.expect("mmap failed"))
+    }
 }
 
 fn add_literal(
@@ -588,7 +624,8 @@ mod tests {
     }
 
     fn sample_formula(clause_ids: &mut HashTable) -> Parser {
-        let mut parser = Parser::new(RedundancyProperty::RAT);
+        let mut parser = Parser::new();
+        parser.redundancy_property = RedundancyProperty::RAT;
         let example = r#"c comment
 p cnf 2 2
 1 2 0
@@ -597,7 +634,7 @@ c comment
         assert!(parse_formula(
             &mut parser,
             clause_ids,
-            TextInput::new(example.as_bytes().to_vec().into_iter()),
+            TextInput::new(Box::new(example.as_bytes().iter().cloned())),
         )
         .is_ok());
         parser
@@ -610,7 +647,7 @@ c comment
             let result = parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                TextInput::new(b"1 2 3 0\nd 1 2 0".to_vec().into_iter()),
+                TextInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned())),
                 false,
             );
             assert!(result.is_ok());
@@ -707,21 +744,23 @@ trait Input {
     fn error<U>(&self, why: &'static str) -> Result<U>;
 }
 
-struct TextInput<T: Iterator<Item = u8>> {
-    iter: Peekable<T>,
+type InputSource = Peekable<Box<dyn Iterator<Item = u8>>>;
+
+struct TextInput {
+    iter: InputSource,
     line: usize,
 }
 
-impl<T: Iterator<Item = u8>> TextInput<T> {
-    fn new(iter: T) -> TextInput<T> {
+impl TextInput {
+    fn new(source: Box<dyn Iterator<Item = u8>>) -> Self {
         TextInput {
-            iter: iter.peekable(),
+            iter: source.peekable(),
             line: 0,
         }
     }
 }
 
-impl<T: Iterator<Item = u8>> Input for TextInput<T> {
+impl Input for TextInput {
     fn next(&mut self) -> Option<u8> {
         self.iter.next().map(|c| {
             if c == b'\n' {
@@ -744,19 +783,19 @@ impl<T: Iterator<Item = u8>> Input for TextInput<T> {
     }
 }
 
-struct BinaryInput<T: Iterator<Item = u8>> {
-    iter: Peekable<T>,
+struct BinaryInput {
+    iter: InputSource,
 }
 
-impl<T: Iterator<Item = u8>> BinaryInput<T> {
-    fn new(iter: T) -> BinaryInput<T> {
+impl BinaryInput {
+    fn new(source: Box<dyn Iterator<Item = u8>>) -> BinaryInput {
         BinaryInput {
-            iter: iter.peekable(),
+            iter: source.peekable(),
         }
     }
 }
 
-impl<T: Iterator<Item = u8>> Input for BinaryInput<T> {
+impl Input for BinaryInput {
     fn next(&mut self) -> Option<u8> {
         self.iter.next()
     }

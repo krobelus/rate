@@ -45,22 +45,23 @@ def size(cnf):
 
 def drat_inputs():
     return [
-        cnf[:-len('.cnf')] for cnf in sorted(benchmark_cnfs(), key=size)
+        (cnf, (cnf[:-len('cnf')] + 'drat'))
+        for cnf in sorted(benchmark_cnfs(), key=size)
         if os.path.exists(cnf[:-len('cnf')] + 'drat')
     ]
 
 
 def small_drat_inputs():
     return [
-        name for name in drat_inputs()
+        (cnf, proof) for cnf, proof in drat_inputs()
         # only use small formulas
-        if os.path.getsize(f'{name}.cnf') < 10_0000
+        if size(cnf) < 10_0000
     ]
 
 
 def pr_inputs():
     return [
-        cnf[:-len('.cnf')] for cnf in sorted(benchmark_cnfs(), key=size)
+        (cnf, cnf[:-len('cnf')] + 'drat') for cnf in sorted(benchmark_cnfs(), key=size)
         if os.path.exists(cnf[:-len('cnf')] + 'pr')
     ]
 
@@ -86,7 +87,6 @@ def timed(f):
         start = time.time()
         call = f.__name__ + '(' + ', '.join(str(a) for a in args)
         if kwargs:
-            # call += ',' + newline + newline.join(f'{key}={str(kwargs[key])},' for key in kwargs)
             call += ',' ', '.join(
                 f'{key}={str(kwargs[key])},' for key in kwargs)
         call += ')'
@@ -112,7 +112,7 @@ def accepts(checker, name):
         ('rupee' in checker[0] or INITIAL_COMMIT in checker[0])
         and b's REJECTED' in stdout) or ('gratgen' in checker[0]
                                          and b's VERIFIED' not in stderr)
-    assert accepted != rejected
+    assert accepted != rejected, str(stdout, 'utf8') + str(stderr, 'utf8')
     return accepted
 
 
@@ -120,7 +120,6 @@ def accepts(checker, name):
 def lrat_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
     ok = (('lratcheck' in checker[0] and b's ACCEPTED\n' in stdout)
-          # or ('lrat-check' in checker[0] and b'c VERIFIED' in stdout)
           or ('lrat-check' in checker[0] and b's VERIFIED' in stdout))
     if not ok:
         print(str(stdout, 'utf8'))
@@ -128,8 +127,8 @@ def lrat_checker_accepts(checker, name):
 
 
 @timed
-def gratchk_accepts(args, name):
-    stdout, _ = process_expansion(['gratchk', 'unsat'] + args)
+def gratchk_accepts(grat_checker, name):
+    stdout, _ = process_expansion(grat_checker)
     ok = b's VERIFIED UNSAT' in stdout
     if not ok:
         print(str(stdout, 'utf8'))
@@ -148,8 +147,9 @@ def sick_checker_accepts(checker, name):
 def compare_acceptance(a, b, *, instances=drat_inputs()):
     build_release()
     [ensure_executable(command) for command in (a, b)]
-    for name in instances:
-        args = [f'{name}.cnf', f'{name}.drat']
+    for cnf, proof in instances:
+        name = cnf[:-len('.cnf')]
+        args = [cnf, proof]
 
         if 'rupee' in b[0]:
             if name == 'benchmarks/crafted/comments':
@@ -198,20 +198,24 @@ def compare_acceptance(a, b, *, instances=drat_inputs()):
 
 def double_check(drat_checker,
                  lrat_checker=['lrat-check'],
+                 grat_checker=['gratchk', 'unsat'],
                  *,
-                 instances=drat_inputs()):
+                 instances):
     build_release()
-    [ensure_executable(command) for command in (drat_checker, lrat_checker)]
+    ensure_executable(drat_checker)
+    if lrat_checker is not None:
+        ensure_executable(lrat_checker)
     skip_unit_deletions = any(
         '--skip-unit-deletions' in arg for arg in drat_checker)
     sick = not skip_unit_deletions
-    for name in instances:
+    for cnf, proof in instances:
+        name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = os.path.exists(f'{name}.pr')
-        args = [f'{name}.cnf']
+        args = [cnf]
         if pr:
             args += [f'{name}.pr']
         else:
-            args += [f'{name}.drat', '-L',
+            args += [proof, '-L',
                      f'{name}.lrat', '-G', f'{name}.grat']
             if sick:
                 args += ['--recheck', f'{name}.sick']
@@ -219,23 +223,22 @@ def double_check(drat_checker,
             assert accepts(drat_checker + args, name)
             return
         if accepts(drat_checker + args, name):
-            # if name == 'benchmarks/crafted/tautological' and 'lratcheck' in lrat_checker[
-            #         0]:
-            #     continue  # rejects tautological formulas
-            assert 'lrat-check' in lrat_checker[0]
-            if name not in {f'benchmarks/crafted/{x}' for x in (
-                'tautological',
-                'duplicate-literals',
-                'bottom',
-            )}:
+            if (lrat_checker is not None and
+                    name not in {f'benchmarks/crafted/{x}' for x in (
+                        'tautological',
+                        'duplicate-literals',
+                        'bottom',
+                    )}):
+                assert 'lrat-check' in lrat_checker[0]
                 assert lrat_checker_accepts(
                     lrat_checker + [args[0], args[3], 'nil', 't'], name)
-            if (('rate' not in drat_checker[0]) or skip_unit_deletions or
-                    (name not in {f'benchmarks/rupee/{x}' for x in (
-                        'tricky-2',  # looks like gratchk cannot delete units
-                    )})
-                ):
-                assert gratchk_accepts([args[0], args[5]], name)
+            if (grat_checker is not None and (
+            ('rate' not in drat_checker[0]) or skip_unit_deletions or
+                (name not in {f'benchmarks/rupee/{x}' for x in (
+                            'tricky-2',  # looks like gratchk cannot delete units
+                        )})
+                )):
+                assert gratchk_accepts(grat_checker + [args[0], args[5]], name)
         elif sick:
             assert sick_checker_accepts(
                 ['target/release/sickcheck'] + args[:2] + [args[-1]], name)
@@ -256,8 +259,17 @@ def test_quick_skip_unit_deletions():
         instances=small_drat_inputs())
 
 
+def test_compression():
+    compressed_inputs = [
+        (f'benchmarks/crafted/example1.cnf.{x}',
+         f'benchmarks/crafted/example1.drat.{x}') for x in (
+            'zst', 'gz', 'bz2', 'xz', 'lz4')]
+    double_check(rate(), instances=compressed_inputs, lrat_checker=None, grat_checker=None)
+
+
 def test_full():
-    double_check(rate(flags=['--assume-pivot-is-first']))
+    double_check(rate(flags=['--assume-pivot-is-first']),
+                 instances=set(drat_inputs()) - set(small_drat_inputs()))
 
 
 # def test_with_lrat_check():
