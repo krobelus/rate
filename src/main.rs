@@ -95,9 +95,6 @@ fn main() {
         if config.lrat_filename.is_some() || config.grat_filename.is_some() {
             die!("LRAT and GRAT generation is not possible for PR")
         }
-        if config.sick_filename.is_some() {
-            die!("LRAT and GRAT generation is not possible for PR")
-        }
     }
     let mut checker = Checker::new(parser, config);
     let ok = check(&mut checker);
@@ -109,6 +106,10 @@ fn main() {
     value("deletions", checker.deletions);
     value("skipped deletions", checker.skipped_deletions);
     value("reason deletions", checker.reason_deletions);
+    value(
+        "reason deletions shrinking trail",
+        checker.reason_deletions_shrinking_trail,
+    );
     drop(timer);
     checker.print_memory_usage();
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });

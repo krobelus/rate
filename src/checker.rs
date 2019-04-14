@@ -96,6 +96,7 @@ pub struct Checker {
     pub deletions: usize,
     pub skipped_deletions: usize,
     pub reason_deletions: usize,
+    pub reason_deletions_shrinking_trail: usize,
     pub satisfied_count: usize,
 }
 
@@ -209,6 +210,7 @@ impl Checker {
             deletions: 0,
             skipped_deletions: 0,
             reason_deletions: 0,
+            reason_deletions_shrinking_trail: 0,
             satisfied_count: 0,
         };
         #[cfg(feature = "clause_lifetime_heuristic")]
@@ -1282,6 +1284,7 @@ fn preprocess(checker: &mut Checker) -> bool {
             return close_proof(checker, 0);
         }
     }
+    log!(checker, 1, "[preprocess] done adding premise");
     for i in 0..checker.proof.size() {
         watch_invariants(checker);
         let proof_step = checker.proof[i];
@@ -1302,8 +1305,9 @@ fn preprocess(checker: &mut Checker) -> bool {
             }
             if checker.config.skip_unit_deletions {
                 let is_unit = checker
-                    .clause_range(clause)
-                    .filter(|&i| !checker.assignment[-checker.db[i]])
+                    .clause(clause)
+                    .iter()
+                    .filter(|&&literal| !checker.assignment[-literal])
                     .count()
                     == 1;
                 if is_unit {
@@ -1322,9 +1326,14 @@ fn preprocess(checker: &mut Checker) -> bool {
                 invariant!(!checker.fields(clause).is_scheduled());
                 watches_remove(checker, Mode::NonCore, clause);
                 if checker.fields(clause).is_reason() {
+                    let trail_length_before_creating_revision = checker.assignment.len();
                     revision_create(checker, clause);
                     let no_conflict = propagate(checker);
+                    let trail_length_after_propagating = checker.assignment.len();
                     invariant!(no_conflict == NO_CONFLICT);
+                    if trail_length_after_propagating < trail_length_before_creating_revision {
+                        checker.reason_deletions_shrinking_trail += 1;
+                    }
                     watch_invariants(checker);
                 }
             }
@@ -2007,7 +2016,7 @@ fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
 fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
     watch_invariants(checker);
-    log!(checker, 1, "{}", checker.assignment);
+    log!(checker, 2, "{}", checker.assignment);
     let unit = *checker
         .clause(clause)
         .iter()
@@ -2042,7 +2051,8 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     for &literal in &revision.cone {
         watchlist_revise(checker, literal);
     }
-    log!(checker, 1, "Created {}\n{}", revision, checker.assignment);
+    log!(checker, 1, "Created {}", revision);
+    log!(checker, 2, "{}", checker.assignment);
     for &literal in &revision.cone {
         invariant!(checker.literal_is_in_cone_preprocess[literal]);
         checker.literal_is_in_cone_preprocess[literal] = false;
@@ -2160,7 +2170,8 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             introductions += 1;
         }
     }
-    log!(checker, 1, "Applying {}{}", revision, checker.assignment);
+    log!(checker, 1, "Applying {}", revision);
+    log!(checker, 2, "{}", checker.assignment);
     let length_after_adding_cone = checker.assignment.len() + introductions;
     let mut right_position = length_after_adding_cone - 1;
     let mut left_position = right_position - literals_to_revise + 1;
@@ -2188,7 +2199,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             .set_trail_at(right_position, literal, reason);
         right_position -= 1;
     }
-    log!(checker, 1, "Applied revision:\n{}", checker.assignment);
+    log!(checker, 2, "Applied revision:\n{}", checker.assignment);
     watches_reset(checker, revision);
     assignment_invariants(checker);
 }
