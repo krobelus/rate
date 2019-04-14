@@ -61,8 +61,8 @@ def small_drat_inputs():
 
 def pr_inputs():
     return [
-        (cnf, cnf[:-len('cnf')] + 'drat') for cnf in sorted(benchmark_cnfs(), key=size)
-        if os.path.exists(cnf[:-len('cnf')] + 'pr')
+        (cnf, cnf[:-len('cnf')] + 'dpr') for cnf in sorted(benchmark_cnfs(), key=size)
+        if os.path.exists(cnf[:-len('cnf')] + 'dpr')
     ]
 
 
@@ -144,7 +144,7 @@ def sick_checker_accepts(checker, name):
     return ok
 
 
-def compare_acceptance(a, b, *, instances=drat_inputs()):
+def compare_acceptance(a, b, *, instances):
     build_release()
     [ensure_executable(command) for command in (a, b)]
     for cnf, proof in instances:
@@ -192,6 +192,11 @@ def compare_acceptance(a, b, *, instances=drat_inputs()):
                     'benchmarks/crafted/example1b',
             ):
                 continue
+        if 'dpr-trim' in b[0]:
+            if name in (
+            'benchmarks/sadical/emptyclause',
+            ):
+                continue
 
         assert accepts(a + args, name) == accepts(b + args, name)
 
@@ -210,10 +215,10 @@ def double_check(drat_checker,
     sick = not skip_unit_deletions
     for cnf, proof in instances:
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
-        pr = os.path.exists(f'{name}.pr')
+        pr = os.path.exists(f'{name}.dpr')
         args = [cnf]
         if pr:
-            args += [f'{name}.pr']
+            args += [f'{name}.dpr']
         else:
             args += [proof, '-L',
                      f'{name}.lrat', '-G', f'{name}.grat']
@@ -301,12 +306,15 @@ def test_acceptance_initial_commit():
 
 
 def test_acceptance_drat_trim():
-    compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'])
+    compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'], instances=drat_inputs())
 
 
 def test_acceptance_rupee():
-    compare_acceptance(rate(flags=['--rupee']), ['rupee'])
+    compare_acceptance(rate(flags=['--rupee']), ['rupee'], instances=drat_inputs())
 
 
 def test_acceptance_gratgen():
-    compare_acceptance(rate(flags=['--skip-unit-deletions']), ['gratgen'])
+    compare_acceptance(rate(flags=['--skip-unit-deletions']), ['gratgen'], instances=drat_inputs())
+
+def test_acceptance_dpr_trim():
+    compare_acceptance(rate(flags=['--drat-trim']), ['dpr-trim'], instances=pr_inputs())

@@ -556,7 +556,6 @@ fn parse_proof(
             }
             let literal = literal_parser(&mut input)?;
             if parser.is_pr() && state == ParserState::Clause && first_literal == Some(literal) {
-                first_literal = None;
                 state = ParserState::Witness;
             }
             if state == ParserState::Clause && lemma_head {
@@ -570,6 +569,7 @@ fn parse_proof(
             add_literal(parser, clause_ids, state, literal);
             if literal.is_zero() {
                 state = ParserState::Start;
+                first_literal = None;
                 if parser
                     .max_proof_steps
                     .map_or(false, |max_steps| parser.proof.len() == max_steps)

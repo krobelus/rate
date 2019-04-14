@@ -5,16 +5,21 @@ set -u
 name=`dirname "$1"`/`basename "$1" | sed 's/\.[^.]*$//'`
 shift
 
-test -f "$name".drat && prext=drat
-test -f "$name".pr && prext=pr
+test -f "$name".drat && {
+    prext=drat
+    args="-L $name.lrat -G $name.grat"
+}
+test -f "$name".dpr && {
+    prext=dpr
+    args=
+}
+rate="cargo run -- $name.cnf $name."$prext" $@"
 
-rate="cargo run -- $name.cnf $name."$prext" --assume-pivot-is-first $@"
-
-output="$($rate -L "$name".lrat -G "$name".grat -i "$name".sick)"
+output="$($rate $args -i "$name".sick)"
 
 echo "$output"
 
-echo "$output" | grep -q '^s VERIFIED$' && {
+echo "$output" | grep -q '^s VERIFIED$' && test $prext = drat && {
   lrat-check "$name".{cnf,lrat} nil t | awk '{print} /^s VERIFIED$/ {ok=1} END{exit !ok}' && \
   exec gratchk unsat "$name".{cnf,grat}
 }
