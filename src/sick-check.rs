@@ -151,28 +151,35 @@ fn main() {
             .iter()
             .map(|witness| witness.pivot.expect(PIVOT))
             .collect();
-        let mut expected_pivots: Vec<Literal> =
-            parser.clause_db.clause(lemma).iter().cloned().collect();
-        match sick.proof_format.as_ref() {
-            "DRAT-arbitrary-pivot" => {
-                specified_pivots.sort();
-                expected_pivots.sort();
-                if specified_pivots != expected_pivots {
-                    die!("Using proof_format = \"{}\": you need exactly one counterexample for each pivot in the lemma\nlemma: {}\npivots: {}",
+        let mut expected_pivots: Vec<Literal> = parser
+            .clause_db
+            .clause(lemma)
+            .iter()
+            .filter(|&&l| l != Literal::BOTTOM)
+            .cloned()
+            .collect();
+        if !specified_pivots.is_empty() {
+            match sick.proof_format.as_ref() {
+                "DRAT-arbitrary-pivot" => {
+                    specified_pivots.sort();
+                    expected_pivots.sort();
+                    if specified_pivots != expected_pivots {
+                        die!("Using proof_format = \"{}\": you need exactly one counterexample for each pivot in the lemma\nlemma: {}\npivots: {}",
                         sick.proof_format,
                         expected_pivots.iter().map(|l| format!("{}", l)).collect::<Vec<_>>().join(" "),
                         specified_pivots.iter().map(|l| format!("{}", l)).collect::<Vec<_>>().join(" "),
                         )
+                    }
                 }
-            }
-            "DRAT-pivot-is-first-literal" => {
-                if specified_pivots.len() > 1 {
-                    die!("Using proof_format = \"{}\", the first literal must be specified as pivot and nothing else",
+                "DRAT-pivot-is-first-literal" => {
+                    if specified_pivots.len() > 1 {
+                        die!("Using proof_format = \"{}\", the first literal must be specified as pivot and nothing else",
                         sick.proof_format);
+                    }
                 }
-            }
-            _ => unreachable!(),
-        };
+                _ => unreachable!(),
+            };
+        }
     }
     for witness in witnesses {
         parser.clause_db.open_clause();

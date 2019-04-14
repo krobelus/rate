@@ -770,12 +770,6 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
             checker.clause_to_string(lemma),
             pivot
         );
-        let resolution_candidates = collect_resolution_candidates(checker, pivot);
-        invariant!(
-            !resolution_candidates.empty()
-                || (checker.config.skip_unit_deletions && checker.fields(lemma).is_reason())
-        );
-        invariant!(false, "PIVOT FALSIFIED");
         return None;
     }
 

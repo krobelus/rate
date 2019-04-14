@@ -246,7 +246,7 @@ def double_check(drat_checker,
                 assert gratchk_accepts(grat_checker + [args[0], args[5]], name)
         elif sick:
             assert sick_checker_accepts(
-                ['target/release/sickcheck'] + args[:2] + [args[-1]], name)
+                ['target/release/sick-check'] + args[:2] + [args[-1]], name)
 
 
 def test_pr():
