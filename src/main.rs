@@ -13,6 +13,8 @@
     stmt_expr_attributes,
     existential_type
 )]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::nonminimal_bool)]
 
 #[macro_use]
 mod output;

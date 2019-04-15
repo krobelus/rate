@@ -332,6 +332,6 @@ impl<'de, T: Clone + Deserialize<'de>> Deserialize<'de> for Stack<T> {
     where
         D: Deserializer<'de>,
     {
-        Vec::deserialize(deserializer).map(|vec| Stack::from_vec(vec))
+        Vec::deserialize(deserializer).map(Stack::from_vec)
     }
 }

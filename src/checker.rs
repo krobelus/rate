@@ -969,8 +969,7 @@ fn extract_dependencies(
     if checker.config.grat_filename.is_some() {
         let resolvent_is_tautological = trail_length_before_rat.map_or(false, |tuple| tuple.1);
         if !resolvent_is_tautological {
-            match trail_length_before_rat {
-                Some((trail_length, _resolvent_is_tautological)) => {
+            if let Some((trail_length, _resolvent_is_tautological)) =  trail_length_before_rat {
                     for position in trail_length..trail_length_before_rup {
                         let (_literal, reason) = checker.assignment.trail_at(position);
                         if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
@@ -980,8 +979,6 @@ fn extract_dependencies(
                         checker.grat_prerat[clause] = true;
                     }
                 }
-                None => (),
-            }
             for position in trail_length_before_rup..checker.assignment.len() - 1 {
                 let (_literal, reason) = checker.assignment.trail_at(position);
                 if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
@@ -1268,6 +1265,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
     true
 }
 
+#[allow(clippy::cyclomatic_complexity)]
 #[cfg_attr(feature = "flame_it", flame)]
 fn preprocess(checker: &mut Checker) -> bool {
     let _timer = Timer::name("preprocessing proof");
@@ -1357,6 +1355,7 @@ fn preprocess(checker: &mut Checker) -> bool {
     unreachable()
 }
 
+#[allow(clippy::cyclomatic_complexity)]
 #[cfg_attr(feature = "flame_it", flame)]
 fn verify(checker: &mut Checker) -> bool {
     log!(checker, 1, "[verify]");
@@ -1534,10 +1533,10 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
         Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
-    write!(file, "GRATbt {} 0\n", std::mem::size_of::<Literal>())?; // NB this needs to fit clause IDs
-    write!(
+    writeln!(file, "GRATbt {} 0", std::mem::size_of::<Literal>())?; // NB this needs to fit clause IDs
+    writeln!(
         file,
-        "{} {} 2\n",
+        "{} {} 2",
         GRATLiteral::CONFLICT,
         GRATLiteral::from_clause(checker.grat_conflict_clause)
     )?;

@@ -25,7 +25,7 @@ impl HeapSpace for Sick {
             + self
                 .witness
                 .as_ref()
-                .map_or(0, |witnesses| witnesses.heap_space())
+                .map_or(0, HeapSpace::heap_space)
     }
 }
 

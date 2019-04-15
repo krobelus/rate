@@ -113,7 +113,7 @@ impl Assignment {
         self.trail[offset] = (literal, reason);
         self.position_in_trail[literal] = offset;
     }
-    pub fn iter<'a>(&'a self) -> StackIterator<'a, (Literal, Reason)> {
+    pub fn iter(&self) -> StackIterator<(Literal, Reason)> {
         self.into_iter()
     }
 }
