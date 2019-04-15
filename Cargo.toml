@@ -15,6 +15,10 @@ default-run = "rate"
 name = "sick-check"
 path = "src/sick-check.rs"
 
+[[bin]]
+name = "split-proof"
+path = "src/split-proof.rs"
+
 [dependencies]
 rate-macros = { path = "rate-macros" }
 ansi_term = "0.11"
