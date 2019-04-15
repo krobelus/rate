@@ -5,7 +5,7 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{fmt, fmt::Display, ops};
+use std::{convert::TryFrom, fmt, fmt::Display, ops};
 
 /// A variable, encoded as 32 bit unsigned integer.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
@@ -28,6 +28,7 @@ impl Variable {
     }
     /// Convert a variable to a positive literal.
     pub fn literal(self) -> Literal {
+        requires!(i32::try_from(self.0).is_ok());
         Literal::new(self.0 as i32)
     }
     /// The size of an array that can contain variables up to and including
@@ -46,6 +47,7 @@ impl Variable {
 impl Offset for Variable {
     /// We simply use the variable index, so offset 0 will be generally unused.
     fn as_offset(&self) -> usize {
+        requires!(usize::try_from(self.0).is_ok());
         self.0 as usize
     }
 }
@@ -59,6 +61,8 @@ impl Display for Variable {
 impl Literal {
     /// Create a literal from the signed representation used in DIMACS.
     pub fn new(value: i32) -> Literal {
+        requires!(value != i32::min_value());
+        requires!((value.abs() as u32) < u32::pow(2, 31));
         Literal {
             encoding: (value.abs() as u32) * 2 + ((value < 0) as u32),
         }

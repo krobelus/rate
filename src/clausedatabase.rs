@@ -6,7 +6,10 @@ use crate::{
 };
 
 use rate_macros::HeapSpace;
-use std::ops::{Index, IndexMut, Range};
+use std::{
+    convert::TryFrom,
+    ops::{Index, IndexMut, Range},
+};
 
 pub const PADDING_START: usize = 3;
 pub const FIELDS_OFFSET: usize = 2;
@@ -48,6 +51,7 @@ impl ClauseDatabase {
     pub const PADDING: usize = 1;
     pub fn number_of_clauses(&self) -> u64 {
         requires!(self.have_sentinel);
+        requires!(u64::try_from(self.offset.len() - ClauseDatabase::PADDING).is_ok());
         (self.offset.len() - ClauseDatabase::PADDING) as u64
     }
     pub fn last_clause(&self) -> Clause {
@@ -57,7 +61,10 @@ impl ClauseDatabase {
     fn last_clause_no_sentinel(&self) -> Clause {
         requires!(!self.have_sentinel);
         let index = self.offset.len() - 1;
-        Clause::new(index as u64)
+        Clause::from_usize(index)
+    }
+    pub fn is_empty(&self) -> bool {
+        self.offset.empty()
     }
     fn push_sentinel(&mut self, offset: usize) {
         requires!(!self.have_sentinel);
@@ -183,10 +190,10 @@ impl ClauseDatabase {
     pub fn fields_mut_from_offset(&mut self, offset: usize) -> &mut u32 {
         &mut self.data[offset - 1].encoding
     }
-    #[cfg(test)]
     pub fn clear(&mut self) {
         self.data.clear();
         self.offset.clear();
+        self.have_sentinel = false;
     }
 }
 
@@ -228,7 +235,7 @@ impl WitnessDatabase {
     }
     pub fn open_witness(&mut self) -> Clause {
         self.offset.pop();
-        let witness = Clause::new(self.offset.len() as u64);
+        let witness = Clause::from_usize(self.offset.len());
         self.offset.push(self.data.len());
         witness
     }
@@ -260,7 +267,6 @@ impl WitnessDatabase {
     pub fn witness_range(&self, clause: Clause) -> Range<usize> {
         self.offset[clause.as_offset()]..self.offset[clause.as_offset() + 1]
     }
-    #[cfg(test)]
     pub fn clear(&mut self) {
         self.data.clear();
         self.offset.clear();

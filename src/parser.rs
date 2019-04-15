@@ -13,7 +13,9 @@ use flamer::flame;
 use memmap::{Mmap, MmapOptions};
 use std::collections::HashMap;
 use std::{
-    cmp, fmt,
+    cmp,
+    convert::TryInto,
+    fmt,
     fmt::{Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
@@ -38,11 +40,20 @@ pub struct Parser {
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
     pub max_proof_steps: Option<usize>,
+    pub verbose: bool,
 }
 
 impl Parser {
     pub fn new() -> Parser {
         unsafe {
+            CLAUSE_DATABASE.clear();
+            WITNESS_DATABASE.clear();
+        }
+        unsafe {
+            assert!(
+                CLAUSE_DATABASE.is_empty(),
+                "Only one parser can be active at any time."
+            );
             CLAUSE_DATABASE.initialize();
         }
         Parser {
@@ -56,6 +67,7 @@ impl Parser {
             proof_start: Clause::new(0),
             proof: Stack::new(),
             max_proof_steps: None,
+            verbose: true,
         }
     }
     pub fn is_pr(&self) -> bool {
@@ -68,64 +80,71 @@ pub type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
 pub fn parse_files(formula_file: &str, proof_file: &str) -> Parser {
     let mut parser = Parser::new();
     let mut clause_ids = HashTable::new();
-    run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
+    run_parser(&mut parser, Some(formula_file), proof_file, &mut clause_ids);
     parser
 }
 
-pub fn run_parser(
+pub fn run_parser_on_formula(
     mut parser: &mut Parser,
-    formula_file: &str,
+    formula: Option<&str>,
     proof_file: &str,
     mut clause_ids: &mut HashTable,
 ) {
     parser.redundancy_property = proof_format_by_extension(&proof_file);
-    comment!("mode: {}", parser.redundancy_property);
+    if parser.verbose {
+        comment!("mode: {}", parser.redundancy_property);
+    }
     if parser.redundancy_property != RedundancyProperty::RAT {
         parser.witness_db.initialize();
     }
-    {
+    if let Some(formula_file) = formula {
         let _timer = Timer::name("parsing formula");
         let formula_input = read_file(formula_file);
         parse_formula(
             &mut parser,
             &mut clause_ids,
-            TextInput::new(Box::new(formula_input)),
+            Input::new(Box::new(formula_input), false),
         )
         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
-    {
-        let _timer = Timer::name("parsing proof");
-        let binary = is_binary_drat(read_file(proof_file).take(10));
-        let proof_input = Box::new(read_file(&proof_file));
-        if binary {
-            comment!("binary proof mode");
-            parse_proof(
-                &mut parser,
-                &mut clause_ids,
-                BinaryInput::new(proof_input),
-                binary,
-            )
-        } else {
-            parse_proof(
-                &mut parser,
-                &mut clause_ids,
-                TextInput::new(proof_input),
-                binary,
-            )
-        }
-        .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
+}
+
+pub fn run_parser(
+    mut parser: &mut Parser,
+    formula: Option<&str>,
+    proof_file: &str,
+    mut clause_ids: &mut HashTable,
+) {
+    run_parser_on_formula(parser, formula, proof_file, clause_ids);
+    let mut _timer = Timer::name("parsing proof");
+    if !parser.verbose {
+        _timer.disabled = true;
     }
+    let binary = is_binary_drat(read_file(proof_file).take(10));
+    let proof_input = Box::new(read_file(&proof_file));
+    if binary {
+        if parser.verbose {
+            comment!("binary proof mode");
+        }
+    }
+    parse_proof(
+        &mut parser,
+        &mut clause_ids,
+        Input::new(proof_input, binary),
+        binary,
+    )
+    .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
 }
 
 fn open_file(filename: &str) -> File {
     File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
 }
 
-const ZSTD: &'static str = ".zst";
-const GZIP: &'static str = ".gz";
-const BZIP2: &'static str = ".bz2";
-const LZ4: &'static str = ".lz4";
-const XZ: &'static str = ".xz";
+const ZSTD: &str = ".zst";
+const GZIP: & str = ".gz";
+const BZIP2: & str = ".bz2";
+const LZ4: & str = ".lz4";
+const XZ: & str = ".xz";
 
 fn compression_format_by_extension(filename: &str) -> (&str, &str) {
     let mut basename = filename;
@@ -142,18 +161,16 @@ fn compression_format_by_extension(filename: &str) -> (&str, &str) {
 
 pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
     let (basename, _compression_format) = compression_format_by_extension(proof_filename);
-    let redundancy_property = if basename.ends_with(".drat") {
+    if basename.ends_with(".drat") {
         RedundancyProperty::RAT
     } else if basename.ends_with(".pr") || basename.ends_with(".dpr") {
         RedundancyProperty::PR
     } else {
-        comment!("unknown file extension, defaulting to RAT checking");
         RedundancyProperty::RAT
-    };
-    redundancy_property
+    }
 }
 
-fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
+pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let file = open_file(filename);
     let (_basename, compression_format) = compression_format_by_extension(filename);
     if compression_format == "" {
@@ -206,34 +223,34 @@ fn mmap_file(file: File) -> Option<Mmap> {
 fn add_literal(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
-    state: ParserState,
+    state: ProofParserState,
     literal: Literal,
 ) {
     parser.maxvar = cmp::max(parser.maxvar, literal.variable());
     match state {
-        ParserState::Clause => {
+        ProofParserState::Clause => {
             parser.clause_db.push_literal(literal);
             if parser.is_pr() && literal.is_zero() {
                 parser.witness_db.push_literal(literal);
             }
         }
-        ParserState::Witness => {
+        ProofParserState::Witness => {
             invariant!(parser.is_pr());
             parser.witness_db.push_literal(literal);
             if literal.is_zero() {
                 parser.clause_db.push_literal(literal);
             }
         }
-        ParserState::Deletion => {
+        ProofParserState::Deletion => {
             parser.clause_db.push_literal(literal);
             if literal.is_zero() {
                 add_deletion(parser, clause_ids)
             }
         }
-        ParserState::Start => unreachable(),
+        ProofParserState::Start => unreachable(),
     }
     match state {
-        ParserState::Clause | ParserState::Witness => {
+        ProofParserState::Clause | ProofParserState::Witness => {
             if literal.is_zero() {
                 let clause = parser.clause_db.last_clause();
                 let key = ClauseHashEq(clause);
@@ -251,10 +268,12 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
     let clause = parser.clause_db.last_clause();
     match find_clause(clause_ids, clause) {
         None => {
-            warn!(
-                "Deleted clause is not present in the formula: {}",
-                parser.clause_db.clause_to_string(clause)
-            );
+            if parser.verbose {
+                warn!(
+                    "Deleted clause is not present in the formula: {}",
+                    parser.clause_db.clause_to_string(clause)
+                );
+            }
             // Need this for sickcheck
             parser
                 .proof
@@ -300,6 +319,13 @@ fn find_clause(clause_ids: &mut HashTable, needle: Clause) -> Option<Clause> {
         .and_then(|clause_stack| clause_stack.swap_remove(0))
 }
 
+#[allow(dead_code)]
+pub fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
+    clause_ids
+        .get(&ClauseHashEq(needle))
+        .map_or(false, |stack| !stack.to_vec().is_empty())
+}
+
 fn compute_hash(clause: Slice<Literal>) -> usize {
     let mut sum: usize = 0;
     let mut prod: usize = 1;
@@ -320,12 +346,12 @@ fn is_digit_or_dash(value: u8) -> bool {
     is_digit(value) || value == b'-'
 }
 
-type Result<T> = std::result::Result<T, ParseError>;
+pub type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug, PartialEq, Eq)]
-struct ParseError {
-    line: usize,
-    why: &'static str,
+pub struct ParseError {
+    pub line: usize,
+    pub why: &'static str,
 }
 
 const OVERFLOW: &str = "overflow while parsing number";
@@ -334,9 +360,9 @@ const EOF: &str = "premature end of file";
 const P_CNF: &str = "expected \"p cnf\"";
 const DRAT: &str = "expected DRAT instruction";
 
-fn parse_literal(input: &mut impl Input) -> Result<Literal> {
+fn parse_literal(input: &mut Input) -> Result<Literal> {
     match input.peek() {
-        None => input.error(EOF),
+        None => Err(input.error(EOF)),
         Some(c) if is_digit_or_dash(c) => {
             let sign = if c == b'-' {
                 input.next();
@@ -346,11 +372,11 @@ fn parse_literal(input: &mut impl Input) -> Result<Literal> {
             };
             Ok(Literal::new(sign * parse_i32(input)?))
         }
-        _ => input.error(NUMBER),
+        _ => Err(input.error(NUMBER)),
     }
 }
 
-fn parse_u64(input: &mut impl Input) -> Result<u64> {
+fn parse_u64(input: &mut Input) -> Result<u64> {
     while input.peek() == Some(b' ') {
         input.next();
     }
@@ -360,7 +386,7 @@ fn parse_u64(input: &mut impl Input) -> Result<u64> {
             break;
         }
         if !is_digit(c) {
-            return input.error(NUMBER);
+            return Err(input.error(NUMBER));
         }
         value = value
             .checked_mul(10)
@@ -371,16 +397,16 @@ fn parse_u64(input: &mut impl Input) -> Result<u64> {
     Ok(value)
 }
 
-fn parse_i32(input: &mut impl Input) -> Result<i32> {
+fn parse_i32(input: &mut Input) -> Result<i32> {
     let value = parse_u64(input)?;
-    if value > i32::max_value() as u64 {
-        input.error(OVERFLOW)
+    if value > i32::max_value().try_into().unwrap() {
+        Err(input.error(OVERFLOW))
     } else {
         Ok(value as i32)
     }
 }
 
-fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
+fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
     while let Some(value) = input.next() {
@@ -393,7 +419,7 @@ fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
     Ok(Literal::from_raw(result))
 }
 
-fn parse_comment(input: &mut impl Input) -> Option<()> {
+fn parse_comment(input: &mut Input) -> Option<()> {
     match input.peek() {
         Some(b'c') => {
             input.next();
@@ -409,11 +435,11 @@ fn parse_comment(input: &mut impl Input) -> Option<()> {
     }
 }
 
-fn parse_formula_header(input: &mut impl Input) -> Result<(u64, u64)> {
+fn parse_formula_header(input: &mut Input) -> Result<(u64, u64)> {
     while let Some(()) = parse_comment(input) {}
     for &expected in b"p cnf" {
         if input.peek().map_or(true, |c| c != expected) {
-            return input.error(P_CNF);
+            return Err(input.error(P_CNF));
         }
         input.next();
     }
@@ -426,20 +452,16 @@ fn is_space(c: u8) -> bool {
     [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
 }
 
-fn open_clause(parser: &mut Parser, state: ParserState) -> Clause {
+fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     let clause = parser.clause_db.open_clause();
-    if parser.is_pr() && state != ParserState::Deletion {
+    if parser.is_pr() && state != ProofParserState::Deletion {
         let witness = parser.witness_db.open_witness();
         invariant!(clause == witness);
     }
     clause
 }
 
-fn parse_formula(
-    parser: &mut Parser,
-    clause_ids: &mut HashTable,
-    mut input: impl Input,
-) -> Result<()> {
+fn parse_formula(parser: &mut Parser, clause_ids: &mut HashTable, mut input: Input) -> Result<()> {
     parse_formula_header(&mut input)?;
     let mut clause_head = true;
     while let Some(c) = input.peek() {
@@ -453,19 +475,19 @@ fn parse_formula(
         }
         let literal = parse_literal(&mut input)?;
         if clause_head {
-            open_clause(parser, ParserState::Clause);
+            open_clause(parser, ProofParserState::Clause);
             parser.clause_pivot.push(Literal::NEVER_READ);
             #[cfg(feature = "clause_lifetime_heuristic")]
             parser.clause_deleted_at.push(usize::max_value());
         }
-        add_literal(parser, clause_ids, ParserState::Clause, literal);
+        add_literal(parser, clause_ids, ProofParserState::Clause, literal);
         clause_head = literal.is_zero();
     }
     Ok(())
 }
 
 // See drat-trim
-fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
+pub fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
     for c in buffer {
         if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
         {
@@ -502,94 +524,114 @@ fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum ParserState {
+pub enum ProofParserState {
     Start,
     Clause,
     Witness,
     Deletion,
 }
 
-fn parse_proof(
+pub fn parse_proof_step(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
-    mut input: impl Input,
+    input: &mut Input,
     binary: bool,
-) -> Result<()> {
-    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
+    state: &mut ProofParserState,
+) -> Result<Option<()>> {
     let literal_parser = if binary {
         parse_literal_binary
     } else {
         parse_literal
     };
-    let mut state = ParserState::Start;
     let mut lemma_head = true;
     let mut first_literal = None;
-    if parser.max_proof_steps != Some(0) {
-        while let Some(c) = input.peek() {
-            if !binary && is_space(c) {
-                input.next();
-                continue;
-            }
-            if state == ParserState::Start {
-                state = match c {
-                    b'd' => {
-                        input.next();
-                        open_clause(parser, ParserState::Deletion);
-                        ParserState::Deletion
-                    }
-                    b'c' => {
-                        parse_comment(&mut input);
-                        ParserState::Start
-                    }
-                    c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
-                        if binary {
-                            input.next();
-                        }
-                        lemma_head = true;
-                        let clause = open_clause(parser, ParserState::Clause);
-                        parser.proof.push(ProofStep::lemma(clause));
-                        ParserState::Clause
-                    }
-                    _ => return input.error(DRAT),
-                };
-                continue;
-            }
-            let literal = literal_parser(&mut input)?;
-            if parser.is_pr() && state == ParserState::Clause && first_literal == Some(literal) {
-                state = ParserState::Witness;
-            }
-            if state == ParserState::Clause && lemma_head {
-                parser.clause_pivot.push(literal);
-                #[cfg(feature = "clause_lifetime_heuristic")]
-                parser.clause_deleted_at.push(usize::max_value());
-                first_literal = Some(literal);
-                lemma_head = false;
-            }
-            invariant!(state != ParserState::Start);
-            add_literal(parser, clause_ids, state, literal);
-            if literal.is_zero() {
-                state = ParserState::Start;
-                first_literal = None;
-                if parser
-                    .max_proof_steps
-                    .map_or(false, |max_steps| parser.proof.len() == max_steps)
-                {
-                    break;
+    while let Some(c) = input.peek() {
+        if !binary && is_space(c) {
+            input.next();
+            continue;
+        }
+        if *state == ProofParserState::Start {
+            *state = match c {
+                b'd' => {
+                    input.next();
+                    open_clause(parser, ProofParserState::Deletion);
+                    ProofParserState::Deletion
                 }
+                b'c' => {
+                    parse_comment(input);
+                    ProofParserState::Start
+                }
+                c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
+                    if binary {
+                        input.next();
+                    }
+                    lemma_head = true;
+                    let clause = open_clause(parser, ProofParserState::Clause);
+                    parser.proof.push(ProofStep::lemma(clause));
+                    ProofParserState::Clause
+                }
+                _ => return Err(input.error(DRAT)),
+            };
+            continue;
+        }
+        let literal = literal_parser(input)?;
+        if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
+            *state = ProofParserState::Witness;
+        }
+        if *state == ProofParserState::Clause && lemma_head {
+            parser.clause_pivot.push(literal);
+            #[cfg(feature = "clause_lifetime_heuristic")]
+            parser.clause_deleted_at.push(usize::max_value());
+            first_literal = Some(literal);
+            lemma_head = false;
+        }
+        invariant!(*state != ProofParserState::Start);
+        add_literal(parser, clause_ids, *state, literal);
+        if literal.is_zero() {
+            *state = ProofParserState::Start;
+            return Ok(Some(()));
+        }
+    }
+    Ok(None)
+}
+
+pub fn finish_proof(parser: &mut Parser, clause_ids: &mut HashTable, state: &mut ProofParserState) {
+    // patch missing zero terminators
+    match *state {
+        ProofParserState::Clause | ProofParserState::Deletion | ProofParserState::Witness => {
+            add_literal(parser, clause_ids, *state, Literal::new(0));
+        }
+        ProofParserState::Start => (),
+    };
+    // ensure that every proof ends with an empty clause
+    let clause = open_clause(parser, ProofParserState::Clause);
+    parser.proof.push(ProofStep::lemma(clause));
+    add_literal(
+        parser,
+        clause_ids,
+        ProofParserState::Clause,
+        Literal::new(0),
+    );
+}
+fn parse_proof(
+    parser: &mut Parser,
+    clause_ids: &mut HashTable,
+    mut input: Input,
+    binary: bool,
+) -> Result<()> {
+    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
+    let mut state = ProofParserState::Start;
+    if parser.max_proof_steps != Some(0) {
+        while let Some(()) = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)? {
+            if parser
+                .max_proof_steps
+                .map_or(false, |max_steps| parser.proof.len() == max_steps)
+            {
+                break;
             }
         }
     }
-    // patch missing zero terminators
-    match state {
-        ParserState::Clause | ParserState::Deletion | ParserState::Witness => {
-            add_literal(parser, clause_ids, state, Literal::new(0));
-        }
-        ParserState::Start => (),
-    };
-    // ensure that every proof ends with an empty clause
-    let clause = open_clause(parser, ParserState::Clause);
-    parser.proof.push(ProofStep::lemma(clause));
-    add_literal(parser, clause_ids, ParserState::Clause, Literal::new(0));
+    finish_proof(parser, clause_ids, &mut state);
     Ok(())
 }
 
@@ -638,7 +680,7 @@ c comment
         assert!(parse_formula(
             &mut parser,
             clause_ids,
-            TextInput::new(Box::new(example.as_bytes().iter().cloned())),
+            Input::new(Box::new(example.as_bytes().iter().cloned()), false),
         )
         .is_ok());
         parser
@@ -651,7 +693,7 @@ c comment
             let result = parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                TextInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned())),
+                Input::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
                 false,
             );
             assert!(result.is_ok());
@@ -715,6 +757,7 @@ c comment
                         ProofStep::lemma(Clause::new(3)),
                     ),
                     max_proof_steps: None,
+                    verbose: true,
                 }
             );
         })
@@ -728,6 +771,7 @@ c comment
         reset_globals();
         assert!(result.is_ok())
     }
+    // TODO obolete
     fn reset_globals() {
         unsafe {
             CLAUSE_DATABASE.clear();
@@ -742,74 +786,37 @@ impl HeapSpace for Parser {
     }
 }
 
-trait Input {
-    fn next(&mut self) -> Option<u8>;
-    fn peek(&mut self) -> Option<u8>;
-    fn error<U>(&self, why: &'static str) -> Result<U>;
-}
+pub type InputSource = Peekable<Box<dyn Iterator<Item = u8>>>;
 
-type InputSource = Peekable<Box<dyn Iterator<Item = u8>>>;
-
-struct TextInput {
-    iter: InputSource,
+pub struct Input {
+    source: InputSource,
+    binary: bool,
     line: usize,
 }
 
-impl TextInput {
-    fn new(source: Box<dyn Iterator<Item = u8>>) -> Self {
-        TextInput {
-            iter: source.peekable(),
+impl Input {
+    pub fn new(source: Box<dyn Iterator<Item = u8>>, binary: bool) -> Self {
+        Input {
+            source: source.peekable(),
+            binary,
             line: 0,
         }
     }
-}
-
-impl Input for TextInput {
     fn next(&mut self) -> Option<u8> {
-        self.iter.next().map(|c| {
-            if c == b'\n' {
+        self.source.next().map(|c| {
+            if self.binary && c == b'\n' {
                 self.line += 1;
             }
             c
         })
     }
     fn peek(&mut self) -> Option<u8> {
-        self.iter.peek().cloned()
+        self.source.peek().cloned()
     }
-    fn error<U>(&self, why: &'static str) -> Result<U>
-    where
-        Self: Sized,
-    {
-        Err(ParseError {
+    fn error(&self, why: &'static str) -> ParseError {
+        ParseError {
             why,
             line: self.line,
-        })
-    }
-}
-
-struct BinaryInput {
-    iter: InputSource,
-}
-
-impl BinaryInput {
-    fn new(source: Box<dyn Iterator<Item = u8>>) -> BinaryInput {
-        BinaryInput {
-            iter: source.peekable(),
         }
-    }
-}
-
-impl Input for BinaryInput {
-    fn next(&mut self) -> Option<u8> {
-        self.iter.next()
-    }
-    fn peek(&mut self) -> Option<u8> {
-        self.iter.peek().cloned()
-    }
-    fn error<U>(&self, why: &'static str) -> Result<U>
-    where
-        Self: Sized,
-    {
-        Err(ParseError { why, line: 0 })
     }
 }

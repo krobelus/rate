@@ -2,7 +2,7 @@
 
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
-    clause::{Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
+    clause::{write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, Config, RedundancyProperty},
     literal::{Literal, Variable},
@@ -1799,18 +1799,6 @@ fn write_lrat_deletion(
     } else {
         Ok(())
     }
-}
-
-fn write_clause<'a, T>(file: &mut impl Write, clause: T) -> io::Result<()>
-where
-    T: Iterator<Item = &'a Literal>,
-{
-    for &literal in clause {
-        if literal != Literal::BOTTOM {
-            write!(file, "{} ", literal)?;
-        }
-    }
-    write!(file, "0")
 }
 
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {

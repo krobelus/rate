@@ -4,10 +4,14 @@ use crate::memory::Offset;
 use derive_more::Add;
 use static_assertions::{assert_eq_size, const_assert};
 use std::{
+    convert::{TryFrom, TryInto},
     fmt,
+    io::{self, Write},
     mem::size_of,
     ops::{Add, AddAssign, Sub, SubAssign},
 };
+
+use crate::literal::Literal;
 
 /// The index of a clause or lemma, immutable during the lifetime of the program.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash, Default)]
@@ -20,9 +24,13 @@ impl Clause {
         requires!(index <= Clause::MAX_INDEX);
         Clause { index }
     }
+    pub fn from_usize(index: usize) -> Clause {
+        requires!(index < u64::max_value().try_into().unwrap());
+        Clause::new(index as u64)
+    }
     pub fn range(start: impl Offset, end: impl Offset) -> impl Iterator<Item = Clause> {
         assert_eq_size!(usize, u64);
-        (start.as_offset()..end.as_offset()).map(|offset| Clause::new(offset as u64))
+        (start.as_offset()..end.as_offset()).map(Clause::from_usize)
     }
     const MAX_INDEX: u64 = Tagged64::MAX_PAYLOAD - 1;
     pub const NEVER_READ: Clause = Clause {
@@ -118,6 +126,7 @@ impl Reason {
         Reason(Tagged64::new(0).with_bit1())
     }
     pub fn forced(offset: usize) -> Reason {
+        requires!(offset < u64::max_value() as usize);
         Reason(Tagged64::new(offset as u64).with_bit1().with_bit2())
     }
     pub fn is_assumed(self) -> bool {
@@ -236,7 +245,7 @@ impl GRATLiteral {
     }
     pub fn to_clause(self) -> Clause {
         requires!(self.0 != 0);
-        Clause::new((self.0 - 1) as u64)
+        Clause::new(u64::try_from(self.0).unwrap() - 1)
     }
 }
 
@@ -314,4 +323,16 @@ fn assert_primitive_sizes() {
     const_assert!(size_of::<LRATDependency>() == 4);
     const_assert!(size_of::<LRATLiteral>() == 4);
     const_assert!(size_of::<ProofStep>() == 8);
+}
+
+pub fn write_clause<'a, T>(file: &mut impl Write, clause: T) -> io::Result<()>
+where
+    T: Iterator<Item = &'a Literal>,
+{
+    for &literal in clause {
+        if literal != Literal::BOTTOM {
+            write!(file, "{} ", literal)?;
+        }
+    }
+    write!(file, "0")
 }

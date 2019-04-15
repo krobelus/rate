@@ -103,6 +103,7 @@ pub fn value(key: &str, value: impl Display) {
 pub struct Timer {
     name: &'static str,
     start: SystemTime,
+    pub disabled: bool,
 }
 
 impl Timer {
@@ -110,12 +111,16 @@ impl Timer {
         Timer {
             name,
             start: SystemTime::now(),
+            disabled: false,
         }
     }
 }
 
 impl Drop for Timer {
     fn drop(&mut self) {
+        if self.disabled {
+            return;
+        }
         let elapsed_time = self.start.elapsed().expect("failed to get time");
         value(
             &format!("{} (s)", self.name),

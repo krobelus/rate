@@ -10,7 +10,8 @@
     vec_resize_default,
     result_map_or_else,
     stmt_expr_attributes,
-    existential_type
+    existential_type,
+    try_from
 )]
 #![allow(clippy::collapsible_if)]
 
@@ -41,13 +42,15 @@ use crate::{
     literal::Literal,
     memory::{Array, Stack},
     output::solution,
-    parser::{proof_format_by_extension, run_parser, ClauseHashEq, HashTable, Parser},
+    parser::{
+        clause_is_active, proof_format_by_extension, run_parser, ClauseHashEq, HashTable, Parser,
+    },
     sick::Sick,
 };
 
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
-    let app = clap::App::new("sickcheck")
+    let app = clap::App::new("sick-check")
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
@@ -91,12 +94,12 @@ fn main() {
     parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
         &mut parser,
-        formula_filename,
+        Some(formula_filename),
         proof_filename,
         &mut clause_ids,
     );
 
-    if sick.proof_step - 1 >= parser.proof.len() {
+    if sick.proof_step > parser.proof.len() {
         die!(
             "Specified proof step exceeds proof size: {}",
             sick.proof_step
@@ -130,11 +133,6 @@ fn main() {
     clause_ids
         .get_mut(&ClauseHashEq(lemma))
         .map(|clause_stack| clause_stack.swap_remove(0));
-    fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
-        clause_ids
-            .get(&ClauseHashEq(needle))
-            .map_or(false, |stack| !stack.to_vec().is_empty())
-    }
     for clause in Clause::range(0, lemma) {
         if clause_is_active(&clause_ids, clause) {
             if !stable_under_unit_propagation(&assignment, parser.clause_db.clause(clause)) {
@@ -145,8 +143,8 @@ fn main() {
             }
         }
     }
-    let witnesses = sick.witness.unwrap_or_else(|| stack!());
-    const PIVOT: &'static str = "RAT requires to specify a pivot for each witness";
+    let witnesses = sick.witness.unwrap_or_else(Stack::new);
+    const PIVOT: & str = "RAT requires to specify a pivot for each witness";
     if redundancy_property == RedundancyProperty::RAT {
         let mut specified_pivots: Vec<Literal> = witnesses
             .iter()

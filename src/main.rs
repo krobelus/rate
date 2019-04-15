@@ -11,7 +11,8 @@
     vec_resize_default,
     result_map_or_else,
     stmt_expr_attributes,
-    existential_type
+    existential_type,
+    try_from
 )]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::nonminimal_bool)]

@@ -21,6 +21,8 @@ mod stack;
 mod smallstack;
 mod stackmapping;
 
+use std::convert::TryFrom;
+
 pub use crate::memory::{
     array::{assert_in_bounds, Array},
     boundedstack::BoundedStack,
@@ -43,12 +45,14 @@ impl Offset for usize {
 
 impl Offset for u64 {
     fn as_offset(&self) -> usize {
+        requires!(usize::try_from(*self).is_ok());
         *self as usize
     }
 }
 
 impl Offset for i32 {
     fn as_offset(&self) -> usize {
+        requires!(usize::try_from(*self).is_ok());
         *self as usize
     }
 }
@@ -65,5 +69,8 @@ impl<T: Copy> HeapSpace for T {
 }
 
 pub fn format_memory_usage(bytes: usize) -> String {
-    format!("{:0.3}", (bytes as f64) / f64::from(1 << 20))
+    format!(
+        "{:0.3}",
+        f64::try_from(i32::try_from(bytes).unwrap()).unwrap() / f64::from(1 << 20)
+    )
 }
