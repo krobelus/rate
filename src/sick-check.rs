@@ -144,7 +144,7 @@ fn main() {
         }
     }
     let witnesses = sick.witness.unwrap_or_else(Stack::new);
-    const PIVOT: & str = "RAT requires to specify a pivot for each witness";
+    const PIVOT: &str = "RAT requires to specify a pivot for each witness";
     if redundancy_property == RedundancyProperty::RAT {
         let mut specified_pivots: Vec<Literal> = witnesses
             .iter()

@@ -21,11 +21,7 @@ pub struct Witness {
 // Can't derive HeapSpace for Option<T> yet.
 impl HeapSpace for Sick {
     fn heap_space(&self) -> usize {
-        self.natural_model.heap_space()
-            + self
-                .witness
-                .as_ref()
-                .map_or(0, HeapSpace::heap_space)
+        self.natural_model.heap_space() + self.witness.as_ref().map_or(0, HeapSpace::heap_space)
     }
 }
 

@@ -969,16 +969,16 @@ fn extract_dependencies(
     if checker.config.grat_filename.is_some() {
         let resolvent_is_tautological = trail_length_before_rat.map_or(false, |tuple| tuple.1);
         if !resolvent_is_tautological {
-            if let Some((trail_length, _resolvent_is_tautological)) =  trail_length_before_rat {
-                    for position in trail_length..trail_length_before_rup {
-                        let (_literal, reason) = checker.assignment.trail_at(position);
-                        if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
-                            continue;
-                        }
-                        let clause = checker.offset2clause(reason.offset());
-                        checker.grat_prerat[clause] = true;
+            if let Some((trail_length, _resolvent_is_tautological)) = trail_length_before_rat {
+                for position in trail_length..trail_length_before_rup {
+                    let (_literal, reason) = checker.assignment.trail_at(position);
+                    if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
+                        continue;
                     }
+                    let clause = checker.offset2clause(reason.offset());
+                    checker.grat_prerat[clause] = true;
                 }
+            }
             for position in trail_length_before_rup..checker.assignment.len() - 1 {
                 let (_literal, reason) = checker.assignment.trail_at(position);
                 if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {

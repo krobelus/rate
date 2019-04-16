@@ -30,17 +30,18 @@ extern crate alloc;
 extern crate serde_derive;
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fs::File,
     io::{self, Write},
 };
 
 use crate::{
-    clause::{write_clause, Clause, ProofStep},
+    clause::{write_clause, Clause},
     memory::{Offset, Stack},
     parser::{
-        clause_is_active, finish_proof, is_binary_drat, parse_proof_step, read_file, run_parser,
-        run_parser_on_formula, HashTable, Input, Parser, ProofParserState, Result,
+        clause_is_active_same_id, finish_proof, is_binary_drat, read_file, run_parser,
+        run_parser_on_formula, HashTable, Input, ParseError, Parser, ProofParserState, Result,
+        SimpleInput,
     },
 };
 use clap::Arg;
@@ -48,7 +49,7 @@ use clap::Arg;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LineNumber {
     Invalid,
-    Active(usize),
+    Active(u64),
     Deleted,
 }
 
@@ -59,15 +60,25 @@ impl Default for LineNumber {
 }
 
 struct Splitter<'a> {
-    clause_line: Stack<LineNumber>,
-    line: usize, // the next line number to append
+    clause_line: Stack<LineNumber>, // TODO: use im::Vector?
+    lines: u64,       // the next line number to append
+    proof_end: usize, // steps from the proof that we have already processed
     parser: Parser,
     clause_ids: HashTable,
-    proof_input: Input,
+    proof_input: TappedInput,
     binary: bool,
     proof_file: &'a str,
-    chunk: usize,
-    total_chunks: usize,
+    chunk: u64,
+    total_chunks: u32,
+    log_total_chunks: u32,
+}
+
+// lines include the CNF header + 1-based
+fn lines2clauses(lines: u64) -> u64 {
+    lines - 2
+}
+fn clauses2lines(clauses: u64) -> u64 {
+    clauses + 2
 }
 
 fn main() {
@@ -77,7 +88,7 @@ fn main() {
         .arg(
             Arg::with_name("INPUT")
                 .required(true)
-                .help("proof_input file in DIMACS format"),
+                .help("input file in DIMACS format"),
         )
         .arg(
             Arg::with_name("PROOF")
@@ -85,155 +96,228 @@ fn main() {
                 .help("proof file in DRAT format"),
         )
         .arg(
-            Arg::with_name("PARTITIONS")
+            Arg::with_name("CHUNKS")
                 .required(true)
-                .help("number of partitions"),
+                .help("number of chunks"),
         )
         .get_matches();
 
     let formula_file = matches.value_of("INPUT").unwrap();
     let proof_file = matches.value_of("PROOF").unwrap();
-    let total_chunks: usize = matches
-        .value_of("PARTITIONS")
+    let total_chunks: u32 = matches
+        .value_of("CHUNKS")
         .unwrap()
         .parse()
-        .unwrap_or_else(|err| die!("Number of partitions must be an integer: {}", err));
+        .unwrap_or_else(|err| die!("Number of chunks must be an integer: {}", err));
     if total_chunks == 0 {
         die!("Number of paritions must be at least one")
     }
     let number_of_proof_steps = count_proof_steps(proof_file);
-    let steps_per_partition = number_of_proof_steps / total_chunks;
+    let steps_per_chunk = number_of_proof_steps / u64::from(total_chunks);
     let binary = is_binary_drat(read_file(proof_file).take(10));
-    let mut slicer = Splitter {
+    let mut splitter = Splitter {
         clause_line: Stack::new(),
-        line: 2, // CNF header + 1-based
+        lines: clauses2lines(0),
+        proof_end: 0,
         parser: Parser::new(),
         clause_ids: HashTable::new(),
-        proof_input: Input::new(read_file(&proof_file), binary),
+        proof_input: TappedInput {
+            source: SimpleInput::new(read_file(&proof_file), binary),
+            tap: None,
+        },
         binary,
         proof_file,
         chunk: 0,
         total_chunks,
+        log_total_chunks: f64::log10(total_chunks.into()).ceil() as u32,
     };
+    splitter.parser.verbose = false;
     run_parser_on_formula(
-        &mut slicer.parser,
+        &mut splitter.parser,
         Some(formula_file),
         proof_file,
-        &mut slicer.clause_ids,
+        &mut splitter.clause_ids,
     );
-    if slicer.parser.clause_db.number_of_clauses() == 0 {
-        die!("empty formula is not handled");
-    }
-    // TODO this assumes there are no comments!
-    for _clause in 0..slicer.parser.clause_db.number_of_clauses() {
-        requires!(_clause == slicer.clause_line.len().try_into().unwrap());
-        slicer.clause_line.push(LineNumber::Active(slicer.line));
-        slicer.line += 1;
+    for _clause in 0..splitter.parser.clause_db.number_of_clauses() {
+        requires!(_clause == splitter.clause_line.len().try_into().unwrap());
+        splitter
+            .clause_line
+            .push(LineNumber::Active(splitter.lines));
+        splitter.lines += 1;
     }
     for _ in 0..total_chunks - 1 {
-        write_proof_slice(&mut slicer, Some(steps_per_partition));
+        write_chunk(&mut splitter, Some(steps_per_chunk));
     }
-    write_proof_slice(&mut slicer, None)
+    write_chunk(&mut splitter, None)
 }
 
-fn write_proof_slice(slicer: &mut Splitter, steps: Option<usize>) {
-    slicer.chunk += 1;
-    assert!(slicer.total_chunks < usize::pow(10, 4));
-    let name = format!("{}-{:04}.diff", slicer.proof_file, slicer.chunk,);
-    println!("writing patch to {}", name);
-    let mut dst = File::create(name.clone())
+fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
+    let name = format!(
+        "{proof_file}.{chunk:0width$}.sed",
+        proof_file = splitter.proof_file,
+        chunk = splitter.chunk,
+        width = usize::try_from(splitter.log_total_chunks).unwrap(),
+    );
+    let chunk_drat = format!(
+        "{proof_file}.{chunk:0width$}.drat",
+        proof_file = splitter.proof_file,
+        chunk = splitter.chunk,
+        width = usize::try_from(splitter.log_total_chunks).unwrap(),
+    );
+    splitter.proof_input.tap = Some(
+        File::create(chunk_drat)
+            .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err)),
+    );
+    let mut chunk_sed = File::create(name.clone())
         .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err));
-    write_proof_slice_aux(&mut dst, slicer, steps)
+
+    parse_chunk(splitter, steps)
         .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
-    let mut bias = 0;
-    for i in 0..slicer.clause_line.len() {
+
+    fn line_number(splitter: &Splitter, clause: Clause) -> Option<u64> {
+        if clause == Clause::DOES_NOT_EXIST {
+            return None;
+        }
+        match splitter.clause_line[clause.as_offset()] {
+            LineNumber::Active(line) => Some(line),
+            LineNumber::Deleted => None,
+            LineNumber::Invalid => unreachable!(),
+        }
+    }
+
+    let previous_lines = splitter.lines;
+    for step in splitter
+        .parser
+        .proof
+        .as_slice()
+        .range(splitter.proof_end, splitter.parser.proof.len())
+    {
+        if !step.is_deletion() {
+            splitter
+                .clause_line
+                .push(LineNumber::Active(splitter.lines));
+            splitter.lines += 1;
+        }
+    }
+    // write added clauses
+    for step in splitter
+        .parser
+        .proof
+        .as_slice()
+        .range(splitter.proof_end, splitter.parser.proof.len())
+    {
+        let clause = step.clause();
+        if !step.is_deletion() {
+            if clause_is_active_same_id(&splitter.clause_ids, clause) {
+                write!(chunk_sed, "$a")
+                    .and(write_clause(
+                        &mut chunk_sed,
+                        splitter.parser.clause_db.clause(clause).iter(),
+                    ))
+                    .and(writeln!(chunk_sed))
+                    .unwrap_or_else(write_error)
+            }
+        }
+    }
+    // write deletions for clauses that predate our chunk
+    for step in splitter
+        .parser
+        .proof
+        .as_slice()
+        .range(splitter.proof_end, splitter.parser.proof.len())
+    {
+            let clause = step.clause();
+            if step.is_deletion() {
+                if let Some(line) = line_number(splitter, clause) {
+                    if line < previous_lines {
+                        writeln!(chunk_sed, "{}d", line).unwrap_or_else(write_error);
+                    }
+                }
+            }
+    }
+    // set inactive all clauses deleted in the current chunk
+    // and adjust the line numbers of all subsequent clauses
+    splitter.proof_end = splitter.parser.proof.len();
+    let mut newly_deleted = 0;
+    for i in 0..splitter.clause_line.len() {
         let clause = Clause::from_usize(i);
-        match slicer.clause_line[i] {
+        match splitter.clause_line[i] {
             LineNumber::Active(line) => {
-                let line_after_patch = if clause_is_active(&slicer.clause_ids, clause) {
-                    LineNumber::Active(line - bias)
+                let line_after_patch = if clause_is_active_same_id(&splitter.clause_ids, clause) {
+                    LineNumber::Active(line - newly_deleted)
                 } else {
-                    bias += 1;
+                    newly_deleted += 1;
                     LineNumber::Deleted
                 };
-                slicer.clause_line[clause.as_offset()] = line_after_patch;
+                splitter.clause_line[clause.as_offset()] = line_after_patch;
             }
             LineNumber::Deleted => (),
             LineNumber::Invalid => unreachable!(),
         }
     }
-    slicer.line -= bias;
+    splitter.lines -= newly_deleted;
+    write!(
+        chunk_sed,
+        "1cp cnf {} {}",
+        splitter.parser.maxvar,
+        lines2clauses(splitter.lines)
+    )
+    .unwrap_or_else(write_error);
+    splitter.chunk += 1;
 }
 
-fn write_proof_slice_aux(
-    dst: &mut File,
-    slicer: &mut Splitter,
-    steps: Option<usize>,
-) -> Result<()> {
+fn parse_chunk(splitter: &mut Splitter, steps: Option<u64>) -> Result<()> {
     let mut state = ProofParserState::Start;
     if let Some(exact_steps) = steps {
         for _ in 0..exact_steps {
-            let _result = do_parse_proof_step(dst, slicer, &mut state)?;
+            let _result = parse_proof_step(splitter, &mut state)?;
             invariant!(_result == Some(()));
         }
     } else {
-        while let Some(()) = do_parse_proof_step(dst, slicer, &mut state)? {}
-        finish_proof(&mut slicer.parser, &mut slicer.clause_ids, &mut state);
+        while let Some(()) = parse_proof_step(splitter, &mut state)? {}
+        finish_proof(&mut splitter.parser, &mut splitter.clause_ids, &mut state);
     }
     Ok(())
 }
 
-fn do_parse_proof_step(
-    dst: &mut File,
-    slicer: &mut Splitter,
-    state: &mut ProofParserState,
-) -> Result<Option<()>> {
-    parse_proof_step(
-        &mut slicer.parser,
-        &mut slicer.clause_ids,
-        &mut slicer.proof_input,
-        slicer.binary,
+fn parse_proof_step(splitter: &mut Splitter, state: &mut ProofParserState) -> Result<Option<()>> {
+    parser::parse_proof_step(
+        &mut splitter.parser,
+        &mut splitter.clause_ids,
+        &mut splitter.proof_input,
+        splitter.binary,
         state,
     )
-    .map(|result| {
-        let proof_step = *slicer.parser.proof.last();
-        write_edit_script(dst, slicer, proof_step)
-            .unwrap_or_else(|err| die!("Write failed: {}", err));
-        result
-    })
 }
 
-fn line_number(slicer: &Splitter, clause: Clause) -> Option<usize> {
-    match slicer.clause_line[clause.as_offset()] {
-        LineNumber::Active(line) => Some(line),
-        LineNumber::Deleted => None,
-        LineNumber::Invalid => unreachable!(),
-    }
-}
-
-fn write_edit_script(
-    dst: &mut File,
-    slicer: &mut Splitter,
-    proof_step: ProofStep,
-) -> io::Result<()> {
-    let clause = proof_step.clause();
-    if proof_step.is_deletion() {
-        write!(dst, "{}d", line_number(slicer, clause).unwrap())?;
-    } else {
-        let line = slicer.line;
-        slicer.clause_line.push(LineNumber::Active(line));
-        write!(dst, "$a")?;
-        write_clause(dst, slicer.parser.clause_db.clause(clause).iter())?;
-        slicer.line += 1;
-    }
-    writeln!(dst, "")?;
-    Ok(())
-}
-
-fn count_proof_steps(proof_file: &str) -> usize {
+fn count_proof_steps(proof_file: &str) -> u64 {
     let mut parser = Parser::new();
     parser.verbose = false;
     let mut clause_ids = HashTable::new();
     run_parser(&mut parser, None, proof_file, &mut clause_ids);
-    parser.proof.len()
+    parser.proof.len().try_into().unwrap()
+}
+
+fn write_error(error: io::Error) {
+    die!("Write failed: {}", error)
+}
+
+pub struct TappedInput {
+    source: SimpleInput,
+    tap: Option<File>,
+}
+
+impl Input for TappedInput {
+    fn next(&mut self) -> Option<u8> {
+        self.source.next().map(|c| {
+            self.tap.as_ref().unwrap().write(&[c]).unwrap();
+            c
+        })
+    }
+    fn peek(&mut self) -> Option<u8> {
+        self.source.peek()
+    }
+    fn error(&self, why: &'static str) -> ParseError {
+        self.source.error(why)
+    }
 }

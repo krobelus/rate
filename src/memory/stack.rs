@@ -55,6 +55,13 @@ impl<T> Stack<T> {
             len,
         }
     }
+    pub fn to_vec(self) -> Vec<T> {
+        let ptr = self.array.mut_ptr();
+        let len = self.len();
+        let cap = self.capacity();
+        std::mem::forget(self);
+        unsafe { Vec::from_raw_parts(ptr, len, cap) }
+    }
     pub fn len(&self) -> usize {
         self.len
     }
@@ -323,7 +330,7 @@ impl<T: Clone + Serialize> Serialize for Stack<T> {
     where
         S: Serializer,
     {
-        self.to_vec().serialize(serializer)
+        self.clone().to_vec().serialize(serializer)
     }
 }
 

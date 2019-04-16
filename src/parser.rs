@@ -98,12 +98,15 @@ pub fn run_parser_on_formula(
         parser.witness_db.initialize();
     }
     if let Some(formula_file) = formula {
-        let _timer = Timer::name("parsing formula");
+        let mut _timer = Timer::name("parsing formula");
+        if !parser.verbose {
+            _timer.disabled = true;
+        }
         let formula_input = read_file(formula_file);
         parse_formula(
             &mut parser,
             &mut clause_ids,
-            Input::new(Box::new(formula_input), false),
+            SimpleInput::new(Box::new(formula_input), false),
         )
         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
     }
@@ -130,7 +133,7 @@ pub fn run_parser(
     parse_proof(
         &mut parser,
         &mut clause_ids,
-        Input::new(proof_input, binary),
+        SimpleInput::new(proof_input, binary),
         binary,
     )
     .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
@@ -141,10 +144,10 @@ fn open_file(filename: &str) -> File {
 }
 
 const ZSTD: &str = ".zst";
-const GZIP: & str = ".gz";
-const BZIP2: & str = ".bz2";
-const LZ4: & str = ".lz4";
-const XZ: & str = ".xz";
+const GZIP: &str = ".gz";
+const BZIP2: &str = ".bz2";
+const LZ4: &str = ".lz4";
+const XZ: &str = ".xz";
 
 fn compression_format_by_extension(filename: &str) -> (&str, &str) {
     let mut basename = filename;
@@ -326,6 +329,15 @@ pub fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
         .map_or(false, |stack| !stack.to_vec().is_empty())
 }
 
+#[allow(dead_code)]
+pub fn clause_is_active_same_id(clause_ids: &HashTable, needle: Clause) -> bool {
+    clause_ids
+        .get(&ClauseHashEq(needle))
+        .map_or(false, |stack| {
+            stack.to_vec().iter().any(|&clause| clause == needle)
+        })
+}
+
 fn compute_hash(clause: Slice<Literal>) -> usize {
     let mut sum: usize = 0;
     let mut prod: usize = 1;
@@ -360,7 +372,7 @@ const EOF: &str = "premature end of file";
 const P_CNF: &str = "expected \"p cnf\"";
 const DRAT: &str = "expected DRAT instruction";
 
-fn parse_literal(input: &mut Input) -> Result<Literal> {
+fn parse_literal(input: &mut impl Input) -> Result<Literal> {
     match input.peek() {
         None => Err(input.error(EOF)),
         Some(c) if is_digit_or_dash(c) => {
@@ -376,7 +388,7 @@ fn parse_literal(input: &mut Input) -> Result<Literal> {
     }
 }
 
-fn parse_u64(input: &mut Input) -> Result<u64> {
+fn parse_u64(input: &mut impl Input) -> Result<u64> {
     while input.peek() == Some(b' ') {
         input.next();
     }
@@ -397,7 +409,7 @@ fn parse_u64(input: &mut Input) -> Result<u64> {
     Ok(value)
 }
 
-fn parse_i32(input: &mut Input) -> Result<i32> {
+fn parse_i32(input: &mut impl Input) -> Result<i32> {
     let value = parse_u64(input)?;
     if value > i32::max_value().try_into().unwrap() {
         Err(input.error(OVERFLOW))
@@ -406,7 +418,7 @@ fn parse_i32(input: &mut Input) -> Result<i32> {
     }
 }
 
-fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
+fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
     while let Some(value) = input.next() {
@@ -419,7 +431,7 @@ fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     Ok(Literal::from_raw(result))
 }
 
-fn parse_comment(input: &mut Input) -> Option<()> {
+fn parse_comment(input: &mut impl Input) -> Option<()> {
     match input.peek() {
         Some(b'c') => {
             input.next();
@@ -435,7 +447,7 @@ fn parse_comment(input: &mut Input) -> Option<()> {
     }
 }
 
-fn parse_formula_header(input: &mut Input) -> Result<(u64, u64)> {
+fn parse_formula_header(input: &mut impl Input) -> Result<(u64, u64)> {
     while let Some(()) = parse_comment(input) {}
     for &expected in b"p cnf" {
         if input.peek().map_or(true, |c| c != expected) {
@@ -461,7 +473,11 @@ fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     clause
 }
 
-fn parse_formula(parser: &mut Parser, clause_ids: &mut HashTable, mut input: Input) -> Result<()> {
+fn parse_formula(
+    parser: &mut Parser,
+    clause_ids: &mut HashTable,
+    mut input: impl Input,
+) -> Result<()> {
     parse_formula_header(&mut input)?;
     let mut clause_head = true;
     while let Some(c) = input.peek() {
@@ -534,7 +550,7 @@ pub enum ProofParserState {
 pub fn parse_proof_step(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
-    input: &mut Input,
+    input: &mut impl Input,
     binary: bool,
     state: &mut ProofParserState,
 ) -> Result<Option<()>> {
@@ -616,7 +632,7 @@ pub fn finish_proof(parser: &mut Parser, clause_ids: &mut HashTable, state: &mut
 fn parse_proof(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
-    mut input: Input,
+    mut input: impl Input,
     binary: bool,
 ) -> Result<()> {
     parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
@@ -680,7 +696,7 @@ c comment
         assert!(parse_formula(
             &mut parser,
             clause_ids,
-            Input::new(Box::new(example.as_bytes().iter().cloned()), false),
+            SimpleInput::new(Box::new(example.as_bytes().iter().cloned()), false),
         )
         .is_ok());
         parser
@@ -693,7 +709,7 @@ c comment
             let result = parse_proof(
                 &mut parser,
                 &mut clause_ids,
-                Input::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
+                SimpleInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
                 false,
             );
             assert!(result.is_ok());
@@ -788,20 +804,29 @@ impl HeapSpace for Parser {
 
 pub type InputSource = Peekable<Box<dyn Iterator<Item = u8>>>;
 
-pub struct Input {
+pub trait Input {
+    fn next(&mut self) -> Option<u8>;
+    fn peek(&mut self) -> Option<u8>;
+    fn error(&self, why: &'static str) -> ParseError;
+}
+
+pub struct SimpleInput {
     source: InputSource,
     binary: bool,
     line: usize,
 }
 
-impl Input {
+impl SimpleInput {
     pub fn new(source: Box<dyn Iterator<Item = u8>>, binary: bool) -> Self {
-        Input {
+        SimpleInput {
             source: source.peekable(),
             binary,
             line: 0,
         }
     }
+}
+
+impl Input for SimpleInput {
     fn next(&mut self) -> Option<u8> {
         self.source.next().map(|c| {
             if self.binary && c == b'\n' {

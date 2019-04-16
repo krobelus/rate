@@ -67,7 +67,7 @@ impl<T: Copy + Default> SmallStack<T> {
         match &self.state {
             SmallStackState::Empty => vec![],
             SmallStackState::One(value) => vec![*value],
-            SmallStackState::Many(stack) => stack.to_vec(),
+            SmallStackState::Many(stack) => stack.clone().to_vec(),
         }
     }
 }
