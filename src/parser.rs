@@ -329,15 +329,6 @@ pub fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
         .map_or(false, |stack| !stack.to_vec().is_empty())
 }
 
-#[allow(dead_code)]
-pub fn clause_is_active_same_id(clause_ids: &HashTable, needle: Clause) -> bool {
-    clause_ids
-        .get(&ClauseHashEq(needle))
-        .map_or(false, |stack| {
-            stack.to_vec().iter().any(|&clause| clause == needle)
-        })
-}
-
 fn compute_hash(clause: Slice<Literal>) -> usize {
     let mut sum: usize = 0;
     let mut prod: usize = 1;

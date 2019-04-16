@@ -30,37 +30,25 @@ extern crate alloc;
 extern crate serde_derive;
 
 use std::{
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     fs::File,
-    io::{self, Write},
+    io::{self, BufWriter, Write},
 };
 
 use crate::{
     clause::{write_clause, Clause},
     memory::{Offset, Stack},
     parser::{
-        clause_is_active_same_id, finish_proof, is_binary_drat, read_file, run_parser,
-        run_parser_on_formula, HashTable, Input, ParseError, Parser, ProofParserState, Result,
-        SimpleInput,
+        finish_proof, is_binary_drat, read_file, run_parser, run_parser_on_formula, HashTable,
+        Input, ParseError, Parser, ProofParserState, Result, SimpleInput,
     },
 };
 use clap::Arg;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LineNumber {
-    Invalid,
-    Active(u64),
-    Deleted,
-}
-
-impl Default for LineNumber {
-    fn default() -> Self {
-        LineNumber::Invalid
-    }
-}
-
 struct Splitter<'a> {
-    clause_line: Stack<LineNumber>, // TODO: use im::Vector?
+    clause_active: Stack<bool>,
+    clause_line: BTreeMap<Clause, u64>,
     lines: u64,       // the next line number to append
     proof_end: usize, // steps from the proof that we have already processed
     parser: Parser,
@@ -116,7 +104,8 @@ fn main() {
     let steps_per_chunk = number_of_proof_steps / u64::from(total_chunks);
     let binary = is_binary_drat(read_file(proof_file).take(10));
     let mut splitter = Splitter {
-        clause_line: Stack::new(),
+        clause_active: Stack::new(),
+        clause_line: BTreeMap::new(),
         lines: clauses2lines(0),
         proof_end: 0,
         parser: Parser::new(),
@@ -138,11 +127,9 @@ fn main() {
         proof_file,
         &mut splitter.clause_ids,
     );
-    for _clause in 0..splitter.parser.clause_db.number_of_clauses() {
-        requires!(_clause == splitter.clause_line.len().try_into().unwrap());
-        splitter
-            .clause_line
-            .push(LineNumber::Active(splitter.lines));
+    for clause in Clause::range(0, splitter.parser.clause_db.number_of_clauses()) {
+        splitter.clause_active.push(true);
+        splitter.clause_line.insert(clause, splitter.lines);
         splitter.lines += 1;
     }
     for _ in 0..total_chunks - 1 {
@@ -164,10 +151,10 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         chunk = splitter.chunk,
         width = usize::try_from(splitter.log_total_chunks).unwrap(),
     );
-    splitter.proof_input.tap = Some(
+    splitter.proof_input.tap = Some(BufWriter::new(
         File::create(chunk_drat)
             .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err)),
-    );
+    ));
     let mut chunk_sed = File::create(name.clone())
         .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err));
 
@@ -178,11 +165,7 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         if clause == Clause::DOES_NOT_EXIST {
             return None;
         }
-        match splitter.clause_line[clause.as_offset()] {
-            LineNumber::Active(line) => Some(line),
-            LineNumber::Deleted => None,
-            LineNumber::Invalid => unreachable!(),
-        }
+        splitter.clause_line.get(&clause).cloned()
     }
 
     let previous_lines = splitter.lines;
@@ -192,14 +175,18 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         .as_slice()
         .range(splitter.proof_end, splitter.parser.proof.len())
     {
-        if !step.is_deletion() {
-            splitter
-                .clause_line
-                .push(LineNumber::Active(splitter.lines));
+        let clause = step.clause();
+        if step.is_deletion() {
+            if clause != Clause::DOES_NOT_EXIST {
+                splitter.clause_active[clause.as_offset()] = false;
+            }
+        } else {
+            splitter.clause_active.push(true);
+            splitter.clause_line.insert(clause, splitter.lines);
             splitter.lines += 1;
         }
     }
-    // write added clauses
+    // write added clauses that have not been deleted immediately
     for step in splitter
         .parser
         .proof
@@ -208,7 +195,7 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
     {
         let clause = step.clause();
         if !step.is_deletion() {
-            if clause_is_active_same_id(&splitter.clause_ids, clause) {
+            if splitter.clause_active[clause.as_offset()] {
                 write!(chunk_sed, "$a")
                     .and(write_clause(
                         &mut chunk_sed,
@@ -226,36 +213,31 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         .as_slice()
         .range(splitter.proof_end, splitter.parser.proof.len())
     {
-            let clause = step.clause();
-            if step.is_deletion() {
-                if let Some(line) = line_number(splitter, clause) {
-                    if line < previous_lines {
-                        writeln!(chunk_sed, "{}d", line).unwrap_or_else(write_error);
-                    }
+        let clause = step.clause();
+        if step.is_deletion() {
+            if let Some(line) = line_number(splitter, clause) {
+                if line < previous_lines {
+                    writeln!(chunk_sed, "{}d", line).unwrap_or_else(write_error);
                 }
             }
+        }
     }
     // set inactive all clauses deleted in the current chunk
     // and adjust the line numbers of all subsequent clauses
     splitter.proof_end = splitter.parser.proof.len();
-    let mut newly_deleted = 0;
-    for i in 0..splitter.clause_line.len() {
-        let clause = Clause::from_usize(i);
-        match splitter.clause_line[i] {
-            LineNumber::Active(line) => {
-                let line_after_patch = if clause_is_active_same_id(&splitter.clause_ids, clause) {
-                    LineNumber::Active(line - newly_deleted)
-                } else {
-                    newly_deleted += 1;
-                    LineNumber::Deleted
-                };
-                splitter.clause_line[clause.as_offset()] = line_after_patch;
-            }
-            LineNumber::Deleted => (),
-            LineNumber::Invalid => unreachable!(),
-        }
+    let mut new_deletions = Stack::new();
+    for (clause, line_number) in splitter.clause_line.iter_mut() {
+        if splitter.clause_active[clause.as_offset()] {
+            *line_number = *line_number -
+            u64::try_from(new_deletions.len()).unwrap();
+        } else {
+            new_deletions.push(*clause);
+        };
     }
-    splitter.lines -= newly_deleted;
+    splitter.lines -= u64::try_from(new_deletions.len()).unwrap();
+    for &clause in &new_deletions {
+        splitter.clause_line.remove(&clause);
+    }
     write!(
         chunk_sed,
         "1cp cnf {} {}",
@@ -304,13 +286,13 @@ fn write_error(error: io::Error) {
 
 pub struct TappedInput {
     source: SimpleInput,
-    tap: Option<File>,
+    tap: Option<BufWriter<File>>,
 }
 
 impl Input for TappedInput {
     fn next(&mut self) -> Option<u8> {
         self.source.next().map(|c| {
-            self.tap.as_ref().unwrap().write(&[c]).unwrap();
+            self.tap.as_mut().unwrap().write(&[c]).unwrap();
             c
         })
     }
