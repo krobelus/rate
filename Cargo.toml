@@ -25,8 +25,6 @@ ansi_term = "0.11"
 derive_more = "0.13"
 clap = "2.32"
 scopeguard = "0.3"
-flame = { version = "0.2", optional = true }
-flamer = { version = "0.3", optional = true }
 atty = "0.2"
 static_assertions = "0.3"
 bitfield = "0.13"
@@ -42,7 +40,6 @@ xz2 = "0.1"
 
 [features]
 default = []
-flame_it = ["flame", "flamer"]
 clause_lifetime_heuristic = []
 
 [profile.release]

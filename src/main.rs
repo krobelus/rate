@@ -37,8 +37,6 @@ extern crate alloc;
 extern crate serde_derive;
 
 use clap::Arg;
-#[cfg(feature = "flame_it")]
-use flamer::flame;
 use std::process;
 
 use crate::{
@@ -48,7 +46,6 @@ use crate::{
     parser::parse_files,
 };
 
-#[cfg_attr(feature = "flame_it", flame)]
 fn main() {
     let mut app = clap::App::new("rate")
     .version(concat!(env!("CARGO_PKG_VERSION"), " (git commit ", env!("GIT_COMMIT"), ")"))
@@ -116,7 +113,5 @@ fn main() {
     drop(timer);
     checker.print_memory_usage();
     solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
-    #[cfg(feature = "flame_it")]
-    flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
     process::exit(if ok { 0 } else { 1 });
 }

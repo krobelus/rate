@@ -15,8 +15,6 @@ use crate::{
 };
 use ansi_term::Colour;
 use bitfield::bitfield;
-#[cfg(feature = "flame_it")]
-use flamer::flame;
 use rate_macros::HeapSpace;
 use std::{
     cmp, fmt,
@@ -1266,7 +1264,6 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
 }
 
 #[allow(clippy::cyclomatic_complexity)]
-#[cfg_attr(feature = "flame_it", flame)]
 fn preprocess(checker: &mut Checker) -> bool {
     let _timer = Timer::name("preprocessing proof");
     log!(checker, 1, "[preprocess]");
@@ -1356,7 +1353,6 @@ fn preprocess(checker: &mut Checker) -> bool {
 }
 
 #[allow(clippy::cyclomatic_complexity)]
-#[cfg_attr(feature = "flame_it", flame)]
 fn verify(checker: &mut Checker) -> bool {
     log!(checker, 1, "[verify]");
     defer_log!(checker, 1, "[verify] done\n");
@@ -1681,7 +1677,6 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg_attr(feature = "flame_it", flame)]
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.lrat_filename {
         Some(filename) => BufWriter::new(File::create(filename)?),

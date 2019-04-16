@@ -8,8 +8,6 @@ use crate::{
     memory::{HeapSpace, Offset, Slice, SmallStack, Stack},
     output::Timer,
 };
-#[cfg(feature = "flame_it")]
-use flamer::flame;
 use memmap::{Mmap, MmapOptions};
 use std::collections::HashMap;
 use std::{
