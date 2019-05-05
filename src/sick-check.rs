@@ -50,6 +50,7 @@ use crate::{
 
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
+    crate::config::signals();
     let app = clap::App::new("sick-check")
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))

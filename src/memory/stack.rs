@@ -55,7 +55,7 @@ impl<T> Stack<T> {
             len,
         }
     }
-    pub fn to_vec(self) -> Vec<T> {
+    pub fn into_vec(self) -> Vec<T> {
         let ptr = self.array.mut_ptr();
         let len = self.len();
         let cap = self.capacity();
@@ -330,7 +330,7 @@ impl<T: Clone + Serialize> Serialize for Stack<T> {
     where
         S: Serializer,
     {
-        self.clone().to_vec().serialize(serializer)
+        self.clone().into_vec().serialize(serializer)
     }
 }
 

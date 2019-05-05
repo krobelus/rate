@@ -10,6 +10,10 @@ __pycache__
 *.grat
 *.sick
 *.out
+*.drat.*.sed
+*.dpr.*.sed
+*.drat.*.drat
+*.dpr.*.dpr
 /perf.data*
 /*.profile
 /flame-graph.html

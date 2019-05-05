@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 set -eu
 
@@ -11,13 +11,14 @@ verbose="${4:-}"
 logN="$(python3 -c "from math import log, ceil; print(ceil(log($N, 10)))")"
 
 checker() {
-	drat-trim "$@" -f -I
+	# force textual proof with -I (needs patch)
+	# drat-trim "$@" -f -I
+	rate --forward "$@"
 }
 
 log() {
 	test -z "$verbose" && return
-	printf "# " >/dev/stderr
-	echo "$@" >/dev/stderr
+	printf "# $@\n" >> /dev/stderr
 }
 
 log "Splitting proof in $N chunks"
@@ -26,30 +27,39 @@ split-proof "$formula" "$proof" "$N"
 
 check_part() {
 	part="$1"
+	shift
+	log
 	log "Checking part $part"
 	patched_formula="grep -v '^c' $formula "
 	for i in $(seq 0 "$((part - 1))")
 	do
 		id="$(printf %0${logN}d $i)"
 		patched_formula="$patched_formula | sed -f $proof.$id.sed"
-		:
 	done
 	id="$(printf %0${logN}d $part)"
 	proof_chunk="$proof.$id.$ext"
 	log "patched formula: $patched_formula"
-	log "stored in: $proof.$id.xcnf"
 	log "proof chunk: $proof_chunk"
-	sh -c "$patched_formula" | checker /dev/stdin "$proof_chunk"
+	sh -c "$patched_formula" | checker "$@" /dev/stdin "$proof_chunk"
 }
 
-# TODO use env_parallel.sh
+# TODO make it work for sh
 . "$(which env_parallel.bash)"
 
 (
     for part in $(seq 0 $((N - 2)))
     do
-	printf %s\\n "check_part $part | \
-            	grep -q -E '(c ERROR: all lemmas verified|s VERIFIED)'"
+	printf %s\\n \
+		"check_part $part --no-terminating-empty-clause"
     done
-    printf %s\\n "check_part $((N - 1)) | grep -q 's VERIFIED'"
-) | env_parallel
+    printf %s\\n "check_part $((N - 1))"
+) |
+env_parallel --group --keep-order |
+awk "
+					{ if(\"$verbose\") print \$0 }
+/all lemmas verified, but no conflict/	{ ok=1 }
+/s NOT VERIFIED/			{ if(ok) ok=0; else exit }
+/s VERIFIED/				{ verified=1; exit }
+END					{ exit !verified }
+"
+# tee $output |

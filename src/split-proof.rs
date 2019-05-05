@@ -70,6 +70,7 @@ fn clauses2lines(clauses: u64) -> u64 {
 }
 
 fn main() {
+    crate::config::signals();
     let matches = clap::App::new("split-proof")
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
@@ -81,7 +82,7 @@ fn main() {
         .arg(
             Arg::with_name("PROOF")
                 .required(true)
-                .help("proof file in DRAT format"),
+                .help("proof file"),
         )
         .arg(
             Arg::with_name("CHUNKS")
@@ -145,14 +146,15 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         chunk = splitter.chunk,
         width = usize::try_from(splitter.log_total_chunks).unwrap(),
     );
-    let chunk_drat = format!(
-        "{proof_file}.{chunk:0width$}.drat",
+    let proof_chunk = format!(
+        "{proof_file}.{chunk:0width$}.{proof_extension}",
         proof_file = splitter.proof_file,
         chunk = splitter.chunk,
         width = usize::try_from(splitter.log_total_chunks).unwrap(),
+        proof_extension = splitter.parser.redundancy_property.file_extension(),
     );
     splitter.proof_input.tap = Some(BufWriter::new(
-        File::create(chunk_drat)
+        File::create(proof_chunk)
             .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err)),
     ));
     let mut chunk_sed = File::create(name.clone())
@@ -228,8 +230,7 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
     let mut new_deletions = Stack::new();
     for (clause, line_number) in splitter.clause_line.iter_mut() {
         if splitter.clause_active[clause.as_offset()] {
-            *line_number = *line_number -
-            u64::try_from(new_deletions.len()).unwrap();
+            *line_number -= u64::try_from(new_deletions.len()).unwrap();
         } else {
             new_deletions.push(*clause);
         };
@@ -241,7 +242,7 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
     write!(
         chunk_sed,
         "1cp cnf {} {}",
-        splitter.parser.maxvar,
+        splitter.parser.maxvar.literal().decode(),
         lines2clauses(splitter.lines)
     )
     .unwrap_or_else(write_error);
@@ -292,7 +293,7 @@ pub struct TappedInput {
 impl Input for TappedInput {
     fn next(&mut self) -> Option<u8> {
         self.source.next().map(|c| {
-            self.tap.as_mut().unwrap().write(&[c]).unwrap();
+            self.tap.as_mut().unwrap().write_all(&[c]).unwrap();
             c
         })
     }

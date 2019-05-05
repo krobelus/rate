@@ -286,6 +286,24 @@ def test_full():
                  instances=set(drat_inputs()) - set(small_drat_inputs()))
 
 
+# TODO
+# def test_forward():
+#     # double_check(rate(flags=['--forward']), instances=set(drat_inputs()) | set(pr_inputs()))
+#     double_check(rate(flags=['--forward']), instances=drat_inputs())
+
+def test_split():
+    # TODO
+    return
+    instances = set(drat_inputs()) | set(pr_inputs())
+    comp = rate(flags=['--forward'])
+    for formula, proof in instances:
+        if formula.startswith('benchmarks/crafted/missing-last-zero'):
+            continue
+        print(formula, proof)
+        expected = Popen(comp + [formula, proof]).wait()
+        actual   = Popen(('./scripts/split-and-check.sh', formula, proof)).wait()
+        assert actual == expected
+
 # def test_with_lrat_check():
 #     double_check(rate(
 #         flags=['--assume-pivot-is-first']), ['lrat-check'])

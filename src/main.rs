@@ -40,13 +40,14 @@ use clap::Arg;
 use std::process;
 
 use crate::{
-    checker::{check, Checker},
+    checker::{check, Checker, Verdict},
     config::Config,
     output::{solution, value, Timer},
     parser::parse_files,
 };
 
 fn main() {
+    crate::config::signals();
     let mut app = clap::App::new("rate")
     .version(concat!(env!("CARGO_PKG_VERSION"), " (git commit ", env!("GIT_COMMIT"), ")"))
     .about(env!("CARGO_PKG_DESCRIPTION"))
@@ -59,8 +60,10 @@ fn main() {
          .help("Do not ignore RAT candidates that are not part of the core."))
     .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
          .help("When checking for RAT, only try the first literal as pivot."))
-    .arg(Arg::with_name("CHECK_SATISFIED_LEMMAS").short("s").long("check-satisfied-lemmas")
-         .help("Do not skip lemmas that are satisfied by the partial UP-model."))
+    .arg(Arg::with_name("NO_TERMINATING_EMPTY_CLAUSE").long("--no-terminating-empty-clause")
+        .help("Do not assume an implied empty clause at the end of the proof"))
+    .arg(Arg::with_name("FORWARD").short("f").long("forward")
+         .help("Use naive forward checking."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
          .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions and --noncore-rat-candidates"))
@@ -90,14 +93,15 @@ fn main() {
     let config = Config::new(app.get_matches());
     comment!("rate version: {}", env!("GIT_COMMIT"));
     let timer = Timer::name("total time");
-    let parser = parse_files(&config.formula_filename, &config.proof_filename);
+    let parser = parse_files(&config.formula_filename, &config.proof_filename,
+                            config.no_terminating_empty_clause);
     if parser.is_pr() {
         if config.lrat_filename.is_some() || config.grat_filename.is_some() {
             die!("LRAT and GRAT generation is not possible for PR")
         }
     }
     let mut checker = Checker::new(parser, config);
-    let ok = check(&mut checker);
+    let result = check(&mut checker);
     value("premise clauses", checker.premise_length);
     value("proof steps", checker.proof.size());
     value("skipped tautologies", checker.satisfied_count);
@@ -112,6 +116,9 @@ fn main() {
     );
     drop(timer);
     checker.print_memory_usage();
-    solution(if ok { "VERIFIED" } else { "NOT VERIFIED" });
-    process::exit(if ok { 0 } else { 1 });
+    if result == Verdict::NoConflict {
+        warn!("all lemmas verified, but no conflict");
+    }
+    solution(if result == Verdict::Verified { "VERIFIED" } else { "NOT VERIFIED" });
+    process::exit(if result == Verdict::Verified { 0 } else { 1 });
 }

@@ -8,7 +8,7 @@ use crate::{
     memory::{HeapSpace, Offset, Slice, SmallStack, Stack},
     output::Timer,
 };
-use memmap::{Mmap, MmapOptions};
+use memmap::MmapOptions;
 use std::collections::HashMap;
 use std::{
     cmp,
@@ -38,6 +38,7 @@ pub struct Parser {
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
     pub max_proof_steps: Option<usize>,
+    pub no_terminating_empty_clause: bool,
     pub verbose: bool,
 }
 
@@ -65,6 +66,7 @@ impl Parser {
             proof_start: Clause::new(0),
             proof: Stack::new(),
             max_proof_steps: None,
+            no_terminating_empty_clause: false,
             verbose: true,
         }
     }
@@ -75,8 +77,9 @@ impl Parser {
 
 pub type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
 
-pub fn parse_files(formula_file: &str, proof_file: &str) -> Parser {
+pub fn parse_files(formula_file: &str, proof_file: &str, no_terminating_empty_clause: bool) -> Parser {
     let mut parser = Parser::new();
+    parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = HashTable::new();
     run_parser(&mut parser, Some(formula_file), proof_file, &mut clause_ids);
     parser
@@ -171,15 +174,21 @@ pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
     }
 }
 
+impl RedundancyProperty {
+    #[allow(dead_code)]
+    pub fn file_extension(&self) -> &str {
+        match self {
+            RedundancyProperty::RAT => "drat",
+            RedundancyProperty::PR => "dpr",
+        }
+    }
+}
+
 pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let file = open_file(filename);
     let (_basename, compression_format) = compression_format_by_extension(filename);
     if compression_format == "" {
-        return Box::new(
-            mmap_file(file)
-                .map_or(vec![], |mmap| mmap.to_owned())
-                .into_iter(),
-        );
+        return file_bytes(file);
     }
     match compression_format {
         ZSTD => {
@@ -212,12 +221,18 @@ fn panic_on_error(result: io::Result<u8>) -> u8 {
     result.unwrap_or_else(|error| die!("read error: {}", error))
 }
 
-fn mmap_file(file: File) -> Option<Mmap> {
+fn file_bytes(file: File) -> Box<dyn Iterator<Item = u8>> {
     let size = file.metadata().unwrap().len();
     if size == 0 {
-        None
+        // might be a FIFO
+        Box::new(file.bytes().map(panic_on_error))
     } else {
-        Some(unsafe { MmapOptions::new().map(&file) }.expect("mmap failed"))
+        Box::new(
+            unsafe { MmapOptions::new().map(&file) }
+                .expect("mmap failed")
+                .to_owned()
+                .into_iter(),
+        )
     }
 }
 
@@ -608,16 +623,19 @@ pub fn finish_proof(parser: &mut Parser, clause_ids: &mut HashTable, state: &mut
         }
         ProofParserState::Start => (),
     };
-    // ensure that every proof ends with an empty clause
-    let clause = open_clause(parser, ProofParserState::Clause);
-    parser.proof.push(ProofStep::lemma(clause));
-    add_literal(
-        parser,
-        clause_ids,
-        ProofParserState::Clause,
-        Literal::new(0),
-    );
+    if !parser.no_terminating_empty_clause {
+        // ensure that every proof ends with an empty clause
+        let clause = open_clause(parser, ProofParserState::Clause);
+        parser.proof.push(ProofStep::lemma(clause));
+        add_literal(
+            parser,
+            clause_ids,
+            ProofParserState::Clause,
+            Literal::new(0),
+        );
+    }
 }
+
 fn parse_proof(
     parser: &mut Parser,
     clause_ids: &mut HashTable,
@@ -652,7 +670,7 @@ fn print_db() {
     let witness_db = unsafe { &WITNESS_DATABASE };
     let is_pr = !witness_db.empty();
     for clause in Clause::range(0, clause_db.last_clause() + 1) {
-        println!(
+        write_to_stdout!(
             "{}{} {:?}",
             clause_db.clause_to_string(clause),
             if is_pr {
@@ -692,7 +710,6 @@ c comment
     }
     #[test]
     fn valid_formula_and_proof() {
-        run_test(|| {
             let mut clause_ids = HashTable::new();
             let mut parser = sample_formula(&mut clause_ids);
             let result = parse_proof(
@@ -762,26 +779,10 @@ c comment
                         ProofStep::lemma(Clause::new(3)),
                     ),
                     max_proof_steps: None,
+                    no_terminating_empty_clause: false,
                     verbose: true,
                 }
             );
-        })
-    }
-
-    fn run_test<F>(case: F)
-    where
-        F: FnOnce() -> () + panic::UnwindSafe,
-    {
-        let result = panic::catch_unwind(case);
-        reset_globals();
-        assert!(result.is_ok())
-    }
-    // TODO obolete
-    fn reset_globals() {
-        unsafe {
-            CLAUSE_DATABASE.clear();
-            WITNESS_DATABASE.clear();
-        }
     }
 }
 

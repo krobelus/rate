@@ -8,12 +8,23 @@ pub fn is_a_tty() -> bool {
     atty::is(Stream::Stdout)
 }
 
+macro_rules! write_to_stdout {
+    ($($arg:tt)*) => ({
+        use std::io::Write;
+        match write!(std::io::stdout(), $($arg)*) {
+            Ok(()) => (),
+            Err(ref err) if err.kind() == std::io::ErrorKind::BrokenPipe =>  std::process::exit(141),
+            Err(ref err) =>  panic!("{}", err),
+        };
+    })
+}
+
 macro_rules! _log {
     ($verbosity:expr, $level:expr, $($arg:tt)*) => {
         if crate::config::ENABLE_LOGGING && $level <= $verbosity
         {
-            print!($($arg)*);
-            print!("\n");
+            write_to_stdout!($($arg)*);
+            write_to_stdout!("\n");
         }
     };
 }
@@ -44,8 +55,8 @@ macro_rules! warn {
         } else {
             ansi_term::Style::default()
         };
-        print!("{}", style.paint("Warning: "));
-        println!("{}", style.paint(&format!($($arg)*)));
+        write_to_stdout!("{}", style.paint("Warning: "));
+        write_to_stdout!("{}\n", style.paint(&format!($($arg)*)));
     })
 }
 
@@ -57,8 +68,8 @@ macro_rules! die {
         } else {
             ansi_term::Style::default()
         };
-        print!("{}", style.paint("Error: "));
-        println!("{}", style.paint(&format!($($arg)*)));
+        write_to_stdout!("{}", style.paint("Error: "));
+        write_to_stdout!("{}\n", style.paint(&format!($($arg)*)));
         std::process::exit(2);
     })
 }
@@ -86,13 +97,14 @@ macro_rules! requires {
 // Print to stdout.
 macro_rules! comment {
     ($($arg:tt)*) => ({
-        print!("c ");
-        println!($($arg)*);
+        write_to_stdout!("c ");
+        write_to_stdout!($($arg)*);
+        write_to_stdout!("\n");
     })
 }
 
 pub fn solution(verdict: &str) {
-    println!("s {}", verdict);
+    write_to_stdout!("s {}\n", verdict);
 }
 
 pub fn value(key: &str, value: impl Display) {

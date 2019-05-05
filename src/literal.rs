@@ -85,7 +85,7 @@ impl Literal {
     /// DIMACS representation.
     /// # Examples
     /// ```
-    /// assert_eq!(Literal::new(-1).decode(), 3);
+    /// assert_eq!(Literal::new(-1).decode(), -1);
     /// ```
     pub fn decode(self) -> i32 {
         let magnitude = self.variable().0 as i32;

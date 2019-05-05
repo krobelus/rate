@@ -25,18 +25,124 @@ use std::{
     ops::{self, Index},
 };
 
-pub fn check(checker: &mut Checker) -> bool {
-    preprocess(checker) && verify(checker) && {
+pub fn check(checker: &mut Checker) -> Verdict {
+    let verdict = if checker.config.forward {
+        forward_check(checker)
+    } else {
+    let mut verdict = preprocess(checker);
+    if verdict == Verdict::Verified {
+        verdict = if verify(checker) { Verdict::Verified } else { Verdict::Falsified }
+    }
+    verdict};
+    if verdict == Verdict::Verified {
         write_lemmas(checker).unwrap_or_else(|err| die!("Failed to write lemmas: {}", err));
         write_lrat_certificate(checker)
             .unwrap_or_else(|err| die!("Failed to write LRAT certificate: {}", err));
         write_grat_certificate(checker)
             .unwrap_or_else(|err| die!("Failed to write GRAT certificate: {}", err));
-        true
-    } || {
+        Verdict::Verified
+    } else {
         write_sick_witness(checker).expect("Failed to write incorrectness witness.");
-        false
+        verdict
     }
+}
+
+fn forward_delete(checker: &mut Checker, clause: Clause) {
+    if clause == Clause::DOES_NOT_EXIST {
+        return;
+    }
+    log!(
+        checker,
+        1,
+        "[forward check] del {}",
+        checker.clause_to_string(clause)
+    );
+    checker.deletions += 1;
+    if checker.fields(clause).is_reason() {
+        checker.reason_deletions += 1;
+    }
+    if checker.config.skip_unit_deletions {
+        let is_unit = checker
+            .clause(clause)
+            .iter()
+            .filter(|&&literal| !checker.assignment[-literal])
+            .count()
+            == 1;
+        if is_unit {
+            checker.fields_mut(clause).set_deletion_ignored(true);
+            checker.skipped_deletions += 1;
+            if checker.config.verbosity > 0 {
+                warn!(
+                    "Ignoring deletion of (pseudo) unit clause {}",
+                    checker.clause_to_string(clause)
+                );
+            }
+        } else {
+            watches_remove(checker, checker.clause_mode(clause), clause);
+        }
+    } else {
+        watches_remove(checker, checker.clause_mode(clause), clause);
+        if checker.fields(clause).is_reason() {
+            let trail_length_before_creating_revision = checker.assignment.len();
+            revision_create(checker, clause);
+            let no_conflict = propagate(checker);
+            let trail_length_after_propagating = checker.assignment.len();
+            invariant!(no_conflict == NO_CONFLICT);
+            if trail_length_after_propagating < trail_length_before_creating_revision {
+                checker.reason_deletions_shrinking_trail += 1;
+            }
+            watch_invariants(checker);
+        }
+    }
+}
+
+fn forward_preadd(checker: &mut Checker, step: usize, clause: Clause) -> bool {
+    invariant!(clause == checker.lemma);
+    if checker.clause(clause).empty() {
+        if checker.config.sick_filename.is_some() {
+            checker.rejection.proof_step = step;
+        }
+        extract_natural_model(checker, checker.assignment.len());
+        false
+    } else {
+        true
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum Verdict {
+    Verified,
+    NoConflict,
+    Falsified,
+}
+
+fn forward_check(checker: &mut Checker) -> Verdict {
+    let _timer = Timer::name("forward check");
+    for clause in Clause::range(0, checker.lemma) {
+        if checker.clause(clause).empty() || add_premise(checker, clause) == CONFLICT {
+            return close_proof(checker, 0);
+        }
+    }
+    log!(checker, 1, "[forward check] added premise");
+    for i in 0..checker.proof.size() {
+        let proof_step = checker.proof[i];
+        let clause = proof_step.clause();
+        if proof_step.is_deletion() {
+            forward_delete(checker, clause);
+        } else {
+            if !forward_preadd(checker, i, clause) {
+                return Verdict::NoConflict;
+            }
+            if !check_inference(checker) {
+                return Verdict::Falsified;
+            }
+            if add_premise(checker, clause) == CONFLICT {
+                return close_proof(checker, i+1)
+            }
+            checker.lemma += 1;
+        }
+    }
+    Verdict::NoConflict
 }
 
 #[derive(Debug)]
@@ -760,7 +866,6 @@ fn slice_rup(checker: &mut Checker, clause: Slice<Literal>) -> MaybeConflict {
 fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<usize> {
     let lemma = checker.lemma;
     let pivot = checker.clause_pivot[lemma];
-
     let pivot_falsified = checker.assignment.position_in_trail(-pivot) < trail_length_forced;
     if pivot_falsified {
         comment!(
@@ -930,6 +1035,7 @@ fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
     }
 }
 
+#[allow(clippy::cyclomatic_complexity)]
 fn extract_dependencies(
     checker: &mut Checker,
     trail_length_before_rup: usize,
@@ -1232,7 +1338,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     propagate(checker)
 }
 
-fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
+fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
     checker.proof_steps_until_conflict = steps_until_conflict;
     let empty_clause = checker.lemma;
     checker.db.make_clause_empty(empty_clause);
@@ -1260,11 +1366,11 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> bool {
             checker.grat_conflict_clause = checker.offset2clause(reason.offset());
         }
     }
-    true
+    Verdict::Verified
 }
 
 #[allow(clippy::cyclomatic_complexity)]
-fn preprocess(checker: &mut Checker) -> bool {
+fn preprocess(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("preprocessing proof");
     log!(checker, 1, "[preprocess]");
     defer_log!(checker, 1, "[preprocess] done\n");
@@ -1279,65 +1385,10 @@ fn preprocess(checker: &mut Checker) -> bool {
         let proof_step = checker.proof[i];
         let clause = proof_step.clause();
         if proof_step.is_deletion() {
-            if clause == Clause::DOES_NOT_EXIST {
-                continue;
-            }
-            checker.deletions += 1;
-            log!(
-                checker,
-                1,
-                "[preprocess] del {}",
-                checker.clause_to_string(clause)
-            );
-            if checker.fields(clause).is_reason() {
-                checker.reason_deletions += 1;
-            }
-            if checker.config.skip_unit_deletions {
-                let is_unit = checker
-                    .clause(clause)
-                    .iter()
-                    .filter(|&&literal| !checker.assignment[-literal])
-                    .count()
-                    == 1;
-                if is_unit {
-                    checker.fields_mut(clause).set_deletion_ignored(true);
-                    checker.skipped_deletions += 1;
-                    if checker.config.verbosity > 0 {
-                        warn!(
-                            "Ignoring deletion of (pseudo) unit clause {}",
-                            checker.clause_to_string(clause)
-                        );
-                    }
-                } else {
-                    watches_remove(checker, checker.clause_mode(clause), clause);
-                }
-            } else {
-                invariant!(!checker.fields(clause).is_scheduled());
-                watches_remove(checker, Mode::NonCore, clause);
-                if checker.fields(clause).is_reason() {
-                    let trail_length_before_creating_revision = checker.assignment.len();
-                    revision_create(checker, clause);
-                    let no_conflict = propagate(checker);
-                    let trail_length_after_propagating = checker.assignment.len();
-                    invariant!(no_conflict == NO_CONFLICT);
-                    if trail_length_after_propagating < trail_length_before_creating_revision {
-                        checker.reason_deletions_shrinking_trail += 1;
-                    }
-                    watch_invariants(checker);
-                }
-            }
+            forward_delete(checker, clause);
         } else {
-            invariant!(clause == checker.lemma);
-            if checker.clause(clause).empty() {
-                warn!(
-                    "conflict claimed but not detected in {}",
-                    checker.clause_to_string(clause)
-                );
-                if checker.config.sick_filename.is_some() {
-                    checker.rejection.proof_step = i;
-                }
-                extract_natural_model(checker, checker.assignment.len());
-                return false;
+            if !forward_preadd(checker, i, clause) {
+                return Verdict::NoConflict;
             }
             checker.lemma += 1;
             if add_premise(checker, clause) == CONFLICT {
@@ -2033,7 +2084,9 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         invariant!(checker.literal_is_in_cone_preprocess[literal]);
         checker.literal_is_in_cone_preprocess[literal] = false;
     }
-    checker.revisions.push(revision);
+    if !checker.config.forward {
+        checker.revisions.push(revision);
+    }
     assignment_invariants(checker);
 }
 
