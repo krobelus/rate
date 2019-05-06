@@ -29,11 +29,16 @@ pub fn check(checker: &mut Checker) -> Verdict {
     let verdict = if checker.config.forward {
         forward_check(checker)
     } else {
-    let mut verdict = preprocess(checker);
-    if verdict == Verdict::Verified {
-        verdict = if verify(checker) { Verdict::Verified } else { Verdict::Falsified }
-    }
-    verdict};
+        let mut verdict = preprocess(checker);
+        if verdict == Verdict::Verified {
+            verdict = if verify(checker) {
+                Verdict::Verified
+            } else {
+                Verdict::Falsified
+            }
+        }
+        verdict
+    };
     if verdict == Verdict::Verified {
         write_lemmas(checker).unwrap_or_else(|err| die!("Failed to write lemmas: {}", err));
         write_lrat_certificate(checker)
@@ -137,7 +142,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
                 return Verdict::Falsified;
             }
             if add_premise(checker, clause) == CONFLICT {
-                return close_proof(checker, i+1)
+                return close_proof(checker, i + 1);
             }
             checker.lemma += 1;
         }

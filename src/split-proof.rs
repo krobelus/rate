@@ -79,11 +79,7 @@ fn main() {
                 .required(true)
                 .help("input file in DIMACS format"),
         )
-        .arg(
-            Arg::with_name("PROOF")
-                .required(true)
-                .help("proof file"),
-        )
+        .arg(Arg::with_name("PROOF").required(true).help("proof file"))
         .arg(
             Arg::with_name("CHUNKS")
                 .required(true)

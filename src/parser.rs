@@ -77,7 +77,11 @@ impl Parser {
 
 pub type HashTable = HashMap<ClauseHashEq, SmallStack<Clause>>;
 
-pub fn parse_files(formula_file: &str, proof_file: &str, no_terminating_empty_clause: bool) -> Parser {
+pub fn parse_files(
+    formula_file: &str,
+    proof_file: &str,
+    no_terminating_empty_clause: bool,
+) -> Parser {
     let mut parser = Parser::new();
     parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = HashTable::new();
@@ -710,79 +714,79 @@ c comment
     }
     #[test]
     fn valid_formula_and_proof() {
-            let mut clause_ids = HashTable::new();
-            let mut parser = sample_formula(&mut clause_ids);
-            let result = parse_proof(
-                &mut parser,
-                &mut clause_ids,
-                SimpleInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
-                false,
-            );
-            assert!(result.is_ok());
-            let expected_clause_ids = [
-                (
-                    ClauseHashEq(Clause::new(1)),
-                    SmallStack::singleton(Clause::new(1)),
-                ),
-                (
-                    ClauseHashEq(Clause::new(2)),
-                    SmallStack::singleton(Clause::new(2)),
-                ),
-                (ClauseHashEq(Clause::new(0)), SmallStack::new()),
-                (
-                    ClauseHashEq(Clause::new(3)),
-                    SmallStack::singleton(Clause::new(3)),
-                ),
-            ]
-            .iter()
-            .cloned()
-            .collect();
-            fn lit(x: i32) -> Literal {
-                Literal::new(x)
-            }
-            fn raw(x: u32) -> Literal {
-                Literal::from_raw(x)
-            }
-            print_db();
-            assert_eq!(
-                unsafe { &CLAUSE_DATABASE },
-                &ClauseDatabase::from(
-                    #[rustfmt::skip]
+        let mut clause_ids = HashTable::new();
+        let mut parser = sample_formula(&mut clause_ids);
+        let result = parse_proof(
+            &mut parser,
+            &mut clause_ids,
+            SimpleInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
+            false,
+        );
+        assert!(result.is_ok());
+        let expected_clause_ids = [
+            (
+                ClauseHashEq(Clause::new(1)),
+                SmallStack::singleton(Clause::new(1)),
+            ),
+            (
+                ClauseHashEq(Clause::new(2)),
+                SmallStack::singleton(Clause::new(2)),
+            ),
+            (ClauseHashEq(Clause::new(0)), SmallStack::new()),
+            (
+                ClauseHashEq(Clause::new(3)),
+                SmallStack::singleton(Clause::new(3)),
+            ),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        fn lit(x: i32) -> Literal {
+            Literal::new(x)
+        }
+        fn raw(x: u32) -> Literal {
+            Literal::from_raw(x)
+        }
+        print_db();
+        assert_eq!(
+            unsafe { &CLAUSE_DATABASE },
+            &ClauseDatabase::from(
+                #[rustfmt::skip]
                      stack!(
                        raw(0), raw(0), raw(0), lit(1), lit(2), lit(0),
                        raw(1), raw(0), raw(0), lit(-2), lit(-1), lit(0),
                        raw(2), raw(0), raw(0), lit(1), lit(2), lit(3), lit(0),
                        raw(3), raw(0), raw(0), lit(0),
                      ),
-                    stack!(0, 6, 12, 19)
-                )
-            );
-            assert_eq!(
-                unsafe { &WITNESS_DATABASE },
-                &WitnessDatabase::from(stack!(), stack!())
-            );
-            assert_eq!(clause_ids, expected_clause_ids);
-            assert_eq!(
-                parser,
-                Parser {
-                    redundancy_property: RedundancyProperty::RAT,
-                    maxvar: Variable::new(3),
-                    clause_db: unsafe { &mut CLAUSE_DATABASE },
-                    witness_db: unsafe { &mut WITNESS_DATABASE },
-                    clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
-                    #[cfg(feature = "clause_lifetime_heuristic")]
-                    clause_deleted_at: stack!(1, usize::max_value(), usize::max_value(),),
-                    proof_start: Clause::new(2),
-                    proof: stack!(
-                        ProofStep::lemma(Clause::new(2)),
-                        ProofStep::deletion(Clause::new(0)),
-                        ProofStep::lemma(Clause::new(3)),
-                    ),
-                    max_proof_steps: None,
-                    no_terminating_empty_clause: false,
-                    verbose: true,
-                }
-            );
+                stack!(0, 6, 12, 19)
+            )
+        );
+        assert_eq!(
+            unsafe { &WITNESS_DATABASE },
+            &WitnessDatabase::from(stack!(), stack!())
+        );
+        assert_eq!(clause_ids, expected_clause_ids);
+        assert_eq!(
+            parser,
+            Parser {
+                redundancy_property: RedundancyProperty::RAT,
+                maxvar: Variable::new(3),
+                clause_db: unsafe { &mut CLAUSE_DATABASE },
+                witness_db: unsafe { &mut WITNESS_DATABASE },
+                clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
+                #[cfg(feature = "clause_lifetime_heuristic")]
+                clause_deleted_at: stack!(1, usize::max_value(), usize::max_value(),),
+                proof_start: Clause::new(2),
+                proof: stack!(
+                    ProofStep::lemma(Clause::new(2)),
+                    ProofStep::deletion(Clause::new(0)),
+                    ProofStep::lemma(Clause::new(3)),
+                ),
+                max_proof_steps: None,
+                no_terminating_empty_clause: false,
+                verbose: true,
+            }
+        );
     }
 }
 

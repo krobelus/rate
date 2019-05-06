@@ -93,8 +93,11 @@ fn main() {
     let config = Config::new(app.get_matches());
     comment!("rate version: {}", env!("GIT_COMMIT"));
     let timer = Timer::name("total time");
-    let parser = parse_files(&config.formula_filename, &config.proof_filename,
-                            config.no_terminating_empty_clause);
+    let parser = parse_files(
+        &config.formula_filename,
+        &config.proof_filename,
+        config.no_terminating_empty_clause,
+    );
     if parser.is_pr() {
         if config.lrat_filename.is_some() || config.grat_filename.is_some() {
             die!("LRAT and GRAT generation is not possible for PR")
@@ -119,6 +122,10 @@ fn main() {
     if result == Verdict::NoConflict {
         warn!("all lemmas verified, but no conflict");
     }
-    solution(if result == Verdict::Verified { "VERIFIED" } else { "NOT VERIFIED" });
+    solution(if result == Verdict::Verified {
+        "VERIFIED"
+    } else {
+        "NOT VERIFIED"
+    });
     process::exit(if result == Verdict::Verified { 0 } else { 1 });
 }

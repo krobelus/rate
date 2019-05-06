@@ -77,11 +77,17 @@ impl Config {
         let grat = matches.is_present("GRAT_FILE");
         let sick_filename = matches.value_of("SICK_FILE").map(String::from);
 
-	if forward {
-        	if grat { incompatible_options("--forward --grat"); }
-        	if lrat { incompatible_options("--forward --lrat"); }
-        	if sick_filename.is_some() { incompatible_options("--forward --recheck"); }
-	}
+        if forward {
+            if grat {
+                incompatible_options("--forward --grat");
+            }
+            if lrat {
+                incompatible_options("--forward --lrat");
+            }
+            if sick_filename.is_some() {
+                incompatible_options("--forward --recheck");
+            }
+        }
         if skip_unit_deletions && sick_filename.is_some() {
             warn!(
                 "--recheck can produce an incorrect SICK witness when used along --skip-unit-deletions."
