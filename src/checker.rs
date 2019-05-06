@@ -2277,7 +2277,7 @@ fn watches_reset_list_at(
     let offset = head;
     let mut first_offset = head;
     let mut best_offset = head;
-    let mut best_position = usize::max_value();
+    let mut best_position = 0;
     let ok = watch_find(
         checker,
         clause,
@@ -2309,10 +2309,7 @@ fn watches_reset_list_at(
     //   C) first_offset is in 1, second_offset is in >=2
     //   D) both first_offset and second_offset are in >=2
     if offset == first_offset {
-        if offset + 1 == second_offset
-            // TODO why
-            || offset == second_offset
-        {
+        if offset + 1 == second_offset {
             // Case A: nothing to do!
             return;
         } else {
@@ -2352,7 +2349,7 @@ fn watch_find<'a>(
         let literal = checker.db[*offset];
         if checker.assignment[-literal] {
             let position_in_trail = checker.assignment.position_in_trail(-literal);
-            if position_in_trail > *best_position {
+            if position_in_trail >= *best_position {
                 *best_position = position_in_trail;
                 *best_false = *offset;
             }
