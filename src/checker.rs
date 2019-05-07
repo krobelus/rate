@@ -2315,23 +2315,19 @@ fn watches_reset_list_at(
         } else {
             // Case B: clause will not be watched on other_lit, but on checker.db[second_offset] instead.
             let _removed = watches_find_and_remove(checker, mode, other_lit, head);
-            let tmp = checker.db[second_offset];
-            checker.db[offset + 1] = tmp;
-            checker.db[second_offset] = other_lit;
-            watch_add(checker, mode, tmp, head);
+            checker.db.swap(offset + 1, second_offset);
+            watch_add(checker, mode, checker.db[offset + 1], head);
         }
     } else {
         // Cases C and D: clause will not be watched on literal, but on *second_offset instead.
         watch_remove_at(checker, mode, literal, *position_in_watchlist);
         *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-        checker.db[offset] = checker.db[second_offset];
-        checker.db[second_offset] = literal;
+        checker.db.swap(offset, second_offset);
         watch_add(checker, mode, checker.db[offset], head); // Case C: additionally, clause will still be watched on other_lit
         if offset + 1 != first_offset {
             // Case D: additionally, clause will not be watched on other_lit, but on checker.db[offset + 1] instead.
             let _removed = watches_find_and_remove(checker, mode, other_lit, head);
-            checker.db[offset + 1] = checker.db[first_offset];
-            checker.db[first_offset] = other_lit;
+            checker.db.swap(offset + 1, first_offset);
             watch_add(checker, mode, checker.db[offset + 1], head);
         }
     }
