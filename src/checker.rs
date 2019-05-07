@@ -2268,86 +2268,85 @@ fn watches_reset_list_at(
         // watches are correct
         return;
     }
-    let head = checker.clause_range(clause).start;
     if literal != w1 {
         requires!(literal == w2);
         checker.db.swap(head, head + 1);
     }
-    let other_lit = checker.db[head + 1];
+    let [w1, w2] = checker.watches(head);
     let offset = head;
-    let mut first_offset = head;
-    let mut best_offset = head;
-    let mut best_position = 0;
-    let ok = watch_find(
+    let mut new_w1_offset = head;
+    let mut latest_falsified_offset = head;
+    let mut latest_falsified_position = 0;
+    let have_unassigned = find_nonfalsified_and_most_recently_falsified(
         checker,
         clause,
-        &mut first_offset,
-        &mut best_offset,
-        &mut best_position,
+        &mut new_w1_offset,
+        &mut latest_falsified_offset,
+        &mut latest_falsified_position,
     );
-    invariant!(ok, "broken invariant");
-    let mut second_offset = first_offset + 1;
-    let ok = watch_find(
+    invariant!(have_unassigned, "broken invariant");
+    let mut new_w2_offset = new_w1_offset + 1;
+    let have_unassigned = find_nonfalsified_and_most_recently_falsified(
         checker,
         clause,
-        &mut second_offset,
-        &mut best_offset,
-        &mut best_position,
+        &mut new_w2_offset,
+        &mut latest_falsified_offset,
+        &mut latest_falsified_position,
     );
-    if !ok {
-        if first_offset > best_offset {
-            second_offset = first_offset;
-            first_offset = best_offset;
+    if !have_unassigned {
+        if new_w1_offset > latest_falsified_offset {
+            new_w2_offset = new_w1_offset;
+            new_w1_offset = latest_falsified_offset;
         } else {
-            second_offset = best_offset;
+            new_w2_offset = latest_falsified_offset;
         }
     }
-    // At this point, we have ensured that first_offset < second_offset
+    // At this point, we have ensured that new_w1_offset < new_w2_offset
     // There are four cases:
-    //   A) first_offset is in 0, second_offset is in 1
-    //   B) first_offset is in 0, second_offset is in >=2
-    //   C) first_offset is in 1, second_offset is in >=2
-    //   D) both first_offset and second_offset are in >=2
-    if offset == first_offset {
-        if offset + 1 == second_offset {
+    //   A) new_w1_offset 0, new_w2_offset is 1
+    //   B) new_w1_offset 0, new_w2_offset is >=2
+    //   C) new_w1_offset 1, new_w2_offset is >=2
+    //   D) both new_w1_offset and new_w2_offset are >=2
+    if offset == new_w1_offset {
+        if offset + 1 == new_w2_offset {
             // Case A: nothing to do!
             return;
         } else {
-            // Case B: clause will not be watched on other_lit, but on checker.db[second_offset] instead.
-            let _removed = watches_find_and_remove(checker, mode, other_lit, head);
-            checker.db.swap(offset + 1, second_offset);
+            // Case B: clause will not be watched on w2, but on checker.db[new_w2_offset] instead.
+            let _removed = watches_find_and_remove(checker, mode, w2, head);
+            checker.db.swap(offset + 1, new_w2_offset);
             watch_add(checker, mode, checker.db[offset + 1], head);
         }
     } else {
-        // Cases C and D: clause will not be watched on literal, but on *second_offset instead.
-        watch_remove_at(checker, mode, literal, *position_in_watchlist);
+        // Cases C and D: clause will not be watched on w1, but on *new_w2_offset instead.
+        watch_remove_at(checker, mode, w1, *position_in_watchlist);
         *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-        checker.db.swap(offset, second_offset);
-        watch_add(checker, mode, checker.db[offset], head); // Case C: additionally, clause will still be watched on other_lit
-        if offset + 1 != first_offset {
-            // Case D: additionally, clause will not be watched on other_lit, but on checker.db[offset + 1] instead.
-            let _removed = watches_find_and_remove(checker, mode, other_lit, head);
-            checker.db.swap(offset + 1, first_offset);
+        checker.db.swap(offset, new_w2_offset);
+        watch_add(checker, mode, checker.db[offset], head); // Case C: additionally, clause will still be watched on w2
+        if offset + 1 != new_w1_offset {
+            // Case D: additionally, clause will not be watched on w2, but on checker.db[offset + 1] instead.
+            let _removed = watches_find_and_remove(checker, mode, w2, head);
+            checker.db.swap(offset + 1, new_w1_offset);
             watch_add(checker, mode, checker.db[offset + 1], head);
         }
     }
 }
 
-fn watch_find<'a>(
+fn find_nonfalsified_and_most_recently_falsified<'a>(
     checker: &Checker,
     clause: Clause,
     offset: &'a mut usize,
-    best_false: &'a mut usize,
-    best_position: &'a mut usize,
+    latest_falsified_offset: &'a mut usize,
+    latest_falsified_position: &'a mut usize,
 ) -> bool {
     let end = checker.clause_range(clause).end;
     while *offset < end {
         let literal = checker.db[*offset];
         if checker.assignment[-literal] {
             let position_in_trail = checker.assignment.position_in_trail(-literal);
-            if position_in_trail >= *best_position {
-                *best_position = position_in_trail;
-                *best_false = *offset;
+            if position_in_trail >= *latest_falsified_position {
+                *latest_falsified_position = position_in_trail;
+                *latest_falsified_offset = *offset;
             }
             *offset += 1;
         } else {
