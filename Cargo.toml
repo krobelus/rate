@@ -11,9 +11,9 @@ build = "build.rs"
 name = "sick-check"
 path = "src/sick-check.rs"
 
-[[bin]]
-name = "split-proof"
-path = "src/split-proof.rs"
+# [[bin]]
+# name = "split-proof"
+# path = "src/split-proof.rs"
 
 [dependencies]
 rate-macros = { path = "rate-macros" }
