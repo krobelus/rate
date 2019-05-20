@@ -66,9 +66,11 @@ def pr_inputs():
     ]
 
 
+def executable(name):
+    return Popen(('which', name)).wait() == 0
+
 def ensure_executable(command):
-    assert Popen(('which',
-                  command[0])).wait() == 0, f'{command[0]} not found in PATH'
+    assert executable(command[0]), f'{command[0]} not found in PATH'
 
 
 def process_expansion(command):
@@ -324,15 +326,19 @@ def test_acceptance_initial_commit():
 
 
 def test_acceptance_drat_trim():
-    compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'], instances=drat_inputs())
+    if executable('drat-trim'):
+        compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'], instances=drat_inputs())
 
 
 def test_acceptance_rupee():
-    compare_acceptance(rate(flags=['--rupee']), ['rupee'], instances=drat_inputs())
+    if executable('rupee'):
+        compare_acceptance(rate(flags=['--rupee']), ['rupee'], instances=drat_inputs())
 
 
 def test_acceptance_gratgen():
-    compare_acceptance(rate(flags=['--skip-unit-deletions']), ['gratgen'], instances=drat_inputs())
+    if executable('gratgen'):
+        compare_acceptance(rate(flags=['--skip-unit-deletions']), ['gratgen'], instances=drat_inputs())
 
 def test_acceptance_dpr_trim():
-    compare_acceptance(rate(flags=['--drat-trim']), ['dpr-trim'], instances=pr_inputs())
+    if executable('dpr-trim'):
+        compare_acceptance(rate(flags=['--drat-trim']), ['dpr-trim'], instances=pr_inputs())

@@ -17,13 +17,38 @@ by default.
 - decompress inputs (Gzip, Zstandard, Bzip2, XZ, LZ4)
 
 # Building
-Install [Rust](https://www.rust-lang.org/en-US/install.html). Then you should be
-able to run `rate` like this:
+Install [Rust](https://www.rust-lang.org/en-US/install.html).  Then you
+can use this command to install binaries `rate` and `sick-check` to your
+`~/.cargo/bin`.
 
 ```sh
-$ cargo run --bin rate --release formula.cnf proof.drat
+$ cargo install --path . --force
 ```
 Refer to the [cargo documentation](https://doc.rust-lang.org/cargo/) for other use cases.
+
+Run the proof checker like this:
+```sh
+$ rate formula.cnf proof.drat
+```
+
+## SICK certificates
+
+If you have a proof that is considered to be incorrect by `rate`, you can
+have it output a certificate of incorrectness that tells you which proof
+step failed and why.
+The certificate can also be checked by the `sick-check` binary which tries
+to make sure that the rejection of the proof is justified.
+
+```sh
+$ rate formula.cnf proof.drat --recheck failure.sick
+$ sick-check formula.cnf proof.drat failure.sick
+```
+
+If `rate` prints `s NOT VERIFIED` and `sick-check` prints `s ACCEPTED`,
+it means that the proof is found to be incorrect by the former and that
+result is confirmed by the latter. If `sick-check` prints `s NOT ACCEPTED`,
+that is likely a bug in either tool.
+
 
 # Caveats
 
@@ -52,16 +77,17 @@ Here are the transformations we do:
 # Tests
 There are some unit tests that can be run with `cargo test`.
 
-Additionally, there is a system test suite, that compares the output of `rate` to
-previous versions of itself, and to other checkers, in particular
-[rupee](https://github.com/arpj-rebola/rupee).
+Additionally, there is a system test suite, that validates LRAT proofs and
+SICK certificates produced by `rate`. Additionally it compares the output of
+`rate` to previous versions of itself, and to other checkers.
 This can be run with `pytest test.py`. The requirements are:
 
 - `python3` (version 3.6 or above)
 - `pytest`
 - [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat),
-  [`sick-check`](https://github.com/arpj-rebola/rupee/blob/master/src/check/sickchecker.cpp),
-  `drat-trim`, `rupee`, and `gratgen` need to be executable on your system.
+
+Comparison to checkers `drat-trim`, `rupee`, and `gratgen` will be run if
+they are executable on your system
 
 If you're in a hurry use `pytest test.py -k quick` to only run the tests on
 small input files.
