@@ -13,7 +13,7 @@ test -f "$name".dpr && {
     prext=dpr
     args=
 }
-rate="cargo run -- $name.cnf $name."$prext" $@"
+rate="cargo run --bin rate -- $name.cnf $name."$prext" $@"
 
 output="$($rate $args -i "$name".sick)"
 

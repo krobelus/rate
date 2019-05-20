@@ -21,7 +21,7 @@ Install [Rust](https://www.rust-lang.org/en-US/install.html). Then you should be
 able to run `rate` like this:
 
 ```sh
-$ cargo run --release formula.cnf proof.drat
+$ cargo run --bin rate --release formula.cnf proof.drat
 ```
 Refer to the [cargo documentation](https://doc.rust-lang.org/cargo/) for other use cases.
 

@@ -1,5 +1,3 @@
-cargo-features = ["default-run"]
-
 [package]
 name = "rate"
 version = "0.1.0"
@@ -8,8 +6,6 @@ description = "DRAT proof checker for DIMACS formulas"
 edition = "2018"
 license = "MIT"
 build = "build.rs"
-
-default-run = "rate"
 
 [[bin]]
 name = "sick-check"
