@@ -95,6 +95,9 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
             invariant!(no_conflict == NO_CONFLICT);
             if trail_length_after_propagating < trail_length_before_creating_revision {
                 checker.reason_deletions_shrinking_trail += 1;
+                log!(checker, 1, "reason deletion, created {}", checker.revisions.last());
+            } else {
+                log!(checker, 1, "reason deletion, but trail is unchanged");
             }
             watch_invariants(checker);
         }
@@ -410,7 +413,7 @@ impl Checker {
 
 impl fmt::Display for Revision {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Revision:")?;
+        writeln!(f, "revision:")?;
         for (i, literal) in self.cone.iter().enumerate() {
             writeln!(
                 f,
@@ -2083,8 +2086,6 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     for &literal in &revision.cone {
         watchlist_revise(checker, literal);
     }
-    log!(checker, 1, "Created {}", revision);
-    log!(checker, 2, "{}", checker.assignment);
     for &literal in &revision.cone {
         invariant!(checker.literal_is_in_cone_preprocess[literal]);
         checker.literal_is_in_cone_preprocess[literal] = false;
@@ -2204,7 +2205,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             introductions += 1;
         }
     }
-    log!(checker, 1, "Applying {}", revision);
+    log!(checker, 1, "applying {}", revision);
     log!(checker, 2, "{}", checker.assignment);
     let length_after_adding_cone = checker.assignment.len() + introductions;
     let mut right_position = length_after_adding_cone - 1;
@@ -2233,7 +2234,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             .set_trail_at(right_position, literal, reason);
         right_position -= 1;
     }
-    log!(checker, 2, "Applied revision:\n{}", checker.assignment);
+    log!(checker, 2, "applied revision:\n{}", checker.assignment);
     watches_reset(checker, revision);
     assignment_invariants(checker);
 }
