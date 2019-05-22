@@ -430,35 +430,6 @@ struct MaybeConflict(bool);
 const CONFLICT: MaybeConflict = MaybeConflict(true);
 const NO_CONFLICT: MaybeConflict = MaybeConflict(false);
 
-/// Enable the question mark operator to return early on conflict.
-///
-/// # Examples
-///
-/// Here, if `propagate()` returns `CONFLICT`, then that is returned.  Otherwise, the result is
-/// `NO_CONFLICT` because of the second expression.
-/// ```
-/// {
-///     propagate()?;
-///     NO_CONFLICT
-/// }
-/// ```
-impl ops::Try for MaybeConflict {
-    type Ok = ();
-    type Error = ();
-    fn into_result(self) -> Result<Self::Ok, Self::Error> {
-        match self {
-            CONFLICT => Err(()),
-            _ => Ok(()),
-        }
-    }
-    fn from_error(_: Self::Error) -> Self {
-        CONFLICT
-    }
-    fn from_ok(_: Self::Ok) -> Self {
-        NO_CONFLICT
-    }
-}
-
 fn schedule(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.fields(clause).is_scheduled() {
         if checker.config.lrat_filename.is_some() {
@@ -856,7 +827,9 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
         }
         if !checker.assignment[-unit] {
             invariant!(unit != Literal::BOTTOM);
-            assign(checker, -unit, Reason::assumed())?;
+            if assign(checker, -unit, Reason::assumed()) == CONFLICT {
+                return CONFLICT
+            }
         }
     }
     propagate(checker)
@@ -865,7 +838,9 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
 fn slice_rup(checker: &mut Checker, clause: Slice<Literal>) -> MaybeConflict {
     for &unit in clause {
         if !checker.assignment[-unit] {
-            assign(checker, -unit, Reason::assumed())?;
+            if assign(checker, -unit, Reason::assumed()) == CONFLICT {
+                return CONFLICT
+            }
         }
     }
     propagate(checker)
@@ -1341,7 +1316,9 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     if already_satisfied {
         checker.satisfied_count += 1;
     } else {
-        watches_add(checker, Stage::Preprocessing, clause)?;
+        if watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
+            return CONFLICT
+        }
     }
     propagate(checker)
 }

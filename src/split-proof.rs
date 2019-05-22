@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![feature(
-    try_trait,
     alloc,
     ptr_wrapping_offset_from,
     raw_vec_internals,
