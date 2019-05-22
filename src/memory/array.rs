@@ -2,8 +2,8 @@
 
 use crate::{
     config::ENABLE_BOUNDS_CHECKING,
-    memory::{HeapSpace, Offset, Stack},
     features::RangeContainsExt,
+    memory::{HeapSpace, Offset, Stack},
 };
 use alloc::raw_vec::RawVec;
 use std::{

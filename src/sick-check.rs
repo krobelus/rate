@@ -6,7 +6,7 @@
     raw_vec_internals,
     const_vec_new,
     vec_resize_default,
-    existential_type,
+    existential_type
 )]
 #![allow(clippy::collapsible_if)]
 
@@ -18,10 +18,10 @@ mod assignment;
 mod clause;
 mod clausedatabase;
 mod config;
+mod features;
 mod literal;
 mod parser;
 mod sick;
-mod features;
 
 extern crate alloc;
 #[macro_use(Serialize, Deserialize)]

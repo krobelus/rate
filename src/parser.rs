@@ -751,12 +751,12 @@ c comment
         assert_eq!(
             unsafe { &CLAUSE_DATABASE },
             &ClauseDatabase::from(
-                     stack!(
+                stack!(
                        raw(0), raw(0), raw(0), lit(1), lit(2), lit(0),
                        raw(1), raw(0), raw(0), lit(-2), lit(-1), lit(0),
                        raw(2), raw(0), raw(0), lit(1), lit(2), lit(3), lit(0),
                        raw(3), raw(0), raw(0), lit(0),
-                     ),
+                ),
                 stack!(0, 6, 12, 19)
             )
         );

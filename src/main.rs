@@ -7,7 +7,7 @@
     raw_vec_internals,
     const_vec_new,
     vec_resize_default,
-    existential_type,
+    existential_type
 )]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::nonminimal_bool)]
@@ -21,10 +21,10 @@ mod checker;
 mod clause;
 mod clausedatabase;
 mod config;
+mod features;
 mod literal;
 mod parser;
 mod sick;
-mod features;
 
 #[macro_use(defer)]
 extern crate scopeguard;

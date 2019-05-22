@@ -95,7 +95,12 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
             invariant!(no_conflict == NO_CONFLICT);
             if trail_length_after_propagating < trail_length_before_creating_revision {
                 checker.reason_deletions_shrinking_trail += 1;
-                log!(checker, 1, "reason deletion, created {}", checker.revisions.last());
+                log!(
+                    checker,
+                    1,
+                    "reason deletion, created {}",
+                    checker.revisions.last()
+                );
             } else {
                 log!(checker, 1, "reason deletion, but trail is unchanged");
             }
@@ -828,7 +833,7 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
         if !checker.assignment[-unit] {
             invariant!(unit != Literal::BOTTOM);
             if assign(checker, -unit, Reason::assumed()) == CONFLICT {
-                return CONFLICT
+                return CONFLICT;
             }
         }
     }
@@ -839,7 +844,7 @@ fn slice_rup(checker: &mut Checker, clause: Slice<Literal>) -> MaybeConflict {
     for &unit in clause {
         if !checker.assignment[-unit] {
             if assign(checker, -unit, Reason::assumed()) == CONFLICT {
-                return CONFLICT
+                return CONFLICT;
             }
         }
     }
@@ -1317,7 +1322,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
         checker.satisfied_count += 1;
     } else {
         if watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
-            return CONFLICT
+            return CONFLICT;
         }
     }
     propagate(checker)
