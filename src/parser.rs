@@ -751,7 +751,6 @@ c comment
         assert_eq!(
             unsafe { &CLAUSE_DATABASE },
             &ClauseDatabase::from(
-                #[rustfmt::skip]
                      stack!(
                        raw(0), raw(0), raw(0), lit(1), lit(2), lit(0),
                        raw(1), raw(0), raw(0), lit(-2), lit(-1), lit(0),
