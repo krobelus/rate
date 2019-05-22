@@ -6,7 +6,6 @@
     raw_vec_internals,
     const_vec_new,
     vec_resize_default,
-    result_map_or_else,
     stmt_expr_attributes,
     existential_type,
     try_from
