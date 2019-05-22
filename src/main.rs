@@ -7,7 +7,6 @@
     raw_vec_internals,
     const_vec_new,
     vec_resize_default,
-    existential_type
 )]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::nonminimal_bool)]
