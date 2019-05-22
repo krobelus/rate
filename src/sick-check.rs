@@ -8,7 +8,6 @@
     vec_resize_default,
     stmt_expr_attributes,
     existential_type,
-    try_from
 )]
 #![allow(clippy::collapsible_if)]
 
