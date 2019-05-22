@@ -115,7 +115,7 @@ impl ProofStep {
 /// }
 /// ```
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Reason(Tagged64);
 
 impl Reason {

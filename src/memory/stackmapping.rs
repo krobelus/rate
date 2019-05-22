@@ -1,8 +1,8 @@
 //! Stack with fast lookup.
 
-use crate::memory::{Array, BoundedStack, Offset, StackIterator};
+use crate::memory::{Array, BoundedStack, Offset};
 use rate_macros::HeapSpace;
-use std::{fmt::Debug, iter::IntoIterator, ops::Index};
+use std::{fmt::Debug, iter::IntoIterator, ops::Index, slice};
 
 #[derive(Debug, HeapSpace, Default)]
 pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {
@@ -26,8 +26,8 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
     pub fn len(&self) -> usize {
         self.stack.len()
     }
-    pub fn empty(&self) -> bool {
-        self.stack.empty()
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
     pub fn pop(&mut self) -> Key {
         let key = self.stack.pop();
@@ -58,7 +58,7 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
     pub fn set_but_do_not_push(&mut self, key: Key, value: T) {
         self.array[key] = value;
     }
-    pub fn iter(&self) -> StackIterator<Key> {
+    pub fn iter(&self) -> slice::Iter<Key> {
         self.into_iter()
     }
 }
@@ -72,8 +72,8 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> Index<Key> for StackMapping<Ke
 
 impl<'a, Key: Offset + Copy + Debug, T: Copy + Debug> IntoIterator for &'a StackMapping<Key, T> {
     type Item = &'a Key;
-    type IntoIter = StackIterator<'a, Key>;
-    fn into_iter(self) -> StackIterator<'a, Key> {
+    type IntoIter = slice::Iter<'a, Key>;
+    fn into_iter(self) -> Self::IntoIter {
         self.stack.into_iter()
     }
 }

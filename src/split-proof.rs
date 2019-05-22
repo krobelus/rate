@@ -1,12 +1,5 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
-#![feature(
-    alloc,
-    ptr_wrapping_offset_from,
-    raw_vec_internals,
-    const_vec_new,
-    vec_resize_default,
-)]
 #![allow(clippy::collapsible_if)]
 
 #[macro_use]

@@ -53,7 +53,7 @@ impl<T: Copy + Default> SmallStack<T> {
             self.state = SmallStackState::Empty;
             Some(value)
         } else if let SmallStackState::Many(stack) = &mut self.state {
-            if stack.empty() {
+            if stack.is_empty() {
                 None
             } else {
                 Some(stack.swap_remove(0))

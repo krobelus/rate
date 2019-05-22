@@ -15,7 +15,6 @@
 
 mod array;
 mod boundedstack;
-mod slice;
 #[macro_use]
 mod stack;
 mod smallstack;
@@ -24,11 +23,10 @@ mod stackmapping;
 use std::convert::TryFrom;
 
 pub use crate::memory::{
-    array::{assert_in_bounds, Array},
+    array::Array,
     boundedstack::BoundedStack,
-    slice::{Slice, SliceMut},
     smallstack::SmallStack,
-    stack::{ConsumingStackIterator, Stack, StackIterator},
+    stack::{assert_in_bounds, Stack},
     stackmapping::StackMapping,
 };
 

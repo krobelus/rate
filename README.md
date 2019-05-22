@@ -17,9 +17,12 @@ by default.
 - decompress inputs (Gzip, Zstandard, Bzip2, XZ, LZ4)
 
 # Building
-Install [Rust](https://www.rust-lang.org/en-US/install.html).  Then you
-can use this command to install binaries `rate` and `sick-check` to your
-`~/.cargo/bin`.
+Install [Rust](https://www.rust-lang.org/en-US/install.html).  Recent versions
+of stable Rust are supported, if your installation is old consider using
+`rustup` to get the most recent stable version.
+
+You can use this command to install binaries `rate` and `sick-check`
+to your `~/.cargo/bin`.
 
 ```sh
 $ cargo install --path . --force

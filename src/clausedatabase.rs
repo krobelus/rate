@@ -2,7 +2,7 @@
 use crate::{
     clause::Clause,
     literal::Literal,
-    memory::{Offset, Slice, Stack},
+    memory::{Offset, Stack},
 };
 
 use rate_macros::HeapSpace;
@@ -27,10 +27,10 @@ pub struct ClauseDatabase {
 }
 
 impl ClauseDatabase {
-    pub const fn new() -> ClauseDatabase {
+    pub fn new() -> ClauseDatabase {
         ClauseDatabase {
-            data: Stack::const_new(),
-            offset: Stack::const_new(),
+            data: Stack::new(),
+            offset: Stack::new(),
             have_sentinel: false,
         }
     }
@@ -64,7 +64,7 @@ impl ClauseDatabase {
         Clause::from_usize(index)
     }
     pub fn is_empty(&self) -> bool {
-        self.offset.empty()
+        self.offset.is_empty()
     }
     fn push_sentinel(&mut self, offset: usize) {
         requires!(!self.have_sentinel);
@@ -103,10 +103,7 @@ impl ClauseDatabase {
         let end = self.data.len();
         let _sort_literally = |&literal: &Literal| literal.decode();
         let _sort_magnitude = |&literal: &Literal| literal.encoding;
-        self.data
-            .mut_slice()
-            .range(start, end)
-            .sort_unstable_by_key(_sort_literally);
+        &mut self.data[start..end].sort_unstable_by_key(_sort_literally);
         let mut duplicate = false;
         let mut length = 0;
         for i in start..end {
@@ -151,9 +148,8 @@ impl ClauseDatabase {
                 .join("")
         )
     }
-    pub fn clause(&self, clause: Clause) -> Slice<Literal> {
-        let range = self.clause_range(clause);
-        self.data.as_slice().range(range.start, range.end)
+    pub fn clause(&self, clause: Clause) -> &[Literal] {
+        &self.data[self.clause_range(clause)]
     }
     pub fn clause_range(&self, clause: Clause) -> Range<usize> {
         requires!(self.have_sentinel);
@@ -172,7 +168,7 @@ impl ClauseDatabase {
         Clause::new(u64::from(lower.encoding) | u64::from(upper.encoding) << 32)
     }
     pub fn swap(&mut self, a: usize, b: usize) {
-        self.data.mut_slice().swap(a, b);
+        self.data.swap(a, b);
     }
     pub fn make_clause_empty(&mut self, target: Clause) {
         self.offset[target.as_offset() + 1] =
@@ -217,10 +213,10 @@ pub struct WitnessDatabase {
 }
 
 impl WitnessDatabase {
-    pub const fn new() -> WitnessDatabase {
+    pub fn new() -> WitnessDatabase {
         WitnessDatabase {
-            data: Stack::const_new(),
-            offset: Stack::const_new(),
+            data: Stack::new(),
+            offset: Stack::new(),
         }
     }
     #[cfg(test)]
@@ -228,7 +224,7 @@ impl WitnessDatabase {
         WitnessDatabase { data, offset }
     }
     pub fn empty(&self) -> bool {
-        self.offset.empty()
+        self.offset.is_empty()
     }
     pub fn initialize(&mut self) {
         self.offset.push(0)
@@ -260,9 +256,8 @@ impl WitnessDatabase {
                 .join("")
         )
     }
-    pub fn witness(&self, clause: Clause) -> Slice<Literal> {
-        let range = self.witness_range(clause);
-        self.data.as_slice().range(range.start, range.end)
+    pub fn witness(&self, clause: Clause) -> &[Literal] {
+        &self.data[self.witness_range(clause)]
     }
     pub fn witness_range(&self, clause: Clause) -> Range<usize> {
         self.offset[clause.as_offset()]..self.offset[clause.as_offset() + 1]

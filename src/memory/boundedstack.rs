@@ -1,7 +1,10 @@
 //! Stack that never grows.
-use crate::memory::{HeapSpace, Slice, SliceMut, Stack, StackIterator};
+use crate::memory::{HeapSpace, Stack};
 use rate_macros::HeapSpace;
-use std::ops::{Index, IndexMut};
+use std::{
+    ops::{Index, IndexMut},
+    slice,
+};
 
 #[derive(Debug, Clone, HeapSpace, PartialEq, Default)]
 pub struct BoundedStack<T>
@@ -23,8 +26,8 @@ impl<T: HeapSpace> BoundedStack<T> {
     pub fn len(&self) -> usize {
         self.stack.len()
     }
-    pub fn empty(&self) -> bool {
-        self.stack.empty()
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
     pub fn capacity(&self) -> usize {
         self.stack.capacity()
@@ -38,29 +41,32 @@ impl<T: HeapSpace> BoundedStack<T> {
     pub fn last(&self) -> &T {
         self.stack.last()
     }
-    pub fn iter(&self) -> StackIterator<T> {
+    pub fn iter(&self) -> slice::Iter<T> {
         self.stack.iter()
     }
-    pub fn as_slice(&self) -> Slice<T> {
-        self.stack.as_slice()
-    }
-    pub fn mut_slice(&mut self) -> SliceMut<T> {
-        self.stack.mut_slice()
-    }
+    // pub fn as_slice(&self) -> Slice<T> {
+    //     self.stack.as_slice()
+    // }
+    // pub fn mut_slice(&mut self) -> SliceMut<T> {
+    //     self.stack.mut_slice()
+    // }
     pub fn as_ptr(&mut self) -> *const T {
         self.stack.as_ptr()
     }
     pub fn mut_ptr(&mut self) -> *mut T {
         self.stack.mut_ptr()
     }
-    pub fn set_len(&mut self, new_length: usize) {
-        self.stack.set_len(new_length)
-    }
     pub fn truncate(&mut self, new_length: usize) {
         self.stack.truncate(new_length)
     }
     pub fn clear(&mut self) {
         self.stack.clear()
+    }
+}
+
+impl<T: HeapSpace + Clone + Default> BoundedStack<T> {
+    pub fn resize(&mut self, new_length: usize) {
+        self.stack.resize(new_length)
     }
 }
 
@@ -79,8 +85,8 @@ impl<T: HeapSpace> IndexMut<usize> for BoundedStack<T> {
 
 impl<'a, T: HeapSpace> IntoIterator for &'a BoundedStack<T> {
     type Item = &'a T;
-    type IntoIter = StackIterator<'a, T>;
-    fn into_iter(self) -> StackIterator<'a, T> {
+    type IntoIter = slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
         self.stack.iter()
     }
 }

@@ -5,12 +5,13 @@ use crate::{
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{HeapSpace, Offset, Slice, SmallStack, Stack},
+    memory::{HeapSpace, Offset, SmallStack, Stack},
     output::Timer,
 };
 use memmap::MmapOptions;
 use std::collections::HashMap;
 use std::{
+    // sync::Mutex,
     cmp,
     convert::TryInto,
     fmt,
@@ -23,15 +24,21 @@ use std::{
 };
 
 // This needs to be static so that ClauseHashEq can access it.
-pub static mut CLAUSE_DATABASE: ClauseDatabase = ClauseDatabase::new();
-pub static mut WITNESS_DATABASE: WitnessDatabase = WitnessDatabase::new();
+
+pub static mut CLAUSE_DATABASE: Option<ClauseDatabase> = None;
+pub static mut WITNESS_DATABASE: Option<WitnessDatabase> = None;
+
+pub fn clause_db() -> &'static mut ClauseDatabase {
+    unsafe { CLAUSE_DATABASE.as_mut().unwrap() }
+}
+pub fn witness_db() -> &'static mut WitnessDatabase {
+    unsafe { WITNESS_DATABASE.as_mut().unwrap() }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Parser {
     pub redundancy_property: RedundancyProperty,
     pub maxvar: Variable,
-    pub clause_db: &'static mut ClauseDatabase,
-    pub witness_db: &'static mut WitnessDatabase,
     pub clause_pivot: Stack<Literal>,
     #[cfg(feature = "clause_lifetime_heuristic")]
     pub clause_deleted_at: Stack<usize>,
@@ -45,21 +52,19 @@ pub struct Parser {
 impl Parser {
     pub fn new() -> Parser {
         unsafe {
-            CLAUSE_DATABASE.clear();
-            WITNESS_DATABASE.clear();
+            CLAUSE_DATABASE = Some(ClauseDatabase::new());
+            WITNESS_DATABASE = Some(WitnessDatabase::new());
         }
-        unsafe {
-            assert!(
-                CLAUSE_DATABASE.is_empty(),
-                "Only one parser can be active at any time."
-            );
-            CLAUSE_DATABASE.initialize();
-        }
+        clause_db().clear();
+        witness_db().clear();
+        assert!(
+            clause_db().is_empty(),
+            "Only one parser can be active at any time."
+        );
+        clause_db().initialize();
         Parser {
             redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
-            clause_db: unsafe { &mut CLAUSE_DATABASE },
-            witness_db: unsafe { &mut WITNESS_DATABASE },
             clause_pivot: Stack::new(),
             #[cfg(feature = "clause_lifetime_heuristic")]
             clause_deleted_at: Stack::new(),
@@ -100,7 +105,7 @@ pub fn run_parser_on_formula(
         comment!("mode: {}", parser.redundancy_property);
     }
     if parser.redundancy_property != RedundancyProperty::RAT {
-        parser.witness_db.initialize();
+        witness_db().initialize();
     }
     if let Some(formula_file) = formula {
         let mut _timer = Timer::name("parsing formula");
@@ -249,20 +254,20 @@ fn add_literal(
     parser.maxvar = cmp::max(parser.maxvar, literal.variable());
     match state {
         ProofParserState::Clause => {
-            parser.clause_db.push_literal(literal);
+            clause_db().push_literal(literal);
             if parser.is_pr() && literal.is_zero() {
-                parser.witness_db.push_literal(literal);
+                witness_db().push_literal(literal);
             }
         }
         ProofParserState::Witness => {
             invariant!(parser.is_pr());
-            parser.witness_db.push_literal(literal);
+            witness_db().push_literal(literal);
             if literal.is_zero() {
-                parser.clause_db.push_literal(literal);
+                clause_db().push_literal(literal);
             }
         }
         ProofParserState::Deletion => {
-            parser.clause_db.push_literal(literal);
+            clause_db().push_literal(literal);
             if literal.is_zero() {
                 add_deletion(parser, clause_ids)
             }
@@ -272,7 +277,7 @@ fn add_literal(
     match state {
         ProofParserState::Clause | ProofParserState::Witness => {
             if literal.is_zero() {
-                let clause = parser.clause_db.last_clause();
+                let clause = clause_db().last_clause();
                 let key = ClauseHashEq(clause);
                 clause_ids
                     .entry(key)
@@ -285,13 +290,13 @@ fn add_literal(
 }
 
 fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
-    let clause = parser.clause_db.last_clause();
+    let clause = clause_db().last_clause();
     match find_clause(clause_ids, clause) {
         None => {
             if parser.verbose {
                 warn!(
                     "Deleted clause is not present in the formula: {}",
-                    parser.clause_db.clause_to_string(clause)
+                    clause_db().clause_to_string(clause)
                 );
             }
             // Need this for sickcheck
@@ -308,7 +313,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
             parser.proof.push(ProofStep::deletion(clause))
         }
     }
-    parser.clause_db.pop_clause();
+    clause_db().pop_clause();
 }
 
 #[derive(Debug, Eq, Clone, Copy)]
@@ -316,19 +321,15 @@ pub struct ClauseHashEq(pub Clause);
 
 impl Hash for ClauseHashEq {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        unsafe {
-            compute_hash(CLAUSE_DATABASE.clause(self.0)).hash(hasher);
-        }
+        compute_hash(clause_db().clause(self.0)).hash(hasher);
     }
 }
 
 impl PartialEq for ClauseHashEq {
     fn eq(&self, other: &ClauseHashEq) -> bool {
-        unsafe {
-            let clause = CLAUSE_DATABASE.clause(self.0);
-            let other_clause = CLAUSE_DATABASE.clause(other.0);
-            clause == other_clause
-        }
+        let clause = clause_db().clause(self.0);
+        let other_clause = clause_db().clause(other.0);
+        clause == other_clause
     }
 }
 
@@ -346,7 +347,7 @@ pub fn clause_is_active(clause_ids: &HashTable, needle: Clause) -> bool {
         .map_or(false, |stack| !stack.to_vec().is_empty())
 }
 
-fn compute_hash(clause: Slice<Literal>) -> usize {
+fn compute_hash(clause: &[Literal]) -> usize {
     let mut sum: usize = 0;
     let mut prod: usize = 1;
     let mut xor: usize = 0;
@@ -473,9 +474,9 @@ fn is_space(c: u8) -> bool {
 }
 
 fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
-    let clause = parser.clause_db.open_clause();
+    let clause = clause_db().open_clause();
     if parser.is_pr() && state != ProofParserState::Deletion {
-        let witness = parser.witness_db.open_witness();
+        let witness = witness_db().open_witness();
         invariant!(clause == witness);
     }
     clause
@@ -646,7 +647,7 @@ fn parse_proof(
     mut input: impl Input,
     binary: bool,
 ) -> Result<()> {
-    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
+    parser.proof_start = Clause::new(clause_db().number_of_clauses());
     let mut state = ProofParserState::Start;
     if parser.max_proof_steps != Some(0) {
         while let Some(()) = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)? {
@@ -670,8 +671,8 @@ impl Display for ParseError {
 
 #[allow(dead_code)]
 fn print_db() {
-    let clause_db = unsafe { &CLAUSE_DATABASE };
-    let witness_db = unsafe { &WITNESS_DATABASE };
+    let clause_db = &clause_db();
+    let witness_db = &witness_db();
     let is_pr = !witness_db.empty();
     for clause in Clause::range(0, clause_db.last_clause() + 1) {
         write_to_stdout!(
@@ -747,31 +748,44 @@ c comment
         fn raw(x: u32) -> Literal {
             Literal::from_raw(x)
         }
-        print_db();
         assert_eq!(
-            unsafe { &CLAUSE_DATABASE },
+            clause_db(),
             &ClauseDatabase::from(
                 stack!(
-                       raw(0), raw(0), raw(0), lit(1), lit(2), lit(0),
-                       raw(1), raw(0), raw(0), lit(-2), lit(-1), lit(0),
-                       raw(2), raw(0), raw(0), lit(1), lit(2), lit(3), lit(0),
-                       raw(3), raw(0), raw(0), lit(0),
+                    raw(0),
+                    raw(0),
+                    raw(0),
+                    lit(1),
+                    lit(2),
+                    lit(0),
+                    raw(1),
+                    raw(0),
+                    raw(0),
+                    lit(-2),
+                    lit(-1),
+                    lit(0),
+                    raw(2),
+                    raw(0),
+                    raw(0),
+                    lit(1),
+                    lit(2),
+                    lit(3),
+                    lit(0),
+                    raw(3),
+                    raw(0),
+                    raw(0),
+                    lit(0),
                 ),
                 stack!(0, 6, 12, 19)
             )
         );
-        assert_eq!(
-            unsafe { &WITNESS_DATABASE },
-            &WitnessDatabase::from(stack!(), stack!())
-        );
+        assert_eq!(witness_db(), &WitnessDatabase::from(stack!(), stack!()));
         assert_eq!(clause_ids, expected_clause_ids);
         assert_eq!(
             parser,
             Parser {
                 redundancy_property: RedundancyProperty::RAT,
                 maxvar: Variable::new(3),
-                clause_db: unsafe { &mut CLAUSE_DATABASE },
-                witness_db: unsafe { &mut WITNESS_DATABASE },
                 clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                 #[cfg(feature = "clause_lifetime_heuristic")]
                 clause_deleted_at: stack!(1, usize::max_value(), usize::max_value(),),
@@ -791,7 +805,10 @@ c comment
 
 impl HeapSpace for Parser {
     fn heap_space(&self) -> usize {
-        self.clause_db.heap_space() + self.clause_pivot.heap_space() + self.proof.heap_space()
+        clause_db().heap_space()
+            + witness_db().heap_space()
+            + self.clause_pivot.heap_space()
+            + self.proof.heap_space()
     }
 }
 

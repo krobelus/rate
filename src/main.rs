@@ -1,13 +1,6 @@
 //! Rate is a proof checker for DRAT proofs which are commonly used to certify
 //! unsatisfiability of SAT formulas.
 
-#![feature(
-    alloc,
-    ptr_wrapping_offset_from,
-    raw_vec_internals,
-    const_vec_new,
-    vec_resize_default,
-)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::nonminimal_bool)]
 
@@ -27,7 +20,6 @@ mod sick;
 
 #[macro_use(defer)]
 extern crate scopeguard;
-extern crate alloc;
 #[macro_use(Serialize, Deserialize)]
 extern crate serde_derive;
 

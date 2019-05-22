@@ -7,9 +7,9 @@
 use crate::{
     clause::Reason,
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack, HeapSpace, Slice, StackIterator},
+    memory::{Array, BoundedStack, HeapSpace},
 };
-use std::{fmt, fmt::Display, ops::Index};
+use std::{fmt, fmt::Display, ops::Index, slice};
 
 /// An assignment comprising a mapping plus a trail (stack of literals).
 ///
@@ -92,15 +92,10 @@ impl Assignment {
         self.trail[dst] = (literal, reason);
         self.position_in_trail[literal] = dst;
     }
-    /// Increase the size of the trail.
+    /// Change the size of the trail.
     /// Note: this does not change the assigned values, only the trail.
-    pub fn grow_trail(&mut self, level: usize) {
-        self.trail.set_len(level)
-    }
-    /// Descrease the size of the trail.
-    /// Note: this does not change the assigned values, only the trail.
-    pub fn shrink_trail(&mut self, level: usize) {
-        self.trail.truncate(level)
+    pub fn resize(&mut self, level: usize) {
+        self.trail.resize(level)
     }
     /// Remove the assignment for a literal, without modifying the trail.
     pub fn unassign(&mut self, literal: Literal) {
@@ -113,7 +108,7 @@ impl Assignment {
         self.trail[offset] = (literal, reason);
         self.position_in_trail[literal] = offset;
     }
-    pub fn iter(&self) -> StackIterator<(Literal, Reason)> {
+    pub fn iter(&self) -> slice::Iter<(Literal, Reason)> {
         self.into_iter()
     }
 }
@@ -121,7 +116,7 @@ impl Assignment {
 /// Iterate over the literals in the trail, from oldest to newest.
 impl<'a> IntoIterator for &'a Assignment {
     type Item = &'a (Literal, Reason);
-    type IntoIter = StackIterator<'a, (Literal, Reason)>;
+    type IntoIter = slice::Iter<'a, (Literal, Reason)>;
     fn into_iter(self) -> Self::IntoIter {
         self.trail.into_iter()
     }
@@ -154,7 +149,7 @@ impl HeapSpace for Assignment {
 }
 
 /// UP-models in rupee
-pub fn stable_under_unit_propagation(assignment: &Assignment, clause: Slice<Literal>) -> bool {
+pub fn stable_under_unit_propagation(assignment: &Assignment, clause: &[Literal]) -> bool {
     let clause_is_satisfied = clause.iter().any(|&literal| assignment[literal]);
     let unknown_count = clause
         .iter()

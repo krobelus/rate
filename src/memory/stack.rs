@@ -2,135 +2,91 @@
 //!
 //! We use a different growth factor (1.5 instead of 2)
 
-use crate::memory::{assert_in_bounds, Array, HeapSpace, Slice, SliceMut};
-use alloc::raw_vec::RawVec;
+use crate::memory::HeapSpace;
+use crate::{config::ENABLE_BOUNDS_CHECKING, features::RangeContainsExt};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     cmp::max,
     iter::FromIterator,
-    marker::PhantomData,
-    mem::{self, size_of},
-    ops::{Deref, DerefMut, Index, IndexMut},
+    mem::size_of,
+    ops::{Deref, DerefMut, Index, IndexMut, Range},
+    slice,
 };
 
-#[derive(Debug, Clone)]
-pub struct Stack<T> {
-    array: Array<usize, T>,
-    len: usize,
-}
-
-impl<T> Default for Stack<T> {
-    fn default() -> Stack<T> {
-        Stack::new()
-    }
-}
+#[derive(Debug, Clone, Default)]
+pub struct Stack<T>(Vec<T>);
 
 impl<T> Stack<T> {
     /// ATM it's not possible to make the `new` const.
-    pub const fn const_new() -> Stack<T> {
-        Stack {
-            array: Array {
-                data: RawVec::new(),
-                phantom: PhantomData,
-            },
-            len: 0,
-        }
-    }
     pub fn new() -> Stack<T> {
-        Stack {
-            array: Array::with_capacity(0),
-            len: 0,
-        }
+        Stack(Vec::new())
     }
     pub fn with_capacity(capacity: usize) -> Stack<T> {
-        Stack {
-            array: Array::with_capacity(capacity),
-            len: 0,
-        }
+        Stack(Vec::with_capacity(capacity))
     }
     pub fn from_vec(vec: Vec<T>) -> Stack<T> {
-        let len = vec.len();
-        Stack {
-            array: Array::from_vec(vec),
-            len,
-        }
+        Stack(vec)
     }
     pub fn into_vec(self) -> Vec<T> {
-        let ptr = self.array.mut_ptr();
-        let len = self.len();
-        let cap = self.capacity();
-        std::mem::forget(self);
-        unsafe { Vec::from_raw_parts(ptr, len, cap) }
+        self.0
     }
     pub fn len(&self) -> usize {
-        self.len
+        self.0.len()
     }
-    pub fn empty(&self) -> bool {
-        self.len() == 0
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
     pub fn capacity(&self) -> usize {
-        self.array.size()
+        self.0.capacity()
     }
     pub fn pop(&mut self) -> T {
-        // We should change this to return an `Option<T>`
-        requires!(!self.empty());
-        self.len -= 1;
-        unsafe { std::ptr::read(self.get_unchecked(self.len())) }
+        self.0.pop().unwrap()
     }
     pub fn first(&self) -> &T {
-        requires!(!self.empty());
+        requires!(!self.is_empty());
         &self[0]
     }
     pub fn last(&self) -> &T {
-        requires!(!self.empty());
+        requires!(!self.is_empty());
         &self[self.len() - 1]
     }
-    pub fn iter(&self) -> StackIterator<T> {
-        self.array.iter().take(self.len())
-    }
-    pub fn as_slice(&self) -> Slice<T> {
-        Slice::from_ref(self).range(0, self.len())
-    }
-    pub fn mut_slice(&mut self) -> SliceMut<T> {
-        SliceMut::new(&mut self.array).range(0, self.len)
+    pub fn iter(&self) -> slice::Iter<T> {
+        self.0.iter()
     }
     pub fn as_ptr(&mut self) -> *const T {
-        self.array.as_ptr()
+        self.0.as_ptr()
     }
     pub fn mut_ptr(&mut self) -> *mut T {
-        self.array.mut_ptr()
+        self.0.as_mut_ptr()
     }
     pub fn truncate(&mut self, new_length: usize) {
-        while self.len() > new_length {
-            self.pop();
-        }
-    }
-    pub fn set_len(&mut self, new_length: usize) {
-        self.len = new_length
+        self.0.truncate(new_length)
     }
     pub fn clear(&mut self) {
-        self.truncate(0)
+        self.0.clear()
     }
     pub fn push_no_grow(&mut self, value: T) {
         requires!(self.len() < self.capacity());
-        unsafe {
-            let end = self.mut_ptr().add(self.len);
-            std::ptr::write(end, value);
-            self.len += 1;
-        }
+        self.0.push(value)
+    }
+}
+
+impl<T: Clone + Default> Stack<T> {
+    pub fn resize(&mut self, new_length: usize) {
+        self.0.resize(new_length, T::default())
     }
 }
 
 impl<T> Deref for Stack<T> {
     type Target = [T];
     fn deref(&self) -> &[T] {
-        &self.array
+        &self.0
     }
 }
 
 impl<T> DerefMut for Stack<T> {
     fn deref_mut(&mut self) -> &mut [T] {
-        &mut self.array
+        &mut self.0
     }
 }
 
@@ -159,13 +115,10 @@ impl<T> AsMut<[T]> for Stack<T> {
 }
 
 impl<T: Clone + Default> Stack<T> {
-    pub fn grow(&mut self, new_capacity: usize) {
-        self.array.grow(new_capacity, T::default());
-    }
     pub fn push(&mut self, value: T) {
         if self.len() == self.capacity() {
             let new_capacity = next_capacity(self);
-            self.grow(new_capacity);
+            self.0.reserve(new_capacity - self.capacity())
         }
         self.push_no_grow(value)
     }
@@ -180,7 +133,7 @@ impl<T: Clone + Default> Stack<T> {
 
 // Related: https://github.com/rust-lang/rust/issues/29931
 fn next_capacity<T>(stack: &Stack<T>) -> usize {
-    if stack.empty() {
+    if stack.is_empty() {
         max(64 / size_of::<T>(), 1)
     } else {
         (stack.capacity() * 3 + 1) / 2
@@ -204,16 +157,13 @@ macro_rules! stack {
 
 impl<T: Copy> Stack<T> {
     pub fn swap_remove(&mut self, offset: usize) -> T {
-        let value = self[offset];
-        self[offset] = self[self.len() - 1];
-        self.pop();
-        value
+        self.0.swap_remove(offset)
     }
 }
 
 impl<T: Ord> Stack<T> {
     pub fn sort_unstable(&mut self) {
-        self.mut_slice().sort_unstable()
+        self.0.sort_unstable()
     }
 }
 
@@ -223,22 +173,47 @@ impl<T> Stack<T> {
         F: FnMut(&T) -> K,
         K: Ord,
     {
-        self.mut_slice().sort_unstable_by_key(f)
+        self.0.sort_unstable_by_key(f)
+    }
+}
+
+pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
+    if ENABLE_BOUNDS_CHECKING {
+        assert!(
+            bounds.contains_item(&offset),
+            format!(
+                "array index out of bounds: {} (range is {:?})",
+                offset, bounds
+            )
+        );
     }
 }
 
 impl<T> Index<usize> for Stack<T> {
     type Output = T;
-    fn index(&self, offset: usize) -> &T {
-        assert_in_bounds(0..self.len(), offset);
-        &self.array[offset]
+    fn index(&self, index: usize) -> &Self::Output {
+        assert_in_bounds(0..self.len(), index);
+        self.0.index(index)
+    }
+}
+
+impl<T> Index<Range<usize>> for Stack<T> {
+    type Output = [T];
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        self.0.index(index)
     }
 }
 
 impl<T> IndexMut<usize> for Stack<T> {
-    fn index_mut(&mut self, offset: usize) -> &mut T {
-        assert_in_bounds(0..self.len(), offset);
-        &mut self.array[offset]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        assert_in_bounds(0..self.len(), index);
+        self.0.index_mut(index)
+    }
+}
+
+impl<T> IndexMut<Range<usize>> for Stack<T> {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        self.0.index_mut(index)
     }
 }
 
@@ -248,19 +223,17 @@ impl<T: PartialEq> PartialEq for Stack<T> {
     }
 }
 
-pub type StackIterator<'a, T> = std::iter::Take<std::slice::Iter<'a, T>>;
-
 impl<'a, T> IntoIterator for &'a Stack<T> {
     type Item = &'a T;
-    type IntoIter = StackIterator<'a, T>;
-    fn into_iter(self) -> StackIterator<'a, T> {
+    type IntoIter = slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
 
 impl<T> FromIterator<T> for Stack<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Stack<T> {
-        Stack::from_vec(Vec::from_iter(iter))
+        Stack(Vec::from_iter(iter))
     }
 }
 
@@ -271,57 +244,12 @@ impl<T: HeapSpace> HeapSpace for Stack<T> {
     }
 }
 
-pub struct ConsumingStackIterator<T> {
-    buf: *mut T,
-    cap: usize,
-    ptr: *const T,
-    end: *const T,
-}
-
 /// Very similar to Vec::into_iter()
 impl<T> IntoIterator for Stack<T> {
     type Item = T;
-    type IntoIter = ConsumingStackIterator<T>;
-    fn into_iter(mut self) -> ConsumingStackIterator<T> {
-        unsafe {
-            let begin = self.mut_ptr();
-            requires!(!begin.is_null());
-            requires!(size_of::<T>() != 0);
-            let end = begin.add(self.len()) as *const T;
-            let cap = self.capacity();
-            mem::forget(self);
-            ConsumingStackIterator {
-                buf: begin,
-                cap,
-                ptr: begin,
-                end,
-            }
-        }
-    }
-}
-
-impl<T> Iterator for ConsumingStackIterator<T> {
-    type Item = T;
-    fn next(&mut self) -> Option<T> {
-        if self.ptr as *const _ == self.end {
-            None
-        } else {
-            let old = self.ptr;
-            unsafe {
-                self.ptr = self.ptr.add(1);
-                Some(std::ptr::read(old))
-            }
-        }
-    }
-}
-
-impl<T> Drop for ConsumingStackIterator<T> {
-    fn drop(&mut self) {
-        // destroy the remaining elements
-        for _x in self.by_ref() {}
-
-        // RawVec handles deallocation
-        let _ = unsafe { RawVec::from_raw_parts(self.buf, self.cap) };
+    type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

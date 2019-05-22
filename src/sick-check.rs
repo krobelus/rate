@@ -1,12 +1,5 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
-#![feature(
-    alloc,
-    ptr_wrapping_offset_from,
-    raw_vec_internals,
-    const_vec_new,
-    vec_resize_default,
-)]
 #![allow(clippy::collapsible_if)]
 
 #[macro_use]
@@ -22,7 +15,6 @@ mod literal;
 mod parser;
 mod sick;
 
-extern crate alloc;
 #[macro_use(Serialize, Deserialize)]
 extern crate serde_derive;
 
@@ -38,7 +30,8 @@ use crate::{
     memory::{Array, Stack},
     output::solution,
     parser::{
-        clause_is_active, proof_format_by_extension, run_parser, ClauseHashEq, HashTable, Parser,
+        clause_db, clause_is_active, proof_format_by_extension, run_parser, witness_db,
+        ClauseHashEq, HashTable, Parser,
     },
     sick::Sick,
 };
@@ -102,7 +95,7 @@ fn main() {
         );
     }
     let lemma = parser.proof[sick.proof_step - 1].clause();
-    requires!(lemma.index < parser.clause_db.number_of_clauses());
+    requires!(lemma.index < clause_db().number_of_clauses());
     let mut assignment = Assignment::new(parser.maxvar);
     for &literal in &sick.natural_model {
         if assignment[-literal] {
@@ -113,14 +106,14 @@ fn main() {
         }
         assignment.push(literal, Reason::assumed());
     }
-    if parser.clause_db.clause(lemma).empty() {
+    if clause_db().clause(lemma).is_empty() {
         comment!("Tried to introduce empty clause but natural model is consistent");
         solution("ACCEPTED");
         exit(0);
     }
     let natural_model_length = assignment.len();
 
-    for &literal in parser.clause_db.clause(lemma) {
+    for &literal in clause_db().clause(lemma) {
         if !assignment[-literal] {
             die!("Natural model does not falsify lemma literal {}", literal);
         }
@@ -131,10 +124,10 @@ fn main() {
         .map(|clause_stack| clause_stack.swap_remove(0));
     for clause in Clause::range(0, lemma) {
         if clause_is_active(&clause_ids, clause) {
-            if !stable_under_unit_propagation(&assignment, parser.clause_db.clause(clause)) {
+            if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
                 die!(
                     "Natural model is not a UP-model for clause {}",
-                    parser.clause_db.clause_to_string(clause)
+                    clause_db().clause_to_string(clause)
                 );
             }
         }
@@ -146,8 +139,7 @@ fn main() {
             .iter()
             .map(|witness| witness.pivot.expect(PIVOT))
             .collect();
-        let mut expected_pivots: Vec<Literal> = parser
-            .clause_db
+        let mut expected_pivots: Vec<Literal> = clause_db()
             .clause(lemma)
             .iter()
             .filter(|&&l| l != Literal::BOTTOM)
@@ -177,23 +169,23 @@ fn main() {
         }
     }
     for witness in witnesses {
-        parser.clause_db.open_clause();
+        clause_db().open_clause();
         for &literal in &witness.failing_clause {
-            parser.clause_db.push_literal(literal);
+            clause_db().push_literal(literal);
         }
-        parser.clause_db.push_literal(Literal::new(0));
-        let failing_clause_tmp = parser.clause_db.last_clause();
+        clause_db().push_literal(Literal::new(0));
+        let failing_clause_tmp = clause_db().last_clause();
         let failing_clause = clause_ids
             .get(&ClauseHashEq(failing_clause_tmp))
             .and_then(|stack| stack.to_vec().get(0).cloned())
             .unwrap_or_else(|| {
                 die!(
                     "Failing clause is not present in the formula: {}",
-                    parser.clause_db.clause_to_string(failing_clause_tmp),
+                    clause_db().clause_to_string(failing_clause_tmp),
                 )
             });
-        parser.clause_db.pop_clause();
-        let lemma_slice = parser.clause_db.clause(lemma);
+        clause_db().pop_clause();
+        let lemma_slice = clause_db().clause(lemma);
         for &literal in &witness.failing_model {
             if assignment[-literal] {
                 die!(
@@ -216,7 +208,7 @@ fn main() {
             RedundancyProperty::PR => {
                 let mut literal_is_in_witness =
                     Array::new(false, parser.maxvar.array_size_for_literals());
-                for &literal in parser.witness_db.witness(lemma) {
+                for &literal in witness_db().witness(lemma) {
                     literal_is_in_witness[literal] = true;
                 }
                 if witness
@@ -226,8 +218,8 @@ fn main() {
                 {
                     die!(
                         "Reduct of failing clause {} is satisified under witness {}",
-                        parser.clause_db.clause_to_string(failing_clause),
-                        parser.witness_db.witness_to_string(failing_clause)
+                        clause_db().clause_to_string(failing_clause),
+                        witness_db().witness_to_string(failing_clause)
                     )
                 }
                 lemma_slice
@@ -252,10 +244,10 @@ fn main() {
         }
         for clause in Clause::range(0, lemma) {
             if clause_is_active(&clause_ids, clause) {
-                if !stable_under_unit_propagation(&assignment, parser.clause_db.clause(clause)) {
+                if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
                     die!(
                         "Failing model is not a UP-model for clause {}",
-                        parser.clause_db.clause_to_string(clause)
+                        clause_db().clause_to_string(clause)
                     );
                 }
             }
