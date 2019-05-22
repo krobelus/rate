@@ -4,7 +4,6 @@
     alloc,
     ptr_wrapping_offset_from,
     raw_vec_internals,
-    range_contains,
     const_vec_new,
     vec_resize_default,
     result_map_or_else,
@@ -25,6 +24,7 @@ mod config;
 mod literal;
 mod parser;
 mod sick;
+mod features;
 
 extern crate alloc;
 #[macro_use(Serialize, Deserialize)]

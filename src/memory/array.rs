@@ -3,6 +3,7 @@
 use crate::{
     config::ENABLE_BOUNDS_CHECKING,
     memory::{HeapSpace, Offset, Stack},
+    features::RangeContainsExt,
 };
 use alloc::raw_vec::RawVec;
 use std::{
@@ -145,7 +146,7 @@ impl<I: Offset, T> AsMut<[T]> for Array<I, T> {
 pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
     if ENABLE_BOUNDS_CHECKING {
         assert!(
-            bounds.contains(&offset),
+            bounds.contains_item(&offset),
             format!(
                 "array index out of bounds: {} (range is {:?})",
                 offset, bounds
