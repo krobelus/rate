@@ -65,13 +65,13 @@ satisfiable formulas.
 
 Here are the transformations we do:
 - When doing the forward pass through the proof, we stop as soon as a
-  conflict is inferred.  Any clauses after a conflict are ignore.
+  conflict is inferred.  Any proof steps thereafter are ignored.
   This means that an explicit empty clause at the end of the proof is
   not required.
-- Lemmas that are not part of the reason for the above conflict are not
+- Lemmas that are not part of the reason for above conflict are not
   checked, thus they are effectively removed from the proof.
 - Clauses and lemmas that are not part of the reason for the conflict are not
-  considered as resolution candidates for the RAT check, just like `gratgen`.
+  considered as resolution candidates for the RAT check, just like in `gratgen`.
 - If `--skip-unit-deletions` is specified, then deletions of clauses that are unit
   with respect to the current assignment are ignored, as in `drat-trim`.
 - RAT checks are done upon every possible pivot and not just the first literal
