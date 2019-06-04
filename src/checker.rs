@@ -2078,8 +2078,8 @@ fn watchlist_revise(checker: &mut Checker, lit: Literal) {
         while i < watchlist(checker, mode)[lit].len() {
             let head = watchlist(checker, mode)[lit][i];
             let clause = checker.offset2clause(head);
-            watches_revise(checker, mode, lit, clause, &mut i);
-            i = i.wrapping_add(1);
+            watches_revise(checker, mode, lit, clause);
+            i += 1;
         }
     }
 }
@@ -2089,44 +2089,28 @@ fn watches_revise(
     mode: Mode,
     lit: Literal,
     clause: Clause,
-    position_in_watchlist: &mut usize,
 ) {
     let head = checker.clause_range(clause).start;
-    // NOTE swap them to simplify this
-    let [w1, _w2] = checker.watches(head);
-    let my_offset = head + if w1 == lit { 0 } else { 1 };
-    let other_literal_offset = head + if w1 == lit { 1 } else { 0 };
-    let other_literal = clause_db()[other_literal_offset];
+    if clause_db()[head] == lit {
+        clause_db().swap(head, head + 1);
+    }
+    let other_literal = clause_db()[head];
     if !checker.assignment[-other_literal] {
         return;
     }
+    // Remember invariant 1: one falsified watch implies that the other watch is satisfied.
     match first_non_falsified(checker, clause, head + 2) {
         None => {
+            // TODO
             if !checker.assignment[lit] {
                 assign(checker, lit, Reason::forced(head));
             }
         }
         Some(offset) => {
             let new_literal = clause_db()[offset];
-            // We know that  lit is the literal that was unassigned in this revision.
-            // Additionally, other_literal is falsified.
-            //
-            // Invariant 1 states: a falsified watch implies that the other watch is satisfied.
-            // If we replace lit with firstlit, then we need to ensure this, so this is
-            // only possible if firstlit is satisfied.
-            //
-            // Otherwise we simply replace the falsified other_literal after which both watches are
-            // non-falsified. (This is more expensive because we have to find the watch).
-
-            if checker.assignment[new_literal] {
-                clause_db().swap(my_offset, offset);
-                watch_remove_at(checker, mode, lit, *position_in_watchlist);
-                *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-                invariant!(mode == checker.clause_mode(clause));
-            } else {
-                clause_db().swap(other_literal_offset, offset);
-                let _removed = watches_find_and_remove(checker, mode, other_literal, head);
-            }
+            clause_db().swap(head, offset);
+            let _removed = watches_find_and_remove(checker, mode, other_literal, head);
+            assert!(_removed);
             watch_add(checker, mode, new_literal, head);
         }
     };
