@@ -2255,6 +2255,7 @@ fn watches_reset_list_at(
         &mut latest_falsified_position,
     );
     if !have_unassigned {
+        requires!(checker.assignment[clause_db()[new_w1_offset]]);
         if new_w1_offset > latest_falsified_offset {
             new_w2_offset = new_w1_offset;
             new_w1_offset = latest_falsified_offset;
