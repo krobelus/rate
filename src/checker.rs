@@ -197,11 +197,6 @@ pub struct Checker {
     grat_pending_prerat: Stack<GRATLiteral>,
     grat_prerat: Array<Clause, bool>,
 
-    #[cfg(feature = "clause_lifetime_heuristic")]
-    clause_deleted_at: Array<Clause, usize>,
-    #[cfg(feature = "clause_lifetime_heuristic")]
-    literal_minimal_lifetime: Array<Literal, usize>,
-
     pub premise_length: usize,
     pub rup_introductions: usize,
     pub rat_introductions: usize,
@@ -247,8 +242,6 @@ impl Checker {
             } else {
                 Array::default()
             },
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            clause_deleted_at: Array::from(parser.clause_deleted_at),
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Stack::new(),
             config,
@@ -306,8 +299,6 @@ impl Checker {
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            literal_minimal_lifetime: Array::new(0, maxvar.array_size_for_literals()),
             revisions: Stack::new(),
             watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
@@ -323,11 +314,6 @@ impl Checker {
             reason_deletions_shrinking_trail: 0,
             satisfied_count: 0,
         };
-        #[cfg(feature = "clause_lifetime_heuristic")]
-        {
-            checker.literal_minimal_lifetime[Literal::TOP] = usize::max_value();
-            checker.literal_minimal_lifetime[Literal::BOTTOM] = usize::max_value();
-        }
         if lrat {
             for clause in Clause::range(0, checker.lemma) {
                 checker.lrat_id += 1;
@@ -458,20 +444,6 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
         checker
             .fields_mut_from_offset(reason.offset())
             .set_is_reason(true);
-        #[cfg(feature = "clause_lifetime_heuristic")]
-        {
-            let reason_clause = reason.offset();
-            let reason_lifetime = checker.clause_deleted_at[checker.offset2clause(reason_clause)];
-            let reason_reason_lifetime = checker
-                .clause(checker.offset2clause(reason_clause))
-                .iter()
-                .filter(|&reason_literal| *reason_literal != literal)
-                .map(|&reason_literal| checker.literal_minimal_lifetime[-reason_literal])
-                .min()
-                .unwrap_or(usize::max_value());
-            checker.literal_minimal_lifetime[literal] =
-                cmp::min(reason_lifetime, reason_reason_lifetime);
-        }
     }
     if checker.assignment[-literal] {
         CONFLICT
@@ -1276,26 +1248,6 @@ fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
         .any(|&literal| checker.assignment[literal])
 }
 
-#[cfg(feature = "clause_lifetime_heuristic")]
-fn clause_is_satisfied_until_its_deletion(checker: &Checker, clause: Clause) -> bool {
-    fn implies(a: bool, b: bool) -> bool {
-        !a || b
-    }
-
-    checker.clause(clause).iter().any(|&literal| {
-        invariant!(
-            implies(
-                checker.literal_minimal_lifetime[literal] > 0,
-                checker.assignment[literal]
-            ) || literal == Literal::BOTTOM
-        );
-        checker.assignment[literal] // necessary to exclude Literal::BOTTOM
-            &&
-        checker.literal_minimal_lifetime[literal] >=
-            checker.clause_deleted_at[clause]
-    })
-}
-
 fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     log!(
         checker,
@@ -1306,11 +1258,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     let already_satisfied = if checker.config.skip_unit_deletions {
         clause_is_satisfied(checker, clause)
     } else {
-        #[cfg(feature = "clause_lifetime_heuristic")]
-        let it = clause_is_satisfied_until_its_deletion(checker, clause);
-        #[cfg(not(feature = "clause_lifetime_heuristic"))]
-        let it = false;
-        it
+        false
     };
     if already_satisfied {
         checker.satisfied_count += 1;
@@ -2127,10 +2075,6 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal,
         .reason_clause
         .push(checker.offset2clause(reason.offset()));
     checker.assignment.unassign(lit);
-    #[cfg(feature = "clause_lifetime_heuristic")]
-    {
-        checker.literal_minimal_lifetime[lit] = 0;
-    }
     set_reason_flag(checker, reason, false);
 }
 

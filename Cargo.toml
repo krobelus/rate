@@ -37,7 +37,6 @@ libc = "0.2"
 
 [features]
 default = []
-clause_lifetime_heuristic = []
 
 [profile.release]
 panic = "abort"

@@ -40,8 +40,6 @@ pub struct Parser {
     pub redundancy_property: RedundancyProperty,
     pub maxvar: Variable,
     pub clause_pivot: Stack<Literal>,
-    #[cfg(feature = "clause_lifetime_heuristic")]
-    pub clause_deleted_at: Stack<usize>,
     pub proof_start: Clause,
     pub proof: Stack<ProofStep>,
     pub max_proof_steps: Option<usize>,
@@ -66,8 +64,6 @@ impl Parser {
             redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
             clause_pivot: Stack::new(),
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            clause_deleted_at: Stack::new(),
             proof_start: Clause::new(0),
             proof: Stack::new(),
             max_proof_steps: None,
@@ -304,14 +300,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
                 .proof
                 .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
         }
-        Some(clause) => {
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            {
-                invariant!(parser.clause_deleted_at[clause.as_offset()] == usize::max_value());
-                parser.clause_deleted_at[clause.as_offset()] = parser.proof.len();
-            }
-            parser.proof.push(ProofStep::deletion(clause))
-        }
+        Some(clause) => parser.proof.push(ProofStep::deletion(clause))
     }
     clause_db().pop_clause();
 }
@@ -502,8 +491,6 @@ fn parse_formula(
         if clause_head {
             open_clause(parser, ProofParserState::Clause);
             parser.clause_pivot.push(Literal::NEVER_READ);
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            parser.clause_deleted_at.push(usize::max_value());
         }
         add_literal(parser, clause_ids, ProofParserState::Clause, literal);
         clause_head = literal.is_zero();
@@ -605,8 +592,6 @@ pub fn parse_proof_step(
         }
         if *state == ProofParserState::Clause && lemma_head {
             parser.clause_pivot.push(literal);
-            #[cfg(feature = "clause_lifetime_heuristic")]
-            parser.clause_deleted_at.push(usize::max_value());
             first_literal = Some(literal);
             lemma_head = false;
         }
@@ -787,8 +772,6 @@ c comment
                 redundancy_property: RedundancyProperty::RAT,
                 maxvar: Variable::new(3),
                 clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
-                #[cfg(feature = "clause_lifetime_heuristic")]
-                clause_deleted_at: stack!(1, usize::max_value(), usize::max_value(),),
                 proof_start: Clause::new(2),
                 proof: stack!(
                     ProofStep::lemma(Clause::new(2)),
