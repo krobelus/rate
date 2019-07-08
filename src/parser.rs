@@ -300,7 +300,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
                 .proof
                 .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
         }
-        Some(clause) => parser.proof.push(ProofStep::deletion(clause))
+        Some(clause) => parser.proof.push(ProofStep::deletion(clause)),
     }
     clause_db().pop_clause();
 }

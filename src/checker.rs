@@ -2032,12 +2032,7 @@ fn watchlist_revise(checker: &mut Checker, lit: Literal) {
     }
 }
 
-fn watches_revise(
-    checker: &mut Checker,
-    mode: Mode,
-    lit: Literal,
-    clause: Clause,
-) {
+fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Clause) {
     let head = checker.clause_range(clause).start;
     if clause_db()[head] == lit {
         clause_db().swap(head, head + 1);
