@@ -25,7 +25,7 @@ pub struct Config {
 /// Whether to do bounds checking when accessing array elements.
 pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug_assertions);
 /// Add command line flag `-v`.
-pub const ENABLE_LOGGING: bool = cfg!(debug_assertions);
+pub const ENABLE_LOGGING: bool = true;
 /// Runtime invariant checks.
 pub const ENABLE_ASSERTIONS: bool = cfg!(debug_assertions);
 /// Check assignment sanity.

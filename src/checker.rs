@@ -1930,7 +1930,6 @@ fn watch_remove_at(checker: &mut Checker, mode: Mode, lit: Literal, position_in_
 }
 
 fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) {
-    log!(checker, 4, "watchlist[{}] add {}", lit, head);
     watchlist_mut(checker, mode)[lit].push(head)
 }
 
