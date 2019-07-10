@@ -440,7 +440,6 @@ fn parse_comment(input: &mut impl Input) -> Option<()> {
             }
             None
         }
-        None => Some(()),
         _ => None,
     }
 }
@@ -822,7 +821,7 @@ impl SimpleInput {
 impl Input for SimpleInput {
     fn next(&mut self) -> Option<u8> {
         self.source.next().map(|c| {
-            if self.binary && c == b'\n' {
+            if !self.binary && c == b'\n' {
                 self.line += 1;
             }
             c
