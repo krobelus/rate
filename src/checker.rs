@@ -134,7 +134,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
         }
     }
     log!(checker, 1, "[forward check] added premise");
-    for i in 0..checker.proof.size() {
+    for i in 0..checker.proof.len() {
         let proof_step = checker.proof[i];
         let clause = proof_step.clause();
         if proof_step.is_deletion() {
@@ -157,7 +157,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
 
 #[derive(Debug)]
 pub struct Checker {
-    pub proof: Array<usize, ProofStep>,
+    pub proof: Stack<ProofStep>,
     pub config: Config,
     redundancy_property: RedundancyProperty,
 
@@ -295,7 +295,7 @@ impl Checker {
                 Array::default()
             },
             maxvar,
-            proof: Array::from(parser.proof),
+            proof: parser.proof,
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
@@ -1312,7 +1312,7 @@ fn preprocess(checker: &mut Checker) -> Verdict {
         }
     }
     log!(checker, 1, "[preprocess] done adding premise");
-    for i in 0..checker.proof.size() {
+    for i in 0..checker.proof.len() {
         watch_invariants(checker);
         let proof_step = checker.proof[i];
         let clause = proof_step.clause();

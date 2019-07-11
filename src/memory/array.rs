@@ -46,27 +46,9 @@ impl<I: Offset, T> Array<I, T> {
             phantom: PhantomData,
         }
     }
-    // pub fn from_vec(data: Vec<T>) -> Array<I, T> {
-    //     Array {
-    //         data,
-    //         phantom: PhantomData,
-    //     }
-    // }
-    // pub fn ptr(&self) -> *const T {
-    //     self.data.ptr()
-    // }
-    // pub fn mut_ptr(&self) -> *mut T {
-    //     self.data.ptr()
-    // }
-    // pub fn size(&self) -> usize {
-    //     self.data.cap()
-    // }
     pub fn size(&self) -> usize {
         self.data.capacity()
     }
-    // pub fn mut_slice(&mut self) -> &mut [T] {
-    //     unsafe { slice::from_raw_parts_mut(self.mut_ptr(), self.size()) }
-    // }
 }
 
 impl<I: Offset, T> Deref for Array<I, T> {

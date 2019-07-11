@@ -93,7 +93,7 @@ fn main() {
     let mut checker = Checker::new(parser, config);
     let result = check(&mut checker);
     value("premise clauses", checker.premise_length);
-    value("proof steps", checker.proof.size());
+    value("proof steps", checker.proof.len());
     value("skipped tautologies", checker.satisfied_count);
     value("RUP introductions", checker.rup_introductions);
     value("RAT introductions", checker.rat_introductions);
