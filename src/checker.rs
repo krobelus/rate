@@ -2052,7 +2052,6 @@ fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Claus
             let new_literal = clause_db()[offset];
             clause_db().swap(head, offset);
             let _removed = watches_find_and_remove(checker, mode, other_literal, head);
-            assert!(_removed);
             watch_add(checker, mode, new_literal, head);
         }
     };
