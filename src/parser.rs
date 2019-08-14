@@ -11,7 +11,6 @@ use crate::{
 use memmap::MmapOptions;
 use std::collections::HashMap;
 use std::{
-    // sync::Mutex,
     cmp,
     convert::TryInto,
     fmt,
@@ -738,18 +737,15 @@ c comment
                 stack!(
                     raw(0),
                     raw(0),
-                    raw(0),
                     lit(1),
                     lit(2),
                     lit(0),
                     raw(1),
                     raw(0),
-                    raw(0),
                     lit(-2),
                     lit(-1),
                     lit(0),
                     raw(2),
-                    raw(0),
                     raw(0),
                     lit(1),
                     lit(2),
@@ -757,10 +753,9 @@ c comment
                     lit(0),
                     raw(3),
                     raw(0),
-                    raw(0),
                     lit(0),
                 ),
-                stack!(0, 6, 12, 19)
+                stack!(0, 5, 10, 16)
             )
         );
         assert_eq!(witness_db(), &WitnessDatabase::from(stack!(), stack!()));

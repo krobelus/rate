@@ -1,6 +1,6 @@
 ///! Container for clauses
 use crate::{
-    clause::Clause,
+    clause::{Clause, ClauseStorage},
     literal::Literal,
     memory::{Offset, Stack},
 };
@@ -11,8 +11,8 @@ use std::{
     ops::{Index, IndexMut, Range},
 };
 
-pub const PADDING_START: usize = 3;
-pub const FIELDS_OFFSET: usize = 2;
+pub const PADDING_START: usize = 2;
+pub const FIELDS_OFFSET: usize = 1;
 pub const PADDING_END: usize = 1;
 
 /// Clause are stored in field `data`:
@@ -49,10 +49,10 @@ impl ClauseDatabase {
         self.push_sentinel(0);
     }
     pub const PADDING: usize = 1;
-    pub fn number_of_clauses(&self) -> u64 {
+    pub fn number_of_clauses(&self) -> ClauseStorage {
         requires!(self.have_sentinel);
         requires!(u64::try_from(self.offset.len() - ClauseDatabase::PADDING).is_ok());
-        (self.offset.len() - ClauseDatabase::PADDING) as u64
+        (self.offset.len() - ClauseDatabase::PADDING) as ClauseStorage
     }
     pub fn last_clause(&self) -> Clause {
         requires!(self.have_sentinel);
@@ -89,10 +89,7 @@ impl ClauseDatabase {
         self.pop_sentinel();
         let clause = Clause::new(id);
         self.offset.push(self.data.len()); // clause
-        let lower = (id & 0x0000_0000_ffff_ffff) as u32;
-        let upper = ((id & 0xffff_ffff_0000_0000) >> 32) as u32;
-        self.data.push(Literal::from_raw(lower));
-        self.data.push(Literal::from_raw(upper));
+        self.data.push(Literal::from_raw(id));
         self.data.push(Literal::from_raw(0)); // fields
         clause
     }
@@ -163,9 +160,7 @@ impl ClauseDatabase {
         self.clause_range(clause).start
     }
     pub fn offset2clause(&self, head: usize) -> Clause {
-        let lower = self[head - PADDING_START];
-        let upper = self[head - PADDING_START + 1];
-        Clause::new(u64::from(lower.encoding) | u64::from(upper.encoding) << 32)
+        Clause::new(self[head - PADDING_START].encoding)
     }
     pub fn swap(&mut self, a: usize, b: usize) {
         self.data.swap(a, b);
