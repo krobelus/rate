@@ -170,6 +170,7 @@ def compare_acceptance(a, b, *, instances):
         if 'drat-trim' in b[0]:
             if name in (
                 'benchmarks/crafted/faux-conflict',
+                'benchmarks/crafted/sick-example',
                     'benchmarks/crafted/crlf'):
                 continue  # drat-trim uses binary mode here
         if INITIAL_COMMIT in b[0]:
