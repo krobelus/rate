@@ -99,8 +99,8 @@ impl Config {
         if rupee && skip_unit_deletions {
             incompatible_options("--rupee --skip-unit-deletions");
         }
-        if drat_trim && unmarked_rat_candidates {
-            incompatible_options("--drat-trim --unmarked_rat_candidates");
+        if rupee && unmarked_rat_candidates {
+            incompatible_options("--rupee --unmarked_rat_candidates");
         }
         if drat_trim && pivot_is_first_literal {
             incompatible_options("--drat-trim --assume-pivot-is-first");
@@ -108,7 +108,7 @@ impl Config {
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Config {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
-            unmarked_rat_candidates: !drat_trim && unmarked_rat_candidates,
+            unmarked_rat_candidates: rupee || unmarked_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_terminating_empty_clause: matches.is_present("NO_TERMINATING_EMPTY_CLAUSE"),
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
