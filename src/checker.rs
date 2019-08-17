@@ -22,137 +22,11 @@ use std::{
     ops::{self, Index},
 };
 
-pub fn check(checker: &mut Checker) -> Verdict {
-    let verdict = if checker.config.forward {
-        forward_check(checker)
-    } else {
-        let mut verdict = preprocess(checker);
-        if verdict == Verdict::Verified {
-            verdict = if verify(checker) {
-                Verdict::Verified
-            } else {
-                Verdict::Falsified
-            }
-        }
-        verdict
-    };
-    if verdict == Verdict::Verified {
-        write_lemmas(checker).unwrap_or_else(|err| die!("Failed to write lemmas: {}", err));
-        write_lrat_certificate(checker)
-            .unwrap_or_else(|err| die!("Failed to write LRAT certificate: {}", err));
-        write_grat_certificate(checker)
-            .unwrap_or_else(|err| die!("Failed to write GRAT certificate: {}", err));
-        Verdict::Verified
-    } else {
-        write_sick_witness(checker).expect("Failed to write incorrectness witness.");
-        verdict
-    }
-}
-
-fn forward_delete(checker: &mut Checker, clause: Clause) {
-    if clause == Clause::DOES_NOT_EXIST {
-        return;
-    }
-    log!(
-        checker,
-        1,
-        "[forward check] del {}",
-        checker.clause_to_string(clause)
-    );
-    checker.deletions += 1;
-    if checker.fields(clause).is_reason() {
-        checker.reason_deletions += 1;
-    }
-    if checker.config.skip_unit_deletions {
-        let is_unit = checker
-            .clause(clause)
-            .iter()
-            .filter(|&&literal| !checker.assignment[-literal])
-            .count()
-            == 1;
-        if is_unit {
-            checker.fields_mut(clause).set_deletion_ignored(true);
-            checker.skipped_deletions += 1;
-            if checker.config.verbosity > 0 {
-                warn!(
-                    "Ignoring deletion of (pseudo) unit clause {}",
-                    checker.clause_to_string(clause)
-                );
-            }
-        } else {
-            watches_remove(checker, checker.clause_mode(clause), clause);
-        }
-    } else {
-        watches_remove(checker, checker.clause_mode(clause), clause);
-        if checker.fields(clause).is_reason() {
-            let trail_length_before_creating_revision = checker.assignment.len();
-            revision_create(checker, clause);
-            let no_conflict = propagate(checker);
-            let trail_length_after_propagating = checker.assignment.len();
-            invariant!(no_conflict == NO_CONFLICT);
-            if trail_length_after_propagating < trail_length_before_creating_revision {
-                checker.reason_deletions_shrinking_trail += 1;
-                log!(
-                    checker,
-                    1,
-                    "reason deletion, created {}",
-                    checker.revisions.last()
-                );
-            } else {
-                log!(checker, 1, "reason deletion, but trail is unchanged");
-            }
-            watch_invariants(checker);
-        }
-    }
-}
-
-fn forward_preadd(checker: &mut Checker, step: usize, clause: Clause) -> bool {
-    invariant!(clause == checker.lemma);
-    if checker.clause(clause).is_empty() {
-        if checker.config.sick_filename.is_some() {
-            checker.rejection.proof_step = step;
-        }
-        extract_natural_model(checker, checker.assignment.len());
-        false
-    } else {
-        true
-    }
-}
-
 #[derive(PartialEq, Eq, Debug)]
 pub enum Verdict {
     Verified,
     NoConflict,
     Falsified,
-}
-
-fn forward_check(checker: &mut Checker) -> Verdict {
-    let _timer = Timer::name("forward check");
-    for clause in Clause::range(0, checker.lemma) {
-        if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
-            return close_proof(checker, 0);
-        }
-    }
-    log!(checker, 1, "[forward check] added premise");
-    for i in 0..checker.proof.len() {
-        let proof_step = checker.proof[i];
-        let clause = proof_step.clause();
-        if proof_step.is_deletion() {
-            forward_delete(checker, clause);
-        } else {
-            if !forward_preadd(checker, i, clause) {
-                return Verdict::NoConflict;
-            }
-            if !check_inference(checker) {
-                return Verdict::Falsified;
-            }
-            if add_premise(checker, clause) == CONFLICT {
-                return close_proof(checker, i + 1);
-            }
-            checker.lemma += 1;
-        }
-    }
-    Verdict::NoConflict
 }
 
 #[derive(Debug)]
@@ -325,6 +199,12 @@ impl Checker {
         }
         checker
     }
+    pub fn run(&mut self) -> Verdict {
+        run(self)
+    }
+    pub fn print_memory_usage(&self) {
+        print_memory_usage(self)
+    }
     fn clause_to_string(&self, clause: Clause) -> String {
         clause_db().clause_to_string(clause)
     }
@@ -394,6 +274,132 @@ impl Checker {
         requires!(self.proof_steps_until_conflict != usize::max_value());
         let proof_step = self.proof[self.proof_steps_until_conflict];
         proof_step.clause()
+    }
+}
+
+fn run(checker: &mut Checker) -> Verdict {
+    let verdict = if checker.config.forward {
+        forward_check(checker)
+    } else {
+        let mut verdict = preprocess(checker);
+        if verdict == Verdict::Verified {
+            verdict = if verify(checker) {
+                Verdict::Verified
+            } else {
+                Verdict::Falsified
+            }
+        }
+        verdict
+    };
+    if verdict == Verdict::Verified {
+        write_lemmas(checker).unwrap_or_else(|err| die!("Failed to write lemmas: {}", err));
+        write_lrat_certificate(checker)
+            .unwrap_or_else(|err| die!("Failed to write LRAT certificate: {}", err));
+        write_grat_certificate(checker)
+            .unwrap_or_else(|err| die!("Failed to write GRAT certificate: {}", err));
+        Verdict::Verified
+    } else {
+        write_sick_witness(checker).expect("Failed to write incorrectness witness.");
+        verdict
+    }
+}
+
+fn forward_check(checker: &mut Checker) -> Verdict {
+    let _timer = Timer::name("forward check");
+    for clause in Clause::range(0, checker.lemma) {
+        if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
+            return close_proof(checker, 0);
+        }
+    }
+    log!(checker, 1, "[forward check] added premise");
+    for i in 0..checker.proof.len() {
+        let proof_step = checker.proof[i];
+        let clause = proof_step.clause();
+        if proof_step.is_deletion() {
+            forward_delete(checker, clause);
+        } else {
+            if !forward_preadd(checker, i, clause) {
+                return Verdict::NoConflict;
+            }
+            if !check_inference(checker) {
+                return Verdict::Falsified;
+            }
+            if add_premise(checker, clause) == CONFLICT {
+                return close_proof(checker, i + 1);
+            }
+            checker.lemma += 1;
+        }
+    }
+    Verdict::NoConflict
+}
+
+fn forward_delete(checker: &mut Checker, clause: Clause) {
+    if clause == Clause::DOES_NOT_EXIST {
+        return;
+    }
+    log!(
+        checker,
+        1,
+        "[forward check] del {}",
+        checker.clause_to_string(clause)
+    );
+    checker.deletions += 1;
+    if checker.fields(clause).is_reason() {
+        checker.reason_deletions += 1;
+    }
+    if checker.config.skip_unit_deletions {
+        let is_unit = checker
+            .clause(clause)
+            .iter()
+            .filter(|&&literal| !checker.assignment[-literal])
+            .count()
+            == 1;
+        if is_unit {
+            checker.fields_mut(clause).set_deletion_ignored(true);
+            checker.skipped_deletions += 1;
+            if checker.config.verbosity > 0 {
+                warn!(
+                    "Ignoring deletion of (pseudo) unit clause {}",
+                    checker.clause_to_string(clause)
+                );
+            }
+        } else {
+            watches_remove(checker, checker.clause_mode(clause), clause);
+        }
+    } else {
+        watches_remove(checker, checker.clause_mode(clause), clause);
+        if checker.fields(clause).is_reason() {
+            let trail_length_before_creating_revision = checker.assignment.len();
+            revision_create(checker, clause);
+            let no_conflict = propagate(checker);
+            let trail_length_after_propagating = checker.assignment.len();
+            invariant!(no_conflict == NO_CONFLICT);
+            if trail_length_after_propagating < trail_length_before_creating_revision {
+                checker.reason_deletions_shrinking_trail += 1;
+                log!(
+                    checker,
+                    1,
+                    "reason deletion, created {}",
+                    checker.revisions.last()
+                );
+            } else {
+                log!(checker, 1, "reason deletion, but trail is unchanged");
+            }
+            watch_invariants(checker);
+        }
+    }
+}
+
+fn forward_preadd(checker: &mut Checker, step: usize, clause: Clause) -> bool {
+    invariant!(clause == checker.lemma);
+    if checker.clause(clause).is_empty() {
+        if checker.config.sick_filename.is_some() {
+            checker.rejection.proof_step = step;
+        }
+        extract_natural_model(checker, checker.assignment.len());
+        false
+    } else {
+        true
     }
 }
 
@@ -829,9 +835,11 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
         );
         return None;
     }
-
     let grat_pending_length = checker.grat_pending.len();
     let grat_pending_deletions_length = checker.grat_pending_deletions.len();
+    if let Some(witnesses) = checker.rejection.witness.as_mut() {
+        witnesses.clear();
+    }
     if rat_on_pivot(checker, pivot, trail_length_forced) {
         let pivot_index = checker
             .clause(lemma)
@@ -920,7 +928,6 @@ fn rat(
                                 .collect();
                             let pivot = Some(pivot);
                             if let Some(witnesses) = checker.rejection.witness.as_mut() {
-                                invariant!(checker.config.sick_filename.is_some());
                                 witnesses.push(Witness {
                                     failing_clause,
                                     failing_model,
@@ -1472,6 +1479,8 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
     }
     for offset in checker.clause_range(clause) {
         let literal = clause_db()[offset];
+        // The SICK witness would be incorrect when discarding falsified
+        // literals like here. Copy the lemma to checker.rejection_lemma.
         if checker.config.sick_filename.is_some() {
             checker.rejection_lemma.push(literal);
         }
@@ -1485,8 +1494,8 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
             effective_end += 1;
         }
     }
-    // Sick witness would be incorrect because of this modification.
-    // That's why we copy it to checker.rejection_lemma.
+    // LRAT lemmas must not contain falsified literals according to the
+    // verified checker, delete them.
     for offset in effective_end..checker.clause_range(clause).end {
         clause_db()[offset] = Literal::BOTTOM;
     }
@@ -2255,12 +2264,6 @@ fn find_nonfalsified_and_most_recently_falsified<'a>(
     false
 }
 
-impl Checker {
-    pub fn print_memory_usage(&self) {
-        print_memory_usage(self)
-    }
-}
-
 fn print_memory_usage(checker: &Checker) {
     macro_rules! heap_space {
         ($($x:expr,)*) => (vec!($(($x).heap_space()),*));
@@ -2268,7 +2271,7 @@ fn print_memory_usage(checker: &Checker) {
     let usages = vec![
         ("db", clause_db().heap_space()),
         ("proof", checker.proof.heap_space()),
-        ("optimized-proof", checker.optimized_proof.heap_space()),
+        ("optimized_proof", checker.optimized_proof.heap_space()),
         ("watchlist_core", checker.watchlist_core.heap_space()),
         ("watchlist_noncore", checker.watchlist_noncore.heap_space()),
         ("revisions", checker.revisions.heap_space()),
@@ -2287,15 +2290,15 @@ fn print_memory_usage(checker: &Checker) {
             .sum(),
         ),
     ];
-    let total = usages.iter().fold(0, |sum, tuple| sum + tuple.1);
+    let total = usages.iter().fold(0, |sum, pair| sum + pair.1);
     output::value("memory (MB)", format_memory_usage(total));
     if !checker.config.memory_usage_breakdown {
         return;
     }
-    for tuple in usages {
+    for pair in usages {
         output::value(
-            &format!("memory-{}", tuple.0.replace("_", "-")),
-            format_memory_usage(tuple.1),
+            &format!("memory-{}", pair.0.replace("_", "-")),
+            format_memory_usage(pair.1),
         );
     }
 }

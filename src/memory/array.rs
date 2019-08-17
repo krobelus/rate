@@ -3,7 +3,6 @@
 use crate::memory::{assert_in_bounds, HeapSpace, Offset, Stack};
 use std::{
     marker::PhantomData,
-    mem::size_of,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 
@@ -15,7 +14,7 @@ use std::{
 /// already.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Array<I: Offset, T> {
-    pub data: Vec<T>,
+    pub data: Stack<T>,
     pub phantom: PhantomData<I>,
 }
 
@@ -28,7 +27,7 @@ impl<I: Offset, T> Default for Array<I, T> {
 impl<I: Offset, T: Clone> Array<I, T> {
     pub fn new(value: T, size: usize) -> Array<I, T> {
         Array {
-            data: vec![value; size],
+            data: Stack::from_vec(vec![value; size]),
             phantom: PhantomData,
         }
     }
@@ -36,13 +35,13 @@ impl<I: Offset, T: Clone> Array<I, T> {
 impl<I: Offset, T> Array<I, T> {
     pub fn with_capacity(size: usize) -> Array<I, T> {
         Array {
-            data: Vec::with_capacity(size),
+            data: Stack::with_capacity(size),
             phantom: PhantomData,
         }
     }
-    pub fn from(stack: Stack<T>) -> Array<I, T> {
+    pub fn from(data: Stack<T>) -> Array<I, T> {
         Array {
-            data: stack.into_vec(),
+            data,
             phantom: PhantomData,
         }
     }
@@ -105,7 +104,7 @@ impl<I: Offset, T> IndexMut<I> for Array<I, T> {
 
 impl<I: Offset, T: HeapSpace> HeapSpace for Array<I, T> {
     fn heap_space(&self) -> usize {
-        self.size() * size_of::<T>()
+        self.data.heap_space()
             + self
                 .data
                 .iter()

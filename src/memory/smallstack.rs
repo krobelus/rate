@@ -5,43 +5,39 @@ use crate::{config::unreachable, memory::Stack};
 use std::iter::FromIterator;
 
 #[derive(Debug, PartialEq, Clone)]
-enum SmallStackState<T> {
+pub enum SmallStack<T> {
     Empty,
     One(T),
     Many(Stack<T>),
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct SmallStack<T> {
-    state: SmallStackState<T>,
-}
-
 impl<T: Copy + Default> SmallStack<T> {
     pub fn new() -> SmallStack<T> {
-        SmallStack {
-            state: SmallStackState::Empty,
-        }
+        SmallStack::Empty
     }
     #[allow(dead_code)]
     pub fn singleton(value: T) -> SmallStack<T> {
-        SmallStack {
-            state: SmallStackState::One(value),
-        }
+        SmallStack::One(value)
     }
     pub fn from_stack(stack: Stack<T>) -> SmallStack<T> {
-        SmallStack {
-            state: SmallStackState::Many(stack),
+        SmallStack::Many(stack)
+    }
+    pub fn front(&self) -> Option<T> {
+        match self {
+            SmallStack::Empty => None,
+            &SmallStack::One(value) => Some(value),
+            SmallStack::Many(stack) => stack.get(0).cloned(),
         }
     }
     pub fn push(&mut self, new_value: T) {
-        if let SmallStackState::Empty = self.state {
-            self.state = SmallStackState::One(new_value);
+        if let SmallStack::Empty = self {
+            *self = SmallStack::One(new_value);
             return;
         }
-        if let SmallStackState::One(value) = self.state {
-            self.state = SmallStackState::Many(stack!(value));
+        if let &mut SmallStack::One(value) = self {
+            *self = SmallStack::Many(stack!(value));
         }
-        if let SmallStackState::Many(stack) = &mut self.state {
+        if let SmallStack::Many(stack) = self {
             stack.push(new_value);
             return;
         }
@@ -49,10 +45,10 @@ impl<T: Copy + Default> SmallStack<T> {
     }
     pub fn swap_remove(&mut self, index: usize) -> Option<T> {
         requires!(index == 0);
-        if let SmallStackState::One(value) = self.state {
-            self.state = SmallStackState::Empty;
+        if let &mut SmallStack::One(value) = self {
+            *self = SmallStack::Empty;
             Some(value)
-        } else if let SmallStackState::Many(stack) = &mut self.state {
+        } else if let SmallStack::Many(stack) = self {
             if stack.is_empty() {
                 None
             } else {
@@ -64,10 +60,10 @@ impl<T: Copy + Default> SmallStack<T> {
     }
     #[allow(dead_code)]
     pub fn to_vec(&self) -> Vec<T> {
-        match &self.state {
-            SmallStackState::Empty => vec![],
-            SmallStackState::One(value) => vec![*value],
-            SmallStackState::Many(stack) => stack.clone().to_vec(),
+        match &self {
+            SmallStack::Empty => vec![],
+            SmallStack::One(value) => vec![*value],
+            SmallStack::Many(stack) => stack.clone().to_vec(),
         }
     }
 }

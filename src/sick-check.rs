@@ -19,7 +19,7 @@ mod sick;
 extern crate serde_derive;
 
 use clap::Arg;
-use std::{fs::File, io::Read, process::exit};
+use std::{fs::File, io::Read};
 use toml;
 
 use crate::{
@@ -30,14 +30,14 @@ use crate::{
     memory::{Array, Stack},
     output::solution,
     parser::{
-        clause_db, clause_is_active, proof_format_by_extension, run_parser, witness_db,
-        ClauseHashEq, HashTable, Parser,
+        clause_db, proof_format_by_extension, run_parser, witness_db, FixedSizeHashTable,
+        HashTable, Parser,
     },
     sick::Sick,
 };
 
 #[allow(clippy::cyclomatic_complexity)]
-fn main() {
+fn main() -> Result<(), ()> {
     crate::config::signals();
     let app = clap::App::new("sick-check")
         .version(env!("CARGO_PKG_VERSION"))
@@ -78,7 +78,7 @@ fn main() {
         format => die!("Unsupported proof format: {}", format),
     };
     requires!(redundancy_property == proof_file_redundancy_property);
-    let mut clause_ids = HashTable::new();
+    let mut clause_ids = FixedSizeHashTable::new();
     let mut parser = Parser::new();
     parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
@@ -109,7 +109,7 @@ fn main() {
     if clause_db().clause(lemma).is_empty() {
         comment!("Tried to introduce empty clause but natural model is consistent");
         solution("ACCEPTED");
-        exit(0);
+        return Ok(());
     }
     let natural_model_length = assignment.len();
 
@@ -119,11 +119,9 @@ fn main() {
         }
     }
     // Delete the lemma, so it is not considered to be part of the formula.
-    clause_ids
-        .get_mut(&ClauseHashEq(lemma))
-        .map(|clause_stack| clause_stack.swap_remove(0));
+    clause_ids.delete_clause(lemma);
     for clause in Clause::range(0, lemma) {
-        if clause_is_active(&clause_ids, clause) {
+        if clause_ids.clause_is_active(clause) {
             if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
                 die!(
                     "Natural model is not a UP-model for clause {}",
@@ -176,13 +174,12 @@ fn main() {
         clause_db().push_literal(Literal::new(0));
         let failing_clause_tmp = clause_db().last_clause();
         let failing_clause = clause_ids
-            .get(&ClauseHashEq(failing_clause_tmp))
-            .and_then(|stack| stack.to_vec().get(0).cloned())
+            .find_equal_clause(failing_clause_tmp, /*delete=*/ false)
             .unwrap_or_else(|| {
                 die!(
                     "Failing clause is not present in the formula: {}",
-                    clause_db().clause_to_string(failing_clause_tmp),
-                )
+                    clause_db().clause_to_string(failing_clause_tmp)
+                );
             });
         clause_db().pop_clause();
         let lemma_slice = clause_db().clause(lemma);
@@ -243,7 +240,7 @@ fn main() {
             }
         }
         for clause in Clause::range(0, lemma) {
-            if clause_is_active(&clause_ids, clause) {
+            if clause_ids.clause_is_active(clause) {
                 if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
                     die!(
                         "Failing model is not a UP-model for clause {}",
@@ -257,4 +254,5 @@ fn main() {
         }
     }
     solution("ACCEPTED");
+    Ok(())
 }

@@ -6,14 +6,13 @@ use crate::memory::HeapSpace;
 use crate::{config::ENABLE_BOUNDS_CHECKING, features::RangeContainsExt};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
-    cmp::max,
     iter::FromIterator,
     mem::size_of,
     ops::{Deref, DerefMut, Index, IndexMut, Range},
     slice,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Eq)]
 pub struct Stack<T>(Vec<T>);
 
 impl<T> Stack<T> {
@@ -53,7 +52,7 @@ impl<T> Stack<T> {
     pub fn iter(&self) -> slice::Iter<T> {
         self.0.iter()
     }
-    pub fn as_ptr(&mut self) -> *const T {
+    pub fn as_ptr(&self) -> *const T {
         self.0.as_ptr()
     }
     pub fn mut_ptr(&mut self) -> *mut T {
@@ -68,6 +67,9 @@ impl<T> Stack<T> {
     pub fn push_no_grow(&mut self, value: T) {
         requires!(self.len() < self.capacity());
         self.0.push(value)
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit()
     }
 }
 
@@ -118,7 +120,8 @@ impl<T: Clone + Default> Stack<T> {
     pub fn push(&mut self, value: T) {
         if self.len() == self.capacity() {
             let new_capacity = next_capacity(self);
-            self.0.reserve(new_capacity - self.capacity())
+            self.0.reserve_exact(new_capacity - self.capacity())
+            // self.0.reserve(new_capacity - self.capacity())
         }
         self.push_no_grow(value)
     }
@@ -134,9 +137,9 @@ impl<T: Clone + Default> Stack<T> {
 // Related: https://github.com/rust-lang/rust/issues/29931
 fn next_capacity<T>(stack: &Stack<T>) -> usize {
     if stack.is_empty() {
-        max(64 / size_of::<T>(), 1)
+        4
     } else {
-        (stack.capacity() * 3 + 1) / 2
+        (stack.capacity() * 3) / 2
     }
 }
 

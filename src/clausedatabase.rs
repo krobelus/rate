@@ -8,6 +8,7 @@ use crate::{
 use rate_macros::HeapSpace;
 use std::{
     convert::TryFrom,
+    mem::size_of,
     ops::{Index, IndexMut, Range},
 };
 
@@ -98,9 +99,7 @@ impl ClauseDatabase {
         let clause = self.last_clause_no_sentinel();
         let start = self.offset[clause.as_offset()] + PADDING_START;
         let end = self.data.len();
-        let _sort_literally = |&literal: &Literal| literal.decode();
-        let _sort_magnitude = |&literal: &Literal| literal.encoding;
-        &mut self.data[start..end].sort_unstable_by_key(_sort_literally);
+        sort_clause(&mut self.data[start..end]);
         let mut duplicate = false;
         let mut length = 0;
         for i in start..end {
@@ -141,7 +140,7 @@ impl ClauseDatabase {
                 .iter()
                 .filter(|&literal| *literal != Literal::BOTTOM)
                 .map(|&literal| format!(" {}", literal))
-                .collect::<Vec<_>>()
+                .collect::<Stack<_>>()
                 .join("")
         )
     }
@@ -186,6 +185,28 @@ impl ClauseDatabase {
         self.offset.clear();
         self.have_sentinel = false;
     }
+    pub fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+        self.offset.shrink_to_fit();
+    }
+    #[allow(dead_code)]
+    fn metrics(&self) {
+        let _db_size = self.data.capacity() * size_of::<Literal>();
+        let _drat_trim_clause_db_size = size_of::<Literal>()
+            * (
+                self.data.capacity() // our
+                // we add padding to unit clauses
+                - (0..self.number_of_clauses()).into_iter().map(Clause::new).filter(|&c| is_size_1_clause(self.clause(c))).count()
+                + self.number_of_clauses() as usize // pivots
+                - (2 + 1) // extra empty clause (id + fields + zero literal)
+                + 1
+                // sentinel
+            );
+    }
+}
+
+fn is_size_1_clause(clause: &[Literal]) -> bool {
+    clause.len() == 2 && (clause[0] == Literal::BOTTOM || clause[1] == Literal::BOTTOM)
 }
 
 impl Index<usize> for ClauseDatabase {
@@ -261,6 +282,10 @@ impl WitnessDatabase {
         self.data.clear();
         self.offset.clear();
     }
+    pub fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+        self.offset.shrink_to_fit();
+    }
 }
 
 impl Index<usize> for WitnessDatabase {
@@ -274,4 +299,22 @@ impl IndexMut<usize> for WitnessDatabase {
     fn index_mut(&mut self, offset: usize) -> &mut Literal {
         &mut self.data[offset]
     }
+}
+
+pub fn sort_clause(clause: &mut [Literal]) {
+    let _sort_literally = |&literal: &Literal| literal.decode();
+    let _sort_magnitude = |&literal: &Literal| literal.encoding;
+    clause.sort_unstable_by_key(_sort_literally);
+}
+
+pub fn external_clause_to_string(clause: &[Literal]) -> String {
+    format!(
+        "{} 0",
+        clause
+            .iter()
+            .filter(|&literal| *literal != Literal::BOTTOM)
+            .map(|&literal| format!(" {}", literal))
+            .collect::<Vec<_>>()
+            .join("")
+    )
 }

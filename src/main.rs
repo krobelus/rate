@@ -1,6 +1,7 @@
 //! Rate is a proof checker for DRAT proofs which are commonly used to certify
 //! unsatisfiability of SAT formulas.
 
+#![allow(warnings)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::nonminimal_bool)]
 
@@ -24,16 +25,19 @@ extern crate scopeguard;
 extern crate serde_derive;
 
 use clap::Arg;
-use std::process;
 
 use crate::{
-    checker::{check, Checker, Verdict},
+    checker::{Checker, Verdict},
     config::Config,
     output::{solution, value, Timer},
     parser::parse_files,
 };
 
 fn main() {
+    std::process::exit(run());
+}
+
+fn run() -> i32 {
     crate::config::signals();
     let mut app = clap::App::new("rate")
     .version(concat!(env!("CARGO_PKG_VERSION"), " (git commit ", env!("GIT_COMMIT"), ")"))
@@ -84,6 +88,7 @@ fn main() {
         &config.formula_filename,
         &config.proof_filename,
         config.no_terminating_empty_clause,
+        config.memory_usage_breakdown,
     );
     if parser.is_pr() {
         if config.lrat_filename.is_some() || config.grat_filename.is_some() {
@@ -91,7 +96,7 @@ fn main() {
         }
     }
     let mut checker = Checker::new(parser, config);
-    let result = check(&mut checker);
+    let result = checker.run();
     value("premise clauses", checker.premise_length);
     value("proof steps", checker.proof.len());
     value("skipped tautologies", checker.satisfied_count);
@@ -114,5 +119,13 @@ fn main() {
     } else {
         "NOT VERIFIED"
     });
-    process::exit(if result == Verdict::Verified { 0 } else { 1 });
+    unsafe {
+        parser::CLAUSE_DATABASE = None;
+        parser::WITNESS_DATABASE = None;
+    }
+    if result == Verdict::Verified {
+        0
+    } else {
+        1
+    }
 }
