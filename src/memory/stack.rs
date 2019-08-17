@@ -66,7 +66,10 @@ impl<T> Stack<T> {
     }
     pub fn push_no_grow(&mut self, value: T) {
         requires!(self.len() < self.capacity());
-        self.0.push(value)
+        unsafe {
+            *self.mut_ptr().add(self.len()) = value;
+            self.0.set_len(self.len() + 1)
+        }
     }
     pub fn shrink_to_fit(&mut self) {
         self.0.shrink_to_fit()
@@ -121,7 +124,6 @@ impl<T: Clone + Default> Stack<T> {
         if self.len() == self.capacity() {
             let new_capacity = next_capacity(self);
             self.0.reserve_exact(new_capacity - self.capacity())
-            // self.0.reserve(new_capacity - self.capacity())
         }
         self.push_no_grow(value)
     }
@@ -196,27 +198,33 @@ impl<T> Index<usize> for Stack<T> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
         assert_in_bounds(0..self.len(), index);
-        self.0.index(index)
+        unsafe { self.0.get_unchecked(index) }
     }
 }
 
 impl<T> Index<Range<usize>> for Stack<T> {
     type Output = [T];
     fn index(&self, index: Range<usize>) -> &Self::Output {
-        self.0.index(index)
+        assert_in_bounds(0..self.len(), index.start);
+        assert_in_bounds(0..self.len(), index.end);
+        unsafe { slice::from_raw_parts(self.as_ptr().add(index.start), index.end - index.start) }
     }
 }
 
 impl<T> IndexMut<usize> for Stack<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         assert_in_bounds(0..self.len(), index);
-        self.0.index_mut(index)
+        unsafe { self.0.get_unchecked_mut(index) }
     }
 }
 
 impl<T> IndexMut<Range<usize>> for Stack<T> {
     fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
-        self.0.index_mut(index)
+        assert_in_bounds(0..self.len(), index.start);
+        assert_in_bounds(0..self.len(), index.end);
+        unsafe {
+            slice::from_raw_parts_mut(self.mut_ptr().add(index.start), index.end - index.start)
+        }
     }
 }
 
