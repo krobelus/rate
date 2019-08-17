@@ -13,8 +13,7 @@ use std::{
     alloc::{alloc, dealloc, realloc, Layout},
     cmp,
     convert::TryInto,
-    fmt,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     io::{self, Read},
@@ -135,7 +134,7 @@ impl HashTable for FixedSizeHashTable {
             } as *mut Clause;
             self.capacity[i] = new_capacity;
         }
-        unsafe { *self.buckets[i].add(self.length[i]) = clause };
+        unsafe { ptr::write(self.buckets[i].add(self.length[i]), clause) };
         self.length[i] += 1;
     }
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {
@@ -146,7 +145,10 @@ impl HashTable for FixedSizeHashTable {
                 if delete {
                     self.length[i] -= 1;
                     unsafe {
-                        *self.buckets[i].add(offset) = *self.buckets[i].add(self.length[i]);
+                        ptr::write(
+                            self.buckets[i].add(offset),
+                            *self.buckets[i].add(self.length[i]),
+                        );
                     }
                 }
                 return Some(clause);
@@ -169,7 +171,10 @@ impl HashTable for FixedSizeHashTable {
             if unsafe { *self.buckets[i].add(offset) } == needle {
                 self.length[i] -= 1;
                 unsafe {
-                    *self.buckets[i].add(offset) = *self.buckets[i].add(self.length[i]);
+                    ptr::write(
+                        self.buckets[i].add(offset),
+                        *self.buckets[i].add(self.length[i]),
+                    );
                 }
                 return true;
             }
@@ -668,32 +673,6 @@ pub fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
         }
     }
     false
-    /*
-    requires!(buffer.len() <= 12);
-    match buffer.len() {
-        0 => return true,
-        1 => return true,
-        12 => (),
-        _ => return false,
-    };
-    let c0 = buffer[0];
-    let c1 = buffer[1];
-    let comment = c0 == 99 && c1 == 32;
-    [c0, c1]
-        .into_iter()
-        .any(|&c| (c != 13 && c != 32 && c != 45 && (c < 48 || c > 57) && c != 99 && c != 100))
-        || (2..12).any(|i| {
-            let c = buffer[i];
-            c != 100
-                && c != 10
-                && c != 13
-                && c != 32
-                && c != 45
-                && (c < 48 || c > 57)
-                && comment
-                && (c < 65 && c > 122)
-        })
-        */
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
