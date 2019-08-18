@@ -19,18 +19,25 @@ use std::{
     io::{self, Read},
     iter::Peekable,
     mem::{align_of, drop, size_of},
-    panic, ptr,
+    panic, ptr::{self, NonNull},
 };
 
 // This needs to be static so that hash and equality functions can access it.
-pub static mut CLAUSE_DATABASE: Option<ClauseDatabase> = None;
-pub static mut WITNESS_DATABASE: Option<WitnessDatabase> = None;
+pub static mut CLAUSE_DATABASE: NonNull<ClauseDatabase> = NonNull::dangling();
+pub static mut WITNESS_DATABASE: NonNull<WitnessDatabase> = NonNull::dangling();
 
 pub fn clause_db() -> &'static mut ClauseDatabase {
-    unsafe { CLAUSE_DATABASE.as_mut().unwrap() }
+    unsafe { CLAUSE_DATABASE.as_mut() }
 }
 pub fn witness_db() -> &'static mut WitnessDatabase {
-    unsafe { WITNESS_DATABASE.as_mut().unwrap() }
+    unsafe { WITNESS_DATABASE.as_mut() }
+}
+
+pub fn free_clause_database() {
+    unsafe {
+        Box::from_raw(CLAUSE_DATABASE.as_ptr());
+        Box::from_raw(WITNESS_DATABASE.as_ptr());
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -48,15 +55,15 @@ pub struct Parser {
 impl Parser {
     pub fn new() -> Parser {
         unsafe {
-            CLAUSE_DATABASE = Some(ClauseDatabase::new());
-            WITNESS_DATABASE = Some(WitnessDatabase::new());
+            CLAUSE_DATABASE = NonNull::new_unchecked(Box::into_raw(Box::new(ClauseDatabase::new())));
+            WITNESS_DATABASE = NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
         }
-        clause_db().clear();
-        witness_db().clear();
         assert!(
             clause_db().is_empty(),
             "Only one parser can be active at any time."
         );
+        clause_db().clear();
+        witness_db().clear();
         clause_db().initialize();
         Parser {
             redundancy_property: RedundancyProperty::RAT,

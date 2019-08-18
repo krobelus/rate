@@ -161,8 +161,17 @@ macro_rules! stack {
 }
 
 impl<T: Copy> Stack<T> {
-    pub fn swap_remove(&mut self, offset: usize) -> T {
-        self.0.swap_remove(offset)
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        // copied from Vec::swap_remove have our own bounds checking
+        unsafe {
+            // We replace self[index] with the last element. Note that if the
+            // bounds check on hole succeeds there must be a last element (which
+            // can be self[index] itself).
+            let hole: *mut T = &mut self[index];
+            let last = ptr::read(self.get_unchecked(self.len() - 1));
+            self.0.set_len(self.len() - 1);
+            ptr::replace(hole, last)
+        }
     }
 }
 

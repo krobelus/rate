@@ -30,7 +30,7 @@ use crate::{
     checker::{Checker, Verdict},
     config::Config,
     output::{solution, value, Timer},
-    parser::parse_files,
+    parser::{parse_files, free_clause_database},
 };
 
 fn main() {
@@ -119,10 +119,7 @@ fn run() -> i32 {
     } else {
         "NOT VERIFIED"
     });
-    unsafe {
-        parser::CLAUSE_DATABASE = None;
-        parser::WITNESS_DATABASE = None;
-    }
+    free_clause_database();
     if result == Verdict::Verified {
         0
     } else {
