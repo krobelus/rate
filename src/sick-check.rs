@@ -24,7 +24,7 @@ use toml;
 
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
-    clause::{Clause, Reason},
+    clause::Reason,
     config::RedundancyProperty,
     literal::Literal,
     memory::{Array, Stack},
@@ -120,14 +120,13 @@ fn main() -> Result<(), ()> {
     }
     // Delete the lemma, so it is not considered to be part of the formula.
     clause_ids.delete_clause(lemma);
-    for clause in Clause::range(0, lemma) {
-        if clause_ids.clause_is_active(clause) {
-            if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
-                die!(
-                    "Natural model is not the shared UP-model for clause {}",
-                    clause_db().clause_to_string(clause)
-                );
-            }
+    for &clause in &clause_ids {
+        if clause < lemma && !stable_under_unit_propagation(&assignment, clause_db().clause(clause))
+        {
+            die!(
+                "Natural model is not the shared UP-model for clause {}",
+                clause_db().clause_to_string(clause)
+            );
         }
     }
     let witnesses = sick.witness.unwrap_or_else(Stack::new);
@@ -239,14 +238,14 @@ fn main() -> Result<(), ()> {
                 );
             }
         }
-        for clause in Clause::range(0, lemma) {
-            if clause_ids.clause_is_active(clause) {
-                if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
-                    die!(
-                        "Failing model is not the shared UP-model for clause {}",
-                        clause_db().clause_to_string(clause)
-                    );
-                }
+        for &clause in &clause_ids {
+            if clause < lemma
+                && !stable_under_unit_propagation(&assignment, clause_db().clause(clause))
+            {
+                die!(
+                    "Failing model is not the shared UP-model for clause {}",
+                    clause_db().clause_to_string(clause)
+                );
             }
         }
         while assignment.len() > natural_model_length {

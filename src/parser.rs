@@ -8,9 +8,9 @@ use crate::{
     memory::{format_memory_usage, HeapSpace, Offset, SmallStack, Stack},
     output::{self, Timer},
 };
-use std::collections::HashMap;
 use std::{
     cmp,
+    collections::HashMap,
     convert::TryInto,
     fmt::{self, Display, Formatter},
     fs::File,
@@ -19,6 +19,7 @@ use std::{
     iter::Peekable,
     panic,
     ptr::NonNull,
+    slice,
 };
 
 // This needs to be static so that hash and equality functions can access it.
@@ -107,6 +108,34 @@ impl FixedSizeHashTable {
             );
             FixedSizeHashTable::SIZE
         ]))
+    }
+}
+
+pub struct FixedSizeHashTableIterator<'a> {
+    buckets: slice::Iter<'a, Stack<Clause>>,
+    bucket: slice::Iter<'a, Clause>,
+}
+
+impl<'a> Iterator for FixedSizeHashTableIterator<'a> {
+    type Item = &'a Clause;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.bucket.next().or_else(|| {
+            self.buckets.next().and_then(|next_bucket| {
+                self.bucket = next_bucket.iter();
+                self.bucket.next()
+            })
+        })
+    }
+}
+
+impl<'a> IntoIterator for &'a FixedSizeHashTable {
+    type Item = &'a Clause;
+    type IntoIter = FixedSizeHashTableIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        FixedSizeHashTableIterator {
+            buckets: self.0.iter(),
+            bucket: self.0[0].iter(),
+        }
     }
 }
 

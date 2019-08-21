@@ -264,7 +264,6 @@ impl<T: HeapSpace> HeapSpace for Stack<T> {
     }
 }
 
-/// Very similar to Vec::into_iter()
 impl<T> IntoIterator for Stack<T> {
     type Item = T;
     type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
