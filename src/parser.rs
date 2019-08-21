@@ -19,7 +19,8 @@ use std::{
     io::{self, Read},
     iter::Peekable,
     mem::{align_of, drop, size_of},
-    panic, ptr::{self, NonNull},
+    panic,
+    ptr::{self, NonNull},
 };
 
 // This needs to be static so that hash and equality functions can access it.
@@ -55,8 +56,10 @@ pub struct Parser {
 impl Parser {
     pub fn new() -> Parser {
         unsafe {
-            CLAUSE_DATABASE = NonNull::new_unchecked(Box::into_raw(Box::new(ClauseDatabase::new())));
-            WITNESS_DATABASE = NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
+            CLAUSE_DATABASE =
+                NonNull::new_unchecked(Box::into_raw(Box::new(ClauseDatabase::new())));
+            WITNESS_DATABASE =
+                NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
         }
         assert!(
             clause_db().is_empty(),

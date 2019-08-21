@@ -12,6 +12,10 @@ name = "sick-check"
 path = "src/sick-check.rs"
 
 # [[bin]]
+# name = "apply-proof"
+# path = "src/apply-proof.rs"
+
+# [[bin]]
 # name = "split-proof"
 # path = "src/split-proof.rs"
 

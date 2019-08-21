@@ -30,7 +30,7 @@ use crate::{
     checker::{Checker, Verdict},
     config::Config,
     output::{solution, value, Timer},
-    parser::{parse_files, free_clause_database},
+    parser::{free_clause_database, parse_files},
 };
 
 fn main() {

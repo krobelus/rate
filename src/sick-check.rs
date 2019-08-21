@@ -41,7 +41,7 @@ fn main() -> Result<(), ()> {
     crate::config::signals();
     let app = clap::App::new("sick-check")
         .version(env!("CARGO_PKG_VERSION"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .about("Verify SICK certificates stating why a DRAT proof is incorrect")
         .arg(
             Arg::with_name("INPUT")
                 .required(true)
@@ -124,7 +124,7 @@ fn main() -> Result<(), ()> {
         if clause_ids.clause_is_active(clause) {
             if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
                 die!(
-                    "Natural model is not a UP-model for clause {}",
+                    "Natural model is not the shared UP-model for clause {}",
                     clause_db().clause_to_string(clause)
                 );
             }
@@ -243,7 +243,7 @@ fn main() -> Result<(), ()> {
             if clause_ids.clause_is_active(clause) {
                 if !stable_under_unit_propagation(&assignment, clause_db().clause(clause)) {
                     die!(
-                        "Failing model is not a UP-model for clause {}",
+                        "Failing model is not the shared UP-model for clause {}",
                         clause_db().clause_to_string(clause)
                     );
                 }

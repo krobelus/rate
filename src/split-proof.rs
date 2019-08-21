@@ -61,7 +61,7 @@ fn main() {
     crate::config::signals();
     let matches = clap::App::new("split-proof")
         .version(env!("CARGO_PKG_VERSION"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .about("Split a clausal proof to enable parallel checking")
         .arg(
             Arg::with_name("INPUT")
                 .required(true)

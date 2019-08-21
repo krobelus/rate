@@ -1308,7 +1308,6 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
     Verdict::Verified
 }
 
-#[allow(clippy::cyclomatic_complexity)]
 fn preprocess(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("preprocessing proof");
     log!(checker, 1, "[preprocess]");
@@ -1927,14 +1926,6 @@ fn watchlist_mut(checker: &mut Checker, mode: Mode) -> &mut Array<Literal, Watch
 }
 
 fn watch_remove_at(checker: &mut Checker, mode: Mode, lit: Literal, position_in_watchlist: usize) {
-    log!(
-        checker,
-        4,
-        "watchlist[{}] del [{}]: {}",
-        lit,
-        position_in_watchlist,
-        watchlist(checker, mode)[lit][position_in_watchlist]
-    );
     watchlist_mut(checker, mode)[lit].swap_remove(position_in_watchlist);
 }
 
@@ -1944,7 +1935,6 @@ fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) {
 
 fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
     let head = checker.clause_range(clause).start;
-    log!(checker, 4, "removing watches for [@{}]", head);
     let [w1, w2] = checker.watches(head);
     watches_find_and_remove(checker, mode, w1, head);
     watches_find_and_remove(checker, mode, w2, head);
