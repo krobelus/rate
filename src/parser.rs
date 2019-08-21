@@ -10,7 +10,6 @@ use crate::{
 };
 use std::collections::HashMap;
 use std::{
-    alloc::{alloc, dealloc, realloc, Layout},
     cmp,
     convert::TryInto,
     fmt::{self, Display, Formatter},
@@ -18,9 +17,8 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, Read},
     iter::Peekable,
-    mem::{align_of, drop, size_of},
     panic,
-    ptr::{self, NonNull},
+    ptr::NonNull,
 };
 
 // This needs to be static so that hash and equality functions can access it.
@@ -93,73 +91,36 @@ pub trait HashTable {
     fn delete_clause(&mut self, needle: Clause) -> bool;
 }
 
-// #[derive(HeapSpace)]
-pub struct FixedSizeHashTable {
-    buckets: Stack<*mut Clause>,
-    length: Stack<usize>,
-    capacity: Stack<usize>,
-}
-
-fn bucket_layout(count: usize) -> Layout {
-    let ptr_align = align_of::<Clause>();
-    let size_in_bytes = usize::from(count) * size_of::<Clause>();
-    Layout::from_size_align(size_in_bytes, ptr_align).unwrap()
-}
+pub struct FixedSizeHashTable(Stack<Stack<Clause>>);
 
 fn bucket_index(clause: &[Literal]) -> usize {
     clause_hash(clause) % FixedSizeHashTable::SIZE
 }
 
 impl FixedSizeHashTable {
-    const SIZE: usize = 1_000_000;
-    const INIT: u16 = 4;
+    const SIZE: usize = 2 * 1024 * 1024;
+    const BUCKET_INITIAL_SIZE: u16 = 4;
     pub fn new() -> FixedSizeHashTable {
-        let mut buckets = Stack::from_vec(vec![ptr::null_mut(); FixedSizeHashTable::SIZE]);
-        for i in 0..buckets.len() {
-            buckets[i] =
-                unsafe { alloc(bucket_layout(FixedSizeHashTable::INIT.into())) } as *mut Clause;
-        }
-        FixedSizeHashTable {
-            buckets,
-            length: Stack::from_vec(vec![0; FixedSizeHashTable::SIZE]),
-            capacity: Stack::from_vec(vec![
-                FixedSizeHashTable::INIT.into();
-                FixedSizeHashTable::SIZE
-            ]),
-        }
+        FixedSizeHashTable(Stack::from_vec(vec![
+            Stack::with_capacity(
+                FixedSizeHashTable::BUCKET_INITIAL_SIZE.into()
+            );
+            FixedSizeHashTable::SIZE
+        ]))
     }
 }
 
 impl HashTable for FixedSizeHashTable {
     fn add_clause(&mut self, clause: Clause) {
-        let i = bucket_index(clause_db().clause(clause));
-        if self.length[i] == self.capacity[i] {
-            let new_capacity = (self.capacity[i] * 3) / 2;
-            self.buckets[i] = unsafe {
-                realloc(
-                    self.buckets[i] as *mut u8,
-                    bucket_layout(self.capacity[i]),
-                    new_capacity * size_of::<Clause>(),
-                )
-            } as *mut Clause;
-            self.capacity[i] = new_capacity;
-        }
-        unsafe { ptr::write(self.buckets[i].add(self.length[i]), clause) };
-        self.length[i] += 1;
+        self.0[bucket_index(clause_db().clause(clause))].push(clause);
     }
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {
-        let i = bucket_index(clause_db().clause(needle));
-        for offset in 0..self.length[i] {
-            let clause = unsafe { *self.buckets[i].add(offset) };
+        let bucket = &mut self.0[bucket_index(clause_db().clause(needle))];
+        for offset in 0..bucket.len() {
+            let clause = bucket[offset];
             if clause_db().clause(needle) == clause_db().clause(clause) {
                 if delete {
-                    self.length[i] -= 1;
-                    unsafe {
-                        ptr::write(
-                            self.buckets[i].add(offset),
-                            *self.buckets[i].add(self.length[i]),
-                        );
-                    }
+                    bucket.swap_remove(offset);
                 }
                 return Some(clause);
             }
@@ -167,54 +128,22 @@ impl HashTable for FixedSizeHashTable {
         None
     }
     fn clause_is_active(&self, needle: Clause) -> bool {
-        let i = bucket_index(clause_db().clause(needle));
-        for offset in 0..self.length[i] {
-            if unsafe { *self.buckets[i].add(offset) } == needle {
-                return true;
-            }
-        }
-        false
+        self.0[bucket_index(clause_db().clause(needle))]
+            .iter()
+            .any(|&clause| needle == clause)
     }
     fn delete_clause(&mut self, needle: Clause) -> bool {
-        let i = bucket_index(clause_db().clause(needle));
-        for offset in 0..self.length[i] {
-            if unsafe { *self.buckets[i].add(offset) } == needle {
-                self.length[i] -= 1;
-                unsafe {
-                    ptr::write(
-                        self.buckets[i].add(offset),
-                        *self.buckets[i].add(self.length[i]),
-                    );
-                }
-                return true;
-            }
-        }
-        false
+        self.0[bucket_index(clause_db().clause(needle))]
+            .iter()
+            .position(|&clause| needle == clause)
+            .map(|offset| self.0[bucket_index(clause_db().clause(needle))].swap_remove(offset))
+            .is_some()
     }
 }
 
 impl HeapSpace for FixedSizeHashTable {
     fn heap_space(&self) -> usize {
-        let mut bucket_sizes_total: usize = 0;;
-        for i in 0..self.buckets.len() {
-            bucket_sizes_total += self.capacity[i];
-        }
-        bucket_sizes_total * size_of::<Clause>()
-            + self.length.heap_space()
-            + self.capacity.heap_space()
-    }
-}
-
-impl Drop for FixedSizeHashTable {
-    fn drop(&mut self) {
-        for i in 0..self.buckets.len() {
-            unsafe {
-                dealloc(self.buckets[i] as *mut u8, bucket_layout(self.capacity[i]));
-            }
-        }
-        drop(&mut self.buckets);
-        drop(&mut self.length);
-        drop(&mut self.capacity);
+        self.0.heap_space()
     }
 }
 
