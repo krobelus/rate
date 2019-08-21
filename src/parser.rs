@@ -408,7 +408,7 @@ pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     }
 }
 
-fn panic_on_error(result: io::Result<u8>) -> u8 {
+pub fn panic_on_error(result: io::Result<u8>) -> u8 {
     result.unwrap_or_else(|error| die!("read error: {}", error))
 }
 

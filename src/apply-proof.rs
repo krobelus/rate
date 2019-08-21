@@ -97,10 +97,14 @@ remaining proof to <OUTPUT>.drat",
     }
     let mut write_formula = || {
         let number_of_active_clauses = (0..clause_db().number_of_clauses())
-        .map(Clause::new)
-        .filter(|&clause| clause_ids.clause_is_active(clause))
-        .count();
-        write!(&mut formula_output, "p cnf {} {}\n", parser.maxvar, number_of_active_clauses)?;
+            .map(Clause::new)
+            .filter(|&clause| clause_ids.clause_is_active(clause))
+            .count();
+        write!(
+            &mut formula_output,
+            "p cnf {} {}\n",
+            parser.maxvar, number_of_active_clauses
+        )?;
         for clause in (0..clause_db().number_of_clauses()).map(Clause::new) {
             if !clause_ids.clause_is_active(clause) {
                 continue;
@@ -108,7 +112,7 @@ remaining proof to <OUTPUT>.drat",
             write_clause(&mut formula_output, clause_db().clause(clause).iter())?;
             write!(&mut formula_output, "\n")?;
         }
-        let result : io::Result<()> = Ok(());
+        let result: io::Result<()> = Ok(());
         result
     };
     write_formula().expect("Failed to write formula");

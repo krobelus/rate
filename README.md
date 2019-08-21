@@ -25,7 +25,7 @@ You can use this command to install binaries `rate` and `sick-check`
 to your `~/.cargo/bin`.
 
 ```sh
-$ cargo install --path . --force
+$ cargo install --path . --bin rate --bin sick-check --force
 ```
 Refer to the [cargo documentation](https://doc.rust-lang.org/cargo/) for other use cases.
 
