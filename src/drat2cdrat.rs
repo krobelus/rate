@@ -46,8 +46,8 @@ fn start_number(byte: u8) -> State {
     State::Number(sign, if sign { 0 } else { (byte - b'0') as i32 })
 }
 
-fn fail(position: usize) -> ! {
-    eprintln!("*** Fatal error: unexpected byte at offset {}", position - 1);
+fn fail(line: usize, col: usize) -> ! {
+    eprintln!("*** Fatal error: unexpected byte at line {} column {}", line, col);
     std::process::exit(1)
 }
 
@@ -61,9 +61,14 @@ fn main() -> Result<()> {
     let stdout = stdout();
     let mut output = stdout.lock();
     let mut state = State::Begin;
-    let mut position = 0;
+    let mut line = 0;
+    let mut col = 0;
     for byte in BufReader::new(input).bytes().map(panic_on_error) {
-        position += 1;
+        if byte == b'\n' {
+            line += 1;
+            col = 0;
+        }
+        col += 1;
         if byte == b'\r' {
             continue;
         }
@@ -78,7 +83,7 @@ fn main() -> Result<()> {
                     state = start_number(byte);
                 }
                 b' ' => (),
-                _ => fail(position),
+                _ => fail(line, col),
             },
             State::Number(sign, magnitude) => match byte {
                 b'0'..=b'9' => {
@@ -92,7 +97,7 @@ fn main() -> Result<()> {
                         State::Space
                     }
                 }
-                _ => fail(position),
+                _ => fail(line, col),
             },
             State::Space => match byte {
                 b' ' => (),
@@ -105,7 +110,7 @@ fn main() -> Result<()> {
                 b'-' | b'0'..=b'9' => {
                     state = start_number(byte);
                 }
-                _ => fail(position),
+                _ => fail(line, col),
             },
         }
     }
