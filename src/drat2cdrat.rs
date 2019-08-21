@@ -61,14 +61,15 @@ fn main() -> Result<()> {
     let stdout = stdout();
     let mut output = stdout.lock();
     let mut state = State::Begin;
-    let mut line = 0;
+    let mut line = 1;
     let mut col = 0;
     for byte in BufReader::new(input).bytes().map(panic_on_error) {
         if byte == b'\n' {
             line += 1;
             col = 0;
+        } else {
+            col += 1;
         }
-        col += 1;
         if byte == b'\r' {
             continue;
         }
@@ -96,6 +97,9 @@ fn main() -> Result<()> {
                     } else {
                         State::Space
                     }
+                }
+                b'-' => {
+                    state = start_number(b'-')
                 }
                 _ => fail(line, col),
             },
