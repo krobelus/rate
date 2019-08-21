@@ -1229,9 +1229,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
                 checker.fields_mut(clause).set_in_watchlist(true);
                 clause_db().swap(head, i1);
                 watch_add(checker, mode, w1, head);
-                if stage == Stage::Verification {
-                    watch_add(checker, mode, clause_db()[head + 1], head);
-                }
+                watch_add(checker, mode, clause_db()[head + 1], head);
             }
             NO_CONFLICT
         }
