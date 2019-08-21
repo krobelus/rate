@@ -167,6 +167,8 @@ def compare_acceptance(a, b, *, instances):
                 continue  # different result
             if name == 'benchmarks/crafted/example1b':
                 continue
+            if name == 'benchmarks/crafted/rupee-broken-invariant':
+                continue
         if 'drat-trim' in b[0]:
             if name in (
                 'benchmarks/crafted/faux-conflict',
