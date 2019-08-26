@@ -296,7 +296,7 @@ pub fn run_parser_on_formula(
             clause_ids,
             SimpleInput::new(Box::new(formula_input), false),
         )
-        .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
+        .unwrap_or_else(|err| die!("error parsing formula at line {}: {}", err.line, err.why));
     }
 }
 
@@ -324,7 +324,7 @@ pub fn run_parser(
         SimpleInput::new(proof_input, binary),
         binary,
     )
-    .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
+    .unwrap_or_else(|err| die!("error parsing proof at line {}: {}", err.line, err.why));
     clause_db().shrink_to_fit();
     witness_db().shrink_to_fit();
     parser.clause_pivot.shrink_to_fit();
