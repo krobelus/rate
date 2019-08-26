@@ -1,3 +1,7 @@
+//! Convert DRAT to compressed (binary) DRAT
+//!
+//! This shares almost no code with the other files but it duplicates some of the parsing logic.
+
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
@@ -21,7 +25,9 @@ use std::io::{stdin, stdout, BufReader, Read, Result, Write};
 
 fn write_number(output: &mut Write, number: i32) -> Result<()> {
     let mut encoding = number.abs() << 1;
-    if number < 0 { encoding += 1; }
+    if number < 0 {
+        encoding += 1;
+    }
     loop {
         output.write(&[if encoding <= 0x7f {
             encoding
@@ -47,7 +53,10 @@ fn start_number(byte: u8) -> State {
 }
 
 fn fail(line: usize, col: usize) -> ! {
-    eprintln!("*** Fatal error: unexpected byte at line {} column {}", line, col);
+    eprintln!(
+        "*** Fatal error: unexpected byte at line {} column {}",
+        line, col
+    );
     std::process::exit(1)
 }
 
@@ -88,7 +97,12 @@ fn main() -> Result<()> {
             },
             State::Number(sign, magnitude) => match byte {
                 b'0'..=b'9' => {
-                    state = State::Number(sign, magnitude * 10 + (byte - b'0') as i32);
+                    let magnitude = magnitude.checked_mul(10).and_then(|m| m.checked_add((byte - b'0') as i32))
+                    .unwrap_or_else(|| {
+                        eprintln!("*** Fatal error: numeric overflow parsing literal at line {} column {}", line, col);
+                        std::process::exit(1)
+                    });
+                    state = State::Number(sign, magnitude);
                 }
                 b' ' | b'\n' => {
                     write_number(&mut output, if sign { -magnitude } else { magnitude })?;
@@ -98,9 +112,7 @@ fn main() -> Result<()> {
                         State::Space
                     }
                 }
-                b'-' => {
-                    state = start_number(b'-')
-                }
+                b'-' => state = start_number(b'-'),
                 _ => fail(line, col),
             },
             State::Space => match byte {
