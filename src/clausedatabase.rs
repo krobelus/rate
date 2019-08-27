@@ -16,14 +16,17 @@ pub const PADDING_START: usize = 2;
 pub const FIELDS_OFFSET: usize = 1;
 pub const PADDING_END: usize = 1;
 
-/// Clause are stored in field `data`:
-/// The first two elements encode the clause ID.
-/// The third element contains a `struct ClauseFields`.
-/// After that, the literals are stored (zero-terminated)
 #[derive(Debug, PartialEq, HeapSpace)]
 pub struct ClauseDatabase {
+    /// Stores clauses with some metadata.
+    /// The first element encodes the clause ID.
+    /// The second element contains a `struct ClauseFields`.
+    /// After that, the literals are stored (zero-terminated)
     data: Stack<Literal>,
+    /// Maps clause ID to offset in above data.
     offset: Stack<usize>,
+    /// Used to assert that `offset` contains an extra value that points
+    /// one beyond the last element of `data`.
     have_sentinel: bool,
 }
 

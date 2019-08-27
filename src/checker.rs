@@ -2037,7 +2037,7 @@ fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Claus
     if !checker.assignment[-other_literal] {
         return;
     }
-    // Remember invariant 1: one falsified watch implies that the other watch is satisfied.
+    // Remember Invariant 1: one falsified watch implies that the other watch is satisfied.
     match first_non_falsified(checker, clause, head + 2) {
         None => {
             // TODO

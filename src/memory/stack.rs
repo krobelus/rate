@@ -141,7 +141,7 @@ fn next_capacity<T>(stack: &Stack<T>) -> usize {
     if stack.is_empty() {
         4
     } else {
-        (stack.capacity() * 3) / 2
+        (stack.capacity().checked_mul(3).unwrap()) / 2
     }
 }
 
@@ -162,7 +162,7 @@ macro_rules! stack {
 
 impl<T: Copy> Stack<T> {
     pub fn swap_remove(&mut self, index: usize) -> T {
-        // copied from Vec::swap_remove have our own bounds checking
+        // copied from Vec::swap_remove to use our own bounds checking
         unsafe {
             // We replace self[index] with the last element. Note that if the
             // bounds check on hole succeeds there must be a last element (which
