@@ -38,7 +38,7 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
         self.stack[self.stack.len() - 1]
     }
     pub fn clear(&mut self) {
-        while self.len() != 0 {
+        while !self.is_empty() {
             self.pop();
         }
     }

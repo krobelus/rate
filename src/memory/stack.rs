@@ -213,6 +213,7 @@ impl<T> Index<usize> for Stack<T> {
 
 impl<T> Index<Range<usize>> for Stack<T> {
     type Output = [T];
+    #[allow(clippy::range_plus_one)]
     fn index(&self, index: Range<usize>) -> &Self::Output {
         assert_in_bounds(0..self.len() + 1, index.start);
         assert_in_bounds(0..self.len() + 1, index.end);
@@ -228,6 +229,7 @@ impl<T> IndexMut<usize> for Stack<T> {
 }
 
 impl<T> IndexMut<Range<usize>> for Stack<T> {
+    #[allow(clippy::range_plus_one)]
     fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
         assert_in_bounds(0..self.len() + 1, index.start);
         assert_in_bounds(0..self.len() + 1, index.end);

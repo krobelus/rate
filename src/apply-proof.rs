@@ -100,9 +100,9 @@ remaining proof to <OUTPUT>.drat",
             .map(Clause::new)
             .filter(|&clause| clause_ids.clause_is_active(clause))
             .count();
-        write!(
+        writeln!(
             &mut formula_output,
-            "p cnf {} {}\n",
+            "p cnf {} {}",
             parser.maxvar, number_of_active_clauses
         )?;
         for clause in (0..clause_db().number_of_clauses()).map(Clause::new) {
@@ -110,14 +110,14 @@ remaining proof to <OUTPUT>.drat",
                 continue;
             }
             write_clause(&mut formula_output, clause_db().clause(clause).iter())?;
-            write!(&mut formula_output, "\n")?;
+            writeln!(&mut formula_output)?;
         }
         let result: io::Result<()> = Ok(());
         result
     };
     write_formula().expect("Failed to write formula");
     while let Some(byte) = proof_input.next() {
-        proof_output.write(&[byte]).expect("Failed to write proof");
+        proof_output.write_all(&[byte]).expect("Failed to write proof");
     }
     Ok(())
 }

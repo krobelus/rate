@@ -36,7 +36,7 @@ use crate::{
     sick::Sick,
 };
 
-#[allow(clippy::cyclomatic_complexity)]
+#[allow(clippy::cognitive_complexity)]
 fn main() -> Result<(), ()> {
     crate::config::signals();
     let app = clap::App::new("sick-check")

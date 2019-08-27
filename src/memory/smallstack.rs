@@ -34,7 +34,7 @@ impl<T: Copy + Default> SmallStack<T> {
             *self = SmallStack::One(new_value);
             return;
         }
-        if let &mut SmallStack::One(value) = self {
+        if let SmallStack::One(value) = *self {
             *self = SmallStack::Many(stack!(value));
         }
         if let SmallStack::Many(stack) = self {
@@ -45,7 +45,7 @@ impl<T: Copy + Default> SmallStack<T> {
     }
     pub fn swap_remove(&mut self, index: usize) -> Option<T> {
         requires!(index == 0);
-        if let &mut SmallStack::One(value) = self {
+        if let SmallStack::One(value) = *self {
             *self = SmallStack::Empty;
             Some(value)
         } else if let SmallStack::Many(stack) = self {

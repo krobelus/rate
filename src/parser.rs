@@ -101,6 +101,7 @@ fn bucket_index(clause: &[Literal]) -> usize {
 impl FixedSizeHashTable {
     const SIZE: usize = 2 * 1024 * 1024;
     const BUCKET_INITIAL_SIZE: u16 = 4;
+    #[allow(clippy::new_without_default)]
     pub fn new() -> FixedSizeHashTable {
         FixedSizeHashTable(Stack::from_vec(vec![
             Stack::with_capacity(
@@ -313,10 +314,8 @@ pub fn run_parser(
     }
     let binary = is_binary_drat(read_file(proof_file).take(10));
     let proof_input = Box::new(read_file(&proof_file));
-    if binary {
-        if parser.verbose {
-            comment!("binary proof mode");
-        }
+    if binary && parser.verbose {
+        comment!("binary proof mode");
     }
     parse_proof(
         &mut parser,

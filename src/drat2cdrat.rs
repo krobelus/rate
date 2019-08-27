@@ -29,12 +29,12 @@ fn write_number(output: &mut Write, number: i32) -> Result<()> {
         encoding += 1;
     }
     loop {
-        output.write(&[if encoding <= 0x7f {
+        output.write_all(&[if encoding <= 0x7f {
             encoding
         } else {
             0x80 | (encoding & 0x7f)
         } as u8])?;
-        encoding = encoding >> 7;
+        encoding >>= 7;
         if encoding == 0 {
             return Ok(());
         }
@@ -49,7 +49,7 @@ enum State {
 
 fn start_number(byte: u8) -> State {
     let sign = byte == b'-';
-    State::Number(sign, if sign { 0 } else { (byte - b'0') as i32 })
+    State::Number(sign, if sign { 0 } else { i32::from(byte - b'0') })
 }
 
 fn fail(line: usize, col: usize) -> ! {
@@ -85,11 +85,11 @@ fn main() -> Result<()> {
         match state {
             State::Begin => match byte {
                 b'd' => {
-                    output.write(&[b'd'])?;
+                    output.write_all(&[b'd'])?;
                     state = State::Space;
                 }
                 b'-' | b'0'..=b'9' => {
-                    output.write(&[b'a'])?;
+                    output.write_all(&[b'a'])?;
                     state = start_number(byte);
                 }
                 b' ' => (),
@@ -97,7 +97,7 @@ fn main() -> Result<()> {
             },
             State::Number(sign, magnitude) => match byte {
                 b'0'..=b'9' => {
-                    let magnitude = magnitude.checked_mul(10).and_then(|m| m.checked_add((byte - b'0') as i32))
+                    let magnitude = magnitude.checked_mul(10).and_then(|m| m.checked_add(i32::from(byte - b'0')))
                     .unwrap_or_else(|| {
                         eprintln!("*** Fatal error: numeric overflow parsing literal at line {} column {}", line, col);
                         std::process::exit(1)
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
             State::Space => match byte {
                 b' ' => (),
                 b'd' => {
-                    output.write(&[b'd'])?;
+                    output.write_all(&[b'd'])?;
                 }
                 b'\n' => {
                     state = State::Begin;

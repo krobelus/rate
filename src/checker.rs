@@ -459,7 +459,6 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
 }
 
 // stolen from gratgen
-#[allow(clippy::cyclomatic_complexity)]
 fn propagate(checker: &mut Checker) -> MaybeConflict {
     let mut processed_core = checker.processed;
     let mut core_mode = true;
@@ -996,7 +995,6 @@ fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
     }
 }
 
-#[allow(clippy::cyclomatic_complexity)]
 fn extract_dependencies(
     checker: &mut Checker,
     trail_length_before_rup: usize,

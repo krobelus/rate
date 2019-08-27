@@ -192,7 +192,7 @@ impl LRATDependency {
     }
     pub fn clause(self) -> Clause {
         Clause {
-            index: ClauseStorage::from(self.0.payload()),
+            index: self.0.payload(),
         }
     }
 }
@@ -229,7 +229,7 @@ impl LRATLiteral {
     pub fn clause(self) -> Clause {
         requires!(!self.is_zero());
         Clause {
-            index: ClauseStorage::from(self.0.payload()),
+            index: self.0.payload(),
         }
     }
 }
@@ -246,7 +246,7 @@ impl GRATLiteral {
     pub const CONFLICT: Self = Self(5);
     pub const RAT_COUNTS: Self = Self(6);
     pub fn from_clause(clause: Clause) -> GRATLiteral {
-        requires!(clause.index + 1 < ClauseStorage::from(u32::max_value()));
+        requires!(clause.index + 1 < ClauseStorage::max_value());
         Self((clause.index + 1) as i32)
     }
     pub fn to_clause(self) -> Clause {

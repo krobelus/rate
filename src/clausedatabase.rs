@@ -199,7 +199,7 @@ impl ClauseDatabase {
             * (
                 self.data.capacity() // our
                 // we add padding to unit clauses
-                - (0..self.number_of_clauses()).into_iter().map(Clause::new).filter(|&c| is_size_1_clause(self.clause(c))).count()
+                - (0..self.number_of_clauses()).map(Clause::new).filter(|&c| is_size_1_clause(self.clause(c))).count()
                 + self.number_of_clauses() as usize // pivots
                 - (2 + 1) // extra empty clause (id + fields + zero literal)
                 + 1
