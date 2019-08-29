@@ -117,7 +117,9 @@ remaining proof to <OUTPUT>.drat",
     };
     write_formula().expect("Failed to write formula");
     while let Some(byte) = proof_input.next() {
-        proof_output.write_all(&[byte]).expect("Failed to write proof");
+        proof_output
+            .write_all(&[byte])
+            .expect("Failed to write proof");
     }
     Ok(())
 }
