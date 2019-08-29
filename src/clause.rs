@@ -23,7 +23,7 @@ pub struct Clause {
 
 impl Clause {
     pub fn new(index: ClauseStorage) -> Clause {
-        requires!(index <= Clause::MAX_INDEX);
+        requires!(index <= Clause::MAX_ID);
         Clause { index }
     }
     pub fn from_usize(index: usize) -> Clause {
@@ -34,15 +34,18 @@ impl Clause {
         const_assert!(size_of::<usize>() >= size_of::<ClauseStorage>());
         (start.as_offset()..end.as_offset()).map(Clause::from_usize)
     }
-    const MAX_INDEX: ClauseStorage = Tagged32::MAX_PAYLOAD - 1;
-    pub const NEVER_READ: Clause = Clause {
-        index: Clause::MAX_INDEX + 1,
-    };
+    /// A clause ID uses 30 bits.
+    pub const MAX_ID: ClauseStorage = Tagged32::MAX_PAYLOAD - 1;
+    /// We need one special value for deleted clauses that do not actually exist.
+    /// We cannot simply drop those deletions from the proof because sick-check
+    /// relies on the line in the proof.
     pub const DOES_NOT_EXIST: Clause = Clause {
-        index: Clause::MAX_INDEX + 1,
+        index: Clause::MAX_ID + 1,
     };
+    /// A special value for clause IDs. Used in places where we are sure
+    /// that the value is written before being used as an actual clause ID.
     pub const UNINITIALIZED: Clause = Clause {
-        index: Clause::MAX_INDEX + 1,
+        index: Clause::MAX_ID + 2,
     };
 }
 

@@ -554,6 +554,7 @@ fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
     while let Some(value) = input.next() {
+        requires!((u64::from(value & 0x7f) << (7 * i)) <= u32::max_value().into());
         result |= u32::from(value & 0x7f) << (7 * i);
         i += 1;
         if (value & 0x80) == 0 {
@@ -756,7 +757,19 @@ fn parse_proof(
         }
     }
     finish_proof(parser, clause_ids, &mut state);
+    assert_clause_ids_are_within_limits();
     Ok(())
+}
+
+fn assert_clause_ids_are_within_limits() {
+    let num_clauses = clause_db().number_of_clauses();
+    if num_clauses > Clause::MAX_ID + 1 {
+        die!(
+            "Number of clauses (in formula and proof) {} exceeds maximum number of clauses {}",
+            num_clauses,
+            Clause::MAX_ID + 1
+        );
+    }
 }
 
 impl Display for ParseError {

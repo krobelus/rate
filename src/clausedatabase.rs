@@ -54,9 +54,10 @@ impl ClauseDatabase {
     }
     pub const PADDING: usize = 1;
     pub fn number_of_clauses(&self) -> ClauseStorage {
-        requires!(self.have_sentinel);
-        requires!(u64::try_from(self.offset.len() - ClauseDatabase::PADDING).is_ok());
-        (self.offset.len() - ClauseDatabase::PADDING) as ClauseStorage
+        assert!(self.have_sentinel);
+        let number = self.offset.len() - ClauseDatabase::PADDING;
+        assert!(ClauseStorage::try_from(number).is_ok());
+        number as ClauseStorage
     }
     pub fn last_clause(&self) -> Clause {
         requires!(self.have_sentinel);
