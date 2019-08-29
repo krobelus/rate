@@ -7,7 +7,7 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt,
     io::{self, Write},
-    mem::size_of,
+    mem::{size_of, align_of},
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
@@ -121,19 +121,18 @@ impl ProofStep {
 /// ```
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Reason(Tagged32);
+pub struct Reason(TaggedUSize);
 
 impl Reason {
     pub fn invalid() -> Reason {
-        Reason(Tagged32::new(0))
+        Reason(TaggedUSize::new(0))
     }
     pub fn assumed() -> Reason {
-        Reason(Tagged32::new(0).with_bit1())
+        Reason(TaggedUSize::new(0).with_bit1())
     }
     pub fn forced(offset: usize) -> Reason {
-        requires!(offset < ClauseStorage::max_value() as usize);
         Reason(
-            Tagged32::new(offset as ClauseStorage)
+            TaggedUSize::new(offset .try_into().unwrap())
                 .with_bit1()
                 .with_bit2(),
         )
@@ -294,14 +293,45 @@ impl Tagged32 {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
+pub struct TaggedUSize(usize);
+
+impl TaggedUSize {
+    const MASK: usize = TaggedUSize::MASK1 | TaggedUSize::MASK2;
+    pub const MASK1: usize = 1 << (size_of::<usize>() * 8 - 1);
+    pub const MASK2: usize = 1 << (size_of::<usize>() * 8 - 2);
+    const MAX_PAYLOAD: usize = usize::max_value() & !TaggedUSize::MASK;
+
+    pub fn new(payload: usize) -> TaggedUSize {
+        requires!(payload <= TaggedUSize::MAX_PAYLOAD);
+        TaggedUSize(payload)
+    }
+    pub fn with_bit1(self) -> TaggedUSize {
+        TaggedUSize(self.0 | TaggedUSize::MASK1)
+    }
+    pub fn with_bit2(self) -> TaggedUSize {
+        TaggedUSize(self.0 | TaggedUSize::MASK2)
+    }
+    pub fn payload(self) -> usize {
+        self.0 & !TaggedUSize::MASK
+    }
+    pub fn bit1(self) -> bool {
+        self.0 & TaggedUSize::MASK1 != 0
+    }
+    pub fn bit2(self) -> bool {
+        self.0 & TaggedUSize::MASK2 != 0
+    }
+}
+
 #[allow(dead_code)]
 fn assert_primitive_sizes() {
     const_assert!(size_of::<crate::literal::Literal>() == 4);
     const_assert!(size_of::<Clause>() == 4);
-    const_assert!(size_of::<Reason>() == 4);
     const_assert!(size_of::<LRATDependency>() == 4);
     const_assert!(size_of::<LRATLiteral>() == 4);
     const_assert!(size_of::<ProofStep>() == 4);
+    const_assert!(size_of::<Reason>() == size_of::<usize>());
+    const_assert!(align_of::<Reason>() == align_of::<usize>());
 }
 
 pub fn write_clause<'a, T>(file: &mut impl Write, clause: T) -> io::Result<()>
