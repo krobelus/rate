@@ -20,8 +20,10 @@ mod parser;
 #[macro_use(Serialize, Deserialize)]
 extern crate serde_derive;
 
-use crate::parser::panic_on_error;
-use std::io::{stdin, stdout, BufReader, Read, Result, Write};
+use clap::Arg;
+use std::io::{self, BufReader, Read, Result, BufWriter, Write};
+
+use crate::parser::{create_file, open_file, panic_on_error};
 
 fn write_number(output: &mut Write, number: i32) -> Result<()> {
     let mut encoding = number.abs() << 1;
@@ -61,14 +63,25 @@ fn fail(line: usize, col: usize) -> ! {
 }
 
 fn main() -> Result<()> {
-    clap::App::new("drat2cdrat")
+    crate::config::signals();
+    let matches = clap::App::new("drat2cdrat")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Read a textual proof from stdin and write its binary version to stdout")
+        .arg(
+            Arg::with_name("INPUT").help("input file in textual DRAT format (omit or - for stdin)"),
+        )
+        .arg(Arg::with_name("OUTPUT").help("output file (omit for stdout)"))
         .get_matches();
-    let stdin = stdin();
-    let input = stdin.lock();
-    let stdout = stdout();
-    let mut output = stdout.lock();
+    let stdout = io::stdout();
+    let stdin = io::stdin();
+    let input: Box<Read> = match matches.value_of("INPUT") {
+        None | Some("-") => Box::new(stdin.lock()),
+        Some(filename) => Box::new(open_file(filename)),
+    };
+    let mut output: Box<Write> = match matches.value_of("OUTPUT") {
+        None => Box::new(stdout.lock()),
+        Some(filename) => Box::new(BufWriter::new(create_file(filename))),
+    };
     let mut state = State::Begin;
     let mut line = 1;
     let mut col = 0;

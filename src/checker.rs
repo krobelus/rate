@@ -7,7 +7,7 @@ use crate::{
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Stack, StackMapping},
     output::{self, Timer},
-    parser::{clause_db, witness_db, Parser},
+    parser::{clause_db, create_file, witness_db, Parser},
     sick::{Sick, Witness},
 };
 use ansi_term::Colour;
@@ -1499,7 +1499,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
 
 fn write_lemmas(checker: &Checker) -> io::Result<()> {
     let mut file = match &checker.config.lemmas_filename {
-        Some(filename) => BufWriter::new(File::create(filename)?),
+        Some(filename) => BufWriter::new(create_file(filename)),
         None => return Ok(()),
     };
     for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
@@ -1513,7 +1513,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
 
 fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.grat_filename {
-        Some(filename) => BufWriter::new(File::create(filename)?),
+        Some(filename) => BufWriter::new(create_file(filename)),
         None => return Ok(()),
     };
     writeln!(file, "GRATbt {} 0", std::mem::size_of::<Literal>())?; // NB this needs to fit clause IDs

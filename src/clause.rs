@@ -7,7 +7,7 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt,
     io::{self, Write},
-    mem::{size_of, align_of},
+    mem::{align_of, size_of},
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
@@ -132,7 +132,7 @@ impl Reason {
     }
     pub fn forced(offset: usize) -> Reason {
         Reason(
-            TaggedUSize::new(offset .try_into().unwrap())
+            TaggedUSize::new(offset.try_into().unwrap())
                 .with_bit1()
                 .with_bit2(),
         )

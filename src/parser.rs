@@ -330,8 +330,12 @@ pub fn run_parser(
     parser.proof.shrink_to_fit();
 }
 
-fn open_file(filename: &str) -> File {
-    File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
+pub fn open_file(filename: &str) -> File {
+    File::open(filename).unwrap_or_else(|err| die!("error opening file: {}", err))
+}
+
+pub fn create_file(filename: &str) -> File {
+    File::create(filename).unwrap_or_else(|err| die!("error opening file for writing: {}", err))
 }
 
 const ZSTD: &str = ".zst";

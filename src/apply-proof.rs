@@ -17,15 +17,12 @@ mod parser;
 extern crate serde_derive;
 
 use clap::Arg;
-use std::{
-    fs::File,
-    io::{self, BufWriter, Write},
-};
+use std::io::{self, BufWriter, Write};
 
 use crate::{
     clause::{write_clause, Clause},
     parser::{
-        clause_db, is_binary_drat, parse_proof_step, read_file, run_parser_on_formula,
+        clause_db, create_file, is_binary_drat, parse_proof_step, read_file, run_parser_on_formula,
         FixedSizeHashTable, HashTable, Input, Parser, ProofParserState, Result, SimpleInput,
     },
 };
@@ -77,10 +74,7 @@ remaining proof to <OUTPUT>.drat",
     let binary = is_binary_drat(read_file(proof_filename).take(10));
     let mut proof_input = SimpleInput::new(read_file(&proof_filename), binary);
     fn open(name: &str) -> impl Write {
-        BufWriter::new(
-            File::create(name)
-                .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err)),
-        )
+        BufWriter::new(create_file(name))
     }
     let mut formula_output = open(&format!("{}.cnf", output_name));
     let mut proof_output = open(&format!("{}.drat", output_name));

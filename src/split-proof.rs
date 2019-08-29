@@ -137,12 +137,8 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         width = usize::try_from(splitter.log_total_chunks).unwrap(),
         proof_extension = splitter.parser.redundancy_property.file_extension(),
     );
-    splitter.proof_input.tap = Some(BufWriter::new(
-        File::create(proof_chunk)
-            .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err)),
-    ));
-    let mut chunk_sed = File::create(name.clone())
-        .unwrap_or_else(|err| die!("Failed to open output file {}: {}", name, err));
+    splitter.proof_input.tap = Some(BufWriter::new(open_file(proof_chunk)));
+    let mut chunk_sed = open_file(name.clone());
 
     parse_chunk(splitter, steps)
         .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
