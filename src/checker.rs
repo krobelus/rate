@@ -1751,7 +1751,7 @@ fn write_lrat_lemma(
         } else {
             invariant!(lrat_literal.is_hint());
             invariant!(checker.fields(hint).is_scheduled());
-            invariant!(lrat_id(checker, hint) != Clause::NEVER_READ);
+            invariant!(lrat_id(checker, hint) != Clause::UNINITIALIZED);
             write!(file, "{} ", lrat_id(checker, hint))
         }?;
         i += 1;
@@ -1766,7 +1766,6 @@ fn write_lrat_deletion(
     clause: Clause,
 ) -> io::Result<()> {
     invariant!(clause != Clause::DOES_NOT_EXIST);
-    invariant!(clause != Clause::NEVER_READ);
     invariant!(clause != Clause::UNINITIALIZED);
     invariant!(
         (lrat_id(checker, clause) == Clause::UNINITIALIZED)
@@ -1839,7 +1838,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
 }
 
 fn assignment_invariants(checker: &Checker) {
-    if !crate::config::ASSIGNMENT_INVARIANTS {
+    if !crate::config::CHECK_TRAIL_INVARIANTS {
         return;
     }
     for &(literal, reason) in &checker.assignment {
@@ -1870,7 +1869,7 @@ enum Mode {
 }
 
 fn watch_invariants(checker: &Checker) {
-    if crate::config::WATCH_INVARIANTS {
+    if crate::config::CHECK_WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
         for &mode in &[Mode::Core, Mode::NonCore] {
             for lit in Literal::all(checker.maxvar) {
@@ -1939,16 +1938,18 @@ fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
 
 fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) -> bool {
     requires!(lit != Literal::TOP);
-    invariant!(
-        watchlist(checker, mode)[lit]
-            .iter()
-            .filter(|&h| *h == head)
-            .count()
-            <= 1,
-        "duplicate clause [@{}] in watchlist of {}",
-        head,
-        lit
-    );
+    if crate::config::CHECK_WATCH_INVARIANTS {
+        invariant!(
+            watchlist(checker, mode)[lit]
+                .iter()
+                .filter(|&h| *h == head)
+                .count()
+                <= 1,
+            "duplicate clause [@{}] in watchlist of {}",
+            head,
+            lit
+        );
+    }
     watchlist(checker, mode)[lit]
         .iter()
         .position(|&watched| watched == head)

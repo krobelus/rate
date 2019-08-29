@@ -79,7 +79,7 @@ macro_rules! die {
 #[macro_export]
 macro_rules! invariant {
     ($($arg:tt)*) => ({
-        if crate::config::ENABLE_ASSERTIONS {
+        if crate::config::CHECK_INVARIANTS {
             assert!($($arg)*);
         }
     })
@@ -88,7 +88,7 @@ macro_rules! invariant {
 // Preconditions should use this instead of an invariant.
 macro_rules! requires {
     ($($arg:tt)*) => ({
-        if crate::config::ENABLE_ASSERTIONS {
+        if crate::config::CHECK_PRECONDITIONS {
             assert!($($arg)*);
         }
     })

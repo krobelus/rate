@@ -22,16 +22,18 @@ pub struct Config {
     pub sick_filename: Option<String>,
 }
 
-/// Whether to do bounds checking when accessing array elements.
-pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug_assertions);
 /// Add command line flag `-v`.
 pub const ENABLE_LOGGING: bool = true;
-/// Runtime invariant checks.
-pub const ENABLE_ASSERTIONS: bool = cfg!(debug_assertions);
-/// Check assignment sanity.
-pub const ASSIGNMENT_INVARIANTS: bool = false;
-/// Check correctness of watches.
-pub const WATCH_INVARIANTS: bool = false;
+/// Whether to do bounds checking when accessing array elements.
+pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug_assertions);
+/// Check requires!() assertions at runtime (cheap).
+pub const CHECK_PRECONDITIONS: bool = true;
+/// Check invariants at runtime (cheap).
+pub const CHECK_INVARIANTS: bool = true;
+/// Sanity-check assignment/trail (expensive).
+pub const CHECK_TRAIL_INVARIANTS: bool = false;
+/// Check correctness of watches (very expensive).
+pub const CHECK_WATCH_INVARIANTS: bool = false;
 
 pub fn unreachable() -> ! {
     invariant!(false, "unreachable");
