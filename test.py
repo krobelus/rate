@@ -179,7 +179,9 @@ def compare_acceptance(a, b, *, instances):
             if name in (
                 'benchmarks/crafted/falsified',
                     'benchmarks/crafted/crlf',
-                    'benchmarks/crafted/crash'):
+                    'benchmarks/crafted/crash',
+                    'benchmarks/crafted/unpropagate',
+                    ):
                 continue  # does not skip unused lemmas
         if (INITIAL_COMMIT in b[0]
                 and name in ('benchmarks/crafted/marked-environment',

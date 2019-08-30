@@ -1459,7 +1459,7 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
         }
         while checker.assignment.len() > trail_length {
             let reason = checker.assignment.pop().1;
-            set_reason_flag(checker, reason, true);
+            set_reason_flag(checker, reason, false);
         }
         checker.processed = trail_length;
     }

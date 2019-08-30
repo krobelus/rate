@@ -21,7 +21,7 @@ mod parser;
 extern crate serde_derive;
 
 use clap::Arg;
-use std::io::{self, BufReader, Read, Result, BufWriter, Write};
+use std::io::{self, BufReader, BufWriter, Read, Result, Write};
 
 use crate::parser::{create_file, open_file, panic_on_error};
 
