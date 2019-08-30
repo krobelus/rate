@@ -1,0 +1,52 @@
+#!/usr/bin/awk -f
+
+/^c/ { next }
+/^p cnf/ { next }
+BEGIN {
+        map["0"] = "0"
+        map["d"] = "d"
+	if (ARGV[1]) {
+		formulafile = ARGV[1] ".gapless"
+		printf "" > formulafile
+	} else {
+		formulafile = "/dev/stdout"
+	}
+	if (ARGV[2]) {
+                prooffile = ARGV[2] ".gapless"
+            	printf "" > prooffile
+	}
+}
+END {
+	printf "p cnf %d %d\n", maxvar, formula_size > formulafile
+	for (c in formula) { writeclause(formula[c], formulafile) }
+	for (c in proof) { writeclause(proof[c], prooffile) }
+}
+FILENAME == "-" || FILENAME == ARGV[1] { formula[formula_size++] = $0; readclause($0) }
+FILENAME == ARGV[2] { proof[proof_size++] = $0;        readclause($0) }
+function readclause(line) {
+	split(line, clause, " ")
+	for (i in clause) {
+		literal = clause[i]
+		variable = literal
+		sub("-", "", variable)
+        	if (!(variable in map)) {
+        		maxvar += 1
+        		map[variable] = maxvar
+        	}
+	}
+}
+function writeclause(line, file) {
+    	split(line, clause, " ")
+	for (i in clause) {
+    		literal = clause[i]
+		if (literal == "0") {
+            		printf "0\n" >> file
+			break;
+		}
+    		variable = literal
+    		sub("-", "", variable)
+    		sub(variable, map[variable], literal)
+		printf "%s ", literal >> file
+	}
+}
+
