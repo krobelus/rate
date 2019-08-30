@@ -26,9 +26,9 @@ pub struct Config {
 pub const ENABLE_LOGGING: bool = true;
 /// Whether to do bounds checking when accessing array elements.
 pub const ENABLE_BOUNDS_CHECKING: bool = cfg!(debug_assertions);
-/// Check requires!() assertions at runtime (cheap).
+/// Check the `requires!()` assertions at runtime (cheap).
 pub const CHECK_PRECONDITIONS: bool = true;
-/// Check invariants at runtime (cheap).
+/// Check the `invariant!()` assertions at runtime (cheap).
 pub const CHECK_INVARIANTS: bool = true;
 /// Sanity-check assignment/trail (expensive).
 pub const CHECK_TRAIL_INVARIANTS: bool = cfg!(debug_assertions);
