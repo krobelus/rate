@@ -137,7 +137,7 @@ fn write_chunk(splitter: &mut Splitter, steps: Option<u64>) {
         width = usize::try_from(splitter.log_total_chunks).unwrap(),
         proof_extension = splitter.parser.redundancy_property.file_extension(),
     );
-    splitter.proof_input.tap = Some(BufWriter::new(open_file(proof_chunk)));
+    splitter.proof_input.tap = Some(open_file_for_writing(proof_chunk));
     let mut chunk_sed = open_file(name.clone());
 
     parse_chunk(splitter, steps)

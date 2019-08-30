@@ -19,7 +19,7 @@ mod sick;
 extern crate serde_derive;
 
 use clap::Arg;
-use std::{fs::File, io::Read};
+use std::io::Read;
 use toml;
 
 use crate::{
@@ -30,8 +30,8 @@ use crate::{
     memory::{Array, Stack},
     output::solution,
     parser::{
-        clause_db, proof_format_by_extension, run_parser, witness_db, FixedSizeHashTable,
-        HashTable, Parser,
+        clause_db, open_file, proof_format_by_extension, run_parser, witness_db,
+        FixedSizeHashTable, HashTable, Parser,
     },
     sick::Sick,
 };
@@ -64,8 +64,7 @@ fn main() -> Result<(), ()> {
     let proof_file_redundancy_property = proof_format_by_extension(proof_filename);
 
     let mut toml_str = String::new();
-    let mut sick_file = File::open(sick_filename)
-        .unwrap_or_else(|err| die!("Failed to open SICK certificate: {}", err));
+    let mut sick_file = open_file(sick_filename);
     sick_file
         .read_to_string(&mut toml_str)
         .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));

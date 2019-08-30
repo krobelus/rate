@@ -69,13 +69,18 @@ def pr_inputs():
 def executable(name):
     return Popen(('which', name)).wait() == 0
 
+
 def ensure_executable(command):
     assert executable(command[0]), f'{command[0]} not found in PATH'
 
 
-def process_expansion(command):
+def process_expansion(command, input=None):
     # we need to redirect stderr for gratgen
-    return Popen(command, stdout=PIPE, stderr=PIPE).communicate()
+    p = Popen(command, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    if input is not None:
+        return p.communicate(input=input)
+    else:
+        return p.communicate()
 
 
 @lru_cache(maxsize=None)
@@ -181,7 +186,7 @@ def compare_acceptance(a, b, *, instances):
                     'benchmarks/crafted/crlf',
                     'benchmarks/crafted/crash',
                     'benchmarks/crafted/unpropagate',
-                    ):
+            ):
                 continue  # does not skip unused lemmas
         if (INITIAL_COMMIT in b[0]
                 and name in ('benchmarks/crafted/marked-environment',
@@ -201,7 +206,7 @@ def compare_acceptance(a, b, *, instances):
                 continue
         if 'dpr-trim' in b[0]:
             if name in (
-            'benchmarks/sadical/emptyclause',
+                'benchmarks/sadical/emptyclause',
             ):
                 continue
 
@@ -308,7 +313,7 @@ def test_split():
             continue
         print(formula, proof)
         expected = Popen(comp + [formula, proof]).wait()
-        actual   = Popen(('./scripts/split-and-check.sh', formula, proof)).wait()
+        actual = Popen(('./scripts/split-and-check.sh', formula, proof)).wait()
         assert actual == expected
 
 # def test_with_lrat_check():
@@ -332,18 +337,66 @@ def test_acceptance_initial_commit():
 
 def test_acceptance_drat_trim():
     if executable('drat-trim'):
-        compare_acceptance(rate(flags=['--drat-trim']), ['drat-trim'], instances=drat_inputs())
+        compare_acceptance(
+            rate(
+                flags=['--drat-trim']),
+            ['drat-trim'],
+            instances=drat_inputs())
 
 
 def test_acceptance_rupee():
     if executable('rupee'):
-        compare_acceptance(rate(flags=['--rupee']), ['rupee'], instances=drat_inputs())
+        compare_acceptance(
+            rate(
+                flags=['--rupee']),
+            ['rupee'],
+            instances=drat_inputs())
 
 
 def test_acceptance_gratgen():
     if executable('gratgen'):
-        compare_acceptance(rate(flags=['--skip-unit-deletions']), ['gratgen'], instances=drat_inputs())
+        compare_acceptance(
+            rate(
+                flags=['--skip-unit-deletions']),
+            ['gratgen'],
+            instances=drat_inputs())
+
 
 def test_acceptance_dpr_trim():
     if executable('dpr-trim'):
-        compare_acceptance(rate(flags=['--drat-trim']), ['dpr-trim'], instances=pr_inputs())
+        compare_acceptance(
+            rate(
+                flags=['--drat-trim']),
+            ['dpr-trim'],
+            instances=pr_inputs())
+
+
+def test_drat2cdrat_cdrat2drat():
+    build_release()
+    drat2cdrat = './target/release/drat2cdrat'
+    cdrat2drat = './target/release/cdrat2drat'
+    for benchmark in ('crafted/example1b', ):
+        filename = f'benchmarks/{benchmark}.drat'
+        print(filename)
+        with open(filename) as f:
+            content = f.read().encode()
+        stdout1, stderr1 = process_expansion([cdrat2drat], input=content)
+        assert stderr1 == b''
+        stdout2, stderr2 = process_expansion([drat2cdrat], input=stdout1)
+        assert stderr2 == b''
+        assert content == stdout2
+    for benchmark in (
+        'crafted/uuf',
+        'crafted/example1',
+        'crafted/wrong-deletion',
+        'crafted/strange',
+    ):
+        filename = f'benchmarks/{benchmark}.drat'
+        print(filename)
+        with open(filename) as f:
+            content = f.read().encode()
+        stdout1, stderr1 = process_expansion([drat2cdrat], input=content)
+        assert stderr1 == b''
+        stdout2, stderr2 = process_expansion([cdrat2drat], input=stdout1)
+        assert stderr2 == b''
+        assert content == stdout2

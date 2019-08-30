@@ -7,7 +7,7 @@ use crate::{
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Stack, StackMapping},
     output::{self, Timer},
-    parser::{clause_db, create_file, witness_db, Parser},
+    parser::{clause_db, open_file_for_writing, witness_db, Parser},
     sick::{Sick, Witness},
 };
 use ansi_term::Colour;
@@ -1499,7 +1499,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
 
 fn write_lemmas(checker: &Checker) -> io::Result<()> {
     let mut file = match &checker.config.lemmas_filename {
-        Some(filename) => BufWriter::new(create_file(filename)),
+        Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
     for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
@@ -1513,7 +1513,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
 
 fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.grat_filename {
-        Some(filename) => BufWriter::new(create_file(filename)),
+        Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
     writeln!(file, "GRATbt {} 0", std::mem::size_of::<Literal>())?; // NB this needs to fit clause IDs
@@ -1666,7 +1666,7 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
 
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.lrat_filename {
-        Some(filename) => BufWriter::new(File::create(filename)?),
+        Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
     let num_clauses = checker.closing_empty_clause().as_offset() + 1;
@@ -1784,7 +1784,7 @@ fn write_lrat_deletion(
 
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     let mut file = match &checker.config.sick_filename {
-        Some(filename) => BufWriter::new(File::create(filename)?),
+        Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
     let proof_format = match checker.redundancy_property {

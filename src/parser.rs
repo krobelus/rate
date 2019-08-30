@@ -12,10 +12,9 @@ use std::{
     cmp,
     collections::HashMap,
     convert::TryInto,
-    fmt::{self, Display, Formatter},
     fs::File,
     hash::{Hash, Hasher},
-    io::{self, Read},
+    io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
     iter::Peekable,
     panic,
     ptr::NonNull,
@@ -291,13 +290,12 @@ pub fn run_parser_on_formula(
         if !parser.verbose {
             _timer.disabled = true;
         }
-        let formula_input = read_file(formula_file);
         parse_formula(
             &mut parser,
             clause_ids,
-            SimpleInput::new(Box::new(formula_input), false),
+            read_compressed_file(formula_file, false),
         )
-        .unwrap_or_else(|err| die!("error parsing formula at line {}: {}", err.line, err.why));
+        .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
     }
 }
 
@@ -312,18 +310,17 @@ pub fn run_parser(
     if !parser.verbose {
         _timer.disabled = true;
     }
-    let binary = is_binary_drat(read_file(proof_file).take(10));
-    let proof_input = Box::new(read_file(&proof_file));
+    let binary = is_binary_drat(proof_file);
     if binary && parser.verbose {
         comment!("binary proof mode");
     }
     parse_proof(
         &mut parser,
         clause_ids,
-        SimpleInput::new(proof_input, binary),
+        read_compressed_file(proof_file, binary),
         binary,
     )
-    .unwrap_or_else(|err| die!("error parsing proof at line {}: {}", err.line, err.why));
+    .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
     clause_db().shrink_to_fit();
     witness_db().shrink_to_fit();
     parser.clause_pivot.shrink_to_fit();
@@ -331,11 +328,13 @@ pub fn run_parser(
 }
 
 pub fn open_file(filename: &str) -> File {
-    File::open(filename).unwrap_or_else(|err| die!("error opening file: {}", err))
+    File::open(filename).unwrap_or_else(|err| die!("cannot open file: {}", err))
 }
 
-pub fn create_file(filename: &str) -> File {
-    File::create(filename).unwrap_or_else(|err| die!("error opening file for writing: {}", err))
+pub fn open_file_for_writing(filename: &str) -> BufWriter<File> {
+    BufWriter::new(
+        File::create(filename).unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
+    )
 }
 
 const ZSTD: &str = ".zst";
@@ -378,11 +377,26 @@ impl RedundancyProperty {
     }
 }
 
-pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
+pub fn read_compressed_file_or_stdin<'a>(
+    filename: &'a str,
+    binary: bool,
+    stdin: StdinLock<'a>,
+) -> Input<'a> {
+    match filename {
+        "-" => Input::new(Box::new(stdin.bytes().map(panic_on_error)), binary),
+        filename => read_compressed_file(filename, binary),
+    }
+}
+
+pub fn read_compressed_file(filename: &str, binary: bool) -> Input {
+    Input::new(read_compressed_file_impl(filename), binary)
+}
+
+fn read_compressed_file_impl(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let file = open_file(filename);
     let (_basename, compression_format) = compression_format_by_extension(filename);
     if compression_format == "" {
-        return Box::new(std::io::BufReader::new(file).bytes().map(panic_on_error));
+        return Box::new(BufReader::new(file).bytes().map(panic_on_error));
     }
     match compression_format {
         ZSTD => {
@@ -404,15 +418,15 @@ pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
         }
         LZ4 => {
             let de = lz4::Decoder::new(file)
-                .unwrap_or_else(|err| die!("Failed to decode LZ4 archive: {}", err));
+                .unwrap_or_else(|err| die!("failed to decode LZ4 archive: {}", err));
             Box::new(de.bytes().map(panic_on_error))
         }
         _ => unreachable(),
     }
 }
 
-pub fn panic_on_error(result: io::Result<u8>) -> u8 {
-    result.unwrap_or_else(|error| die!("read error: {}", error))
+pub fn panic_on_error<T>(result: Result<T>) -> T {
+    result.unwrap_or_else(|error| die!("{}", error))
 }
 
 fn add_literal(
@@ -494,21 +508,61 @@ fn is_digit_or_dash(value: u8) -> bool {
     is_digit(value) || value == b'-'
 }
 
-pub type Result<T> = std::result::Result<T, ParseError>;
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ParseError {
-    pub line: usize,
-    pub why: &'static str,
-}
-
 const OVERFLOW: &str = "overflow while parsing number";
 const NUMBER: &str = "expected number";
+const SPACE: &str = "expected space";
+const NUMBER_OR_SPACE: &str = "expected number or space";
+const NUMBER_OR_MINUS: &str = "expected number or \"-\"";
 const EOF: &str = "premature end of file";
 const P_CNF: &str = "expected \"p cnf\"";
 const DRAT: &str = "expected DRAT instruction";
+const NEWLINE: &str = "expected newline";
 
-fn parse_literal(input: &mut impl Input) -> Result<Literal> {
+/// Consumes one or more decimal digits, returning the value of the
+/// resulting number on success. Fails if there is no digit or if the digits do
+/// not end in a whitespace or newline.
+fn parse_u64(input: &mut Input) -> Result<u64> {
+    match input.peek() {
+        None => return Err(input.error(NUMBER)),
+        Some(c) => {
+            if !is_digit(c) {
+                return Err(input.error(NUMBER));
+            }
+        }
+    }
+    let mut value: u64 = 0;
+    while let Some(c) = input.peek() {
+        if is_space(c) {
+            break;
+        }
+        if !is_digit(c) {
+            return Err(input.error(NUMBER_OR_SPACE));
+        }
+        input.next();
+        value = value
+            .checked_mul(10)
+            .and_then(|val| val.checked_add(u64::from(c - b'0')))
+            .ok_or_else(|| input.error(OVERFLOW))?;
+    }
+    Ok(value)
+}
+
+/// Just like `parse_u64` but convert the result to an i32.
+fn parse_i32(input: &mut Input) -> Result<i32> {
+    let value = parse_u64(input)?;
+    if value > i32::max_value().try_into().unwrap() {
+        Err(input.error(OVERFLOW))
+    } else {
+        Ok(value as i32)
+    }
+}
+
+/// Consumes zero or more whitespace characters followd
+/// by an optional "-", a number of at least one decimal digit,
+/// trailed by whitespace. If the number is zero, consumes all whitespace
+/// until the next newline.
+pub fn parse_literal(input: &mut Input) -> Result<Literal> {
+    parse_any_space(input);
     match input.peek() {
         None => Err(input.error(EOF)),
         Some(c) if is_digit_or_dash(c) => {
@@ -518,43 +572,17 @@ fn parse_literal(input: &mut impl Input) -> Result<Literal> {
             } else {
                 1
             };
-            Ok(Literal::new(sign * parse_i32(input)?))
+            let number = parse_i32(input)?;
+            if number == 0 {
+                parse_any_whitespace(input);
+            }
+            Ok(Literal::new(sign * number))
         }
-        _ => Err(input.error(NUMBER)),
+        _ => Err(input.error(NUMBER_OR_MINUS)),
     }
 }
 
-fn parse_u64(input: &mut impl Input) -> Result<u64> {
-    while input.peek() == Some(b' ') {
-        input.next();
-    }
-    let mut value: u64 = 0;
-    while let Some(c) = input.next() {
-        if is_space(c) {
-            break;
-        }
-        if !is_digit(c) {
-            return Err(input.error(NUMBER));
-        }
-        value = value
-            .checked_mul(10)
-            .expect(OVERFLOW)
-            .checked_add(u64::from(c - b'0'))
-            .expect(OVERFLOW);
-    }
-    Ok(value)
-}
-
-fn parse_i32(input: &mut impl Input) -> Result<i32> {
-    let value = parse_u64(input)?;
-    if value > i32::max_value().try_into().unwrap() {
-        Err(input.error(OVERFLOW))
-    } else {
-        Ok(value as i32)
-    }
-}
-
-fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
+pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
     while let Some(value) = input.next() {
@@ -568,31 +596,65 @@ fn parse_literal_binary(input: &mut impl Input) -> Result<Literal> {
     Ok(Literal::from_raw(result))
 }
 
-fn parse_comment(input: &mut impl Input) -> Option<()> {
+/// Consumes a leading "c" and any characters until (including) the next newline.
+fn parse_comment(input: &mut Input) -> Result<()> {
     match input.peek() {
         Some(b'c') => {
             input.next();
             while let Some(c) = input.next() {
                 if c == b'\n' {
-                    return Some(());
+                    return Ok(());
                 }
             }
-            None
+            Err(input.error(NEWLINE))
         }
-        _ => None,
+        _ => Err(input.error("")),
     }
 }
 
-fn parse_formula_header(input: &mut impl Input) -> Result<(u64, u64)> {
-    while let Some(()) = parse_comment(input) {}
+fn parse_some_spaces(input: &mut Input) -> Result<()> {
+    if input.peek() != Some(b' ') {
+        return Err(input.error(SPACE));
+    }
+    while let Some(b' ') = input.peek() {
+        input.next();
+    }
+    Ok(())
+}
+
+fn parse_any_space(input: &mut Input) {
+    while let Some(c) = input.peek() {
+        if c != b' ' {
+            break;
+        }
+        input.next();
+    }
+}
+
+fn parse_any_whitespace(input: &mut Input) {
+    while let Some(c) = input.peek() {
+        if !is_space(c) {
+            break;
+        }
+        input.next();
+    }
+}
+
+fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
+    while Some(b'c') == input.peek() {
+        parse_comment(input)?
+    }
     for &expected in b"p cnf" {
         if input.peek().map_or(true, |c| c != expected) {
             return Err(input.error(P_CNF));
         }
         input.next();
     }
-    let maxvar = parse_u64(input)?;
+    parse_some_spaces(input)?;
+    let maxvar = parse_i32(input)?;
+    parse_some_spaces(input)?;
     let num_clauses = parse_u64(input)?;
+    parse_any_whitespace(input);
     Ok((maxvar, num_clauses))
 }
 
@@ -609,35 +671,43 @@ fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     clause
 }
 
+fn parse_clause(
+    parser: &mut Parser,
+    clause_ids: &mut impl HashTable,
+    input: &mut Input,
+) -> Result<()> {
+    open_clause(parser, ProofParserState::Clause);
+    parser.clause_pivot.push(Literal::NEVER_READ);
+    loop {
+        let literal = parse_literal(input)?;
+        add_literal(parser, clause_ids, ProofParserState::Clause, literal);
+        if literal.is_zero() {
+            return Ok(());
+        }
+    }
+}
+
 fn parse_formula(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
-    mut input: impl Input,
+    mut input: Input,
 ) -> Result<()> {
     parse_formula_header(&mut input)?;
-    let mut clause_head = true;
     while let Some(c) = input.peek() {
-        if is_space(c) {
-            input.next();
-            continue;
-        }
         if c == b'c' {
-            parse_comment(&mut input);
+            parse_comment(&mut input)?;
             continue;
         }
-        let literal = parse_literal(&mut input)?;
-        if clause_head {
-            open_clause(parser, ProofParserState::Clause);
-            parser.clause_pivot.push(Literal::NEVER_READ);
-        }
-        add_literal(parser, clause_ids, ProofParserState::Clause, literal);
-        clause_head = literal.is_zero();
+        parse_clause(parser, clause_ids, &mut input)?;
     }
     Ok(())
 }
 
+pub fn is_binary_drat(filename: &str) -> bool {
+    is_binary_drat_impl(read_compressed_file_impl(filename))
+}
 // See drat-trim
-pub fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
+fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
     for c in buffer {
         if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
         {
@@ -658,7 +728,7 @@ pub enum ProofParserState {
 pub fn parse_proof_step(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
-    input: &mut impl Input,
+    input: &mut Input,
     binary: bool,
     state: &mut ProofParserState,
 ) -> Result<Option<()>> {
@@ -680,10 +750,6 @@ pub fn parse_proof_step(
                     input.next();
                     open_clause(parser, ProofParserState::Deletion);
                     ProofParserState::Deletion
-                }
-                b'c' => {
-                    parse_comment(input);
-                    ProofParserState::Start
                 }
                 c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
                     if binary {
@@ -745,7 +811,7 @@ pub fn finish_proof(
 fn parse_proof(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
-    mut input: impl Input,
+    mut input: Input,
     binary: bool,
 ) -> Result<()> {
     parser.proof_start = Clause::new(clause_db().number_of_clauses());
@@ -773,12 +839,6 @@ fn assert_clause_ids_are_within_limits() {
             num_clauses,
             Clause::MAX_ID + 1
         );
-    }
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "Parse error at line {}:  {}", self.line, self.why)
     }
 }
 
@@ -821,7 +881,7 @@ c comment
         assert!(parse_formula(
             &mut parser,
             clause_ids,
-            SimpleInput::new(Box::new(example.as_bytes().iter().cloned()), false),
+            Input::new(Box::new(example.as_bytes().iter().cloned()), false),
         )
         .is_ok());
         parser
@@ -833,7 +893,7 @@ c comment
         let result = parse_proof(
             &mut parser,
             &mut clause_ids,
-            SimpleInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
+            Input::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
             false,
         );
         assert!(result.is_ok());
@@ -900,46 +960,47 @@ impl HeapSpace for Parser {
     }
 }
 
-pub type InputSource = Peekable<Box<dyn Iterator<Item = u8>>>;
-
-pub trait Input {
-    fn next(&mut self) -> Option<u8>;
-    fn peek(&mut self) -> Option<u8>;
-    fn error(&self, why: &'static str) -> ParseError;
-}
-
-pub struct SimpleInput {
-    source: InputSource,
+pub struct Input<'a> {
+    source: Peekable<Box<dyn Iterator<Item = u8> + 'a>>,
     binary: bool,
     line: usize,
+    column: usize,
 }
 
-impl SimpleInput {
-    pub fn new(source: Box<dyn Iterator<Item = u8>>, binary: bool) -> Self {
-        SimpleInput {
+impl<'a> Input<'a> {
+    pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
+        Input {
             source: source.peekable(),
             binary,
-            line: 0,
+            line: 1,
+            column: 1,
         }
+    }
+    pub fn peek(&mut self) -> Option<u8> {
+        self.source.peek().cloned()
+    }
+    pub fn error(&self, why: &'static str) -> Error {
+        Error::new(
+            ErrorKind::InvalidData,
+            if self.binary {
+                format!("{} at position {}", why, self.column)
+            } else {
+                format!("{} at line {} column {}", why, self.line, self.column)
+            },
+        )
     }
 }
 
-impl Input for SimpleInput {
+impl Iterator for Input<'_> {
+    type Item = u8;
     fn next(&mut self) -> Option<u8> {
         self.source.next().map(|c| {
             if !self.binary && c == b'\n' {
                 self.line += 1;
+                self.column = 0;
             }
+            self.column += 1;
             c
         })
-    }
-    fn peek(&mut self) -> Option<u8> {
-        self.source.peek().cloned()
-    }
-    fn error(&self, why: &'static str) -> ParseError {
-        ParseError {
-            why,
-            line: self.line,
-        }
     }
 }

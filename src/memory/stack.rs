@@ -5,6 +5,7 @@
 use crate::memory::HeapSpace;
 use crate::{config::ENABLE_BOUNDS_CHECKING, features::RangeContainsExt};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use static_assertions::const_assert;
 use std::{
     iter::FromIterator,
     mem::size_of,
@@ -141,7 +142,10 @@ fn next_capacity<T>(stack: &Stack<T>) -> usize {
     if stack.is_empty() {
         4
     } else {
-        (stack.capacity().checked_mul(3).unwrap()) / 2
+        // Assuming we are running on a 64 bit system, this will not overflow
+        // for our expected input sizes.
+        const_assert!(size_of::<usize>() >= 8);
+        stack.capacity() * 3 / 2
     }
 }
 

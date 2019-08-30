@@ -17,13 +17,13 @@ mod parser;
 extern crate serde_derive;
 
 use clap::Arg;
-use std::io::{self, BufWriter, Write};
+use std::io::{Result, Write};
 
 use crate::{
     clause::{write_clause, Clause},
     parser::{
-        clause_db, create_file, is_binary_drat, parse_proof_step, read_file, run_parser_on_formula,
-        FixedSizeHashTable, HashTable, Input, Parser, ProofParserState, Result, SimpleInput,
+        clause_db, is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
+        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
     },
 };
 
@@ -32,9 +32,11 @@ fn main() -> Result<()> {
     let matches = clap::App::new("apply-proof")
         .version(env!("CARGO_PKG_VERSION"))
         .about(
-            "Apply a clausal proof up to a given line number and
+            "
+Apply a clausal proof up to a given line number and
 output the accumulated formula to <OUTPUT>.cnf and the
-remaining proof to <OUTPUT>.drat",
+remaining proof to <OUTPUT>.drat "
+                .trim(),
         )
         .arg(
             Arg::with_name("INPUT")
@@ -71,13 +73,10 @@ remaining proof to <OUTPUT>.drat",
         &mut clause_ids,
     );
     let mut state = ProofParserState::Start;
-    let binary = is_binary_drat(read_file(proof_filename).take(10));
-    let mut proof_input = SimpleInput::new(read_file(&proof_filename), binary);
-    fn open(name: &str) -> impl Write {
-        BufWriter::new(create_file(name))
-    }
-    let mut formula_output = open(&format!("{}.cnf", output_name));
-    let mut proof_output = open(&format!("{}.drat", output_name));
+    let binary = is_binary_drat(proof_filename);
+    let mut proof_input = read_compressed_file(&proof_filename, binary);
+    let mut formula_output = open_file_for_writing(&format!("{}.cnf", output_name));
+    let mut proof_output = open_file_for_writing(&format!("{}.drat", output_name));
     for _ in 0..line_number {
         let _result = parse_proof_step(
             &mut parser,
@@ -106,7 +105,7 @@ remaining proof to <OUTPUT>.drat",
             write_clause(&mut formula_output, clause_db().clause(clause).iter())?;
             writeln!(&mut formula_output)?;
         }
-        let result: io::Result<()> = Ok(());
+        let result: Result<()> = Ok(());
         result
     };
     write_formula().expect("Failed to write formula");

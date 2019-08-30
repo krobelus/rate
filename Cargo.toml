@@ -19,6 +19,10 @@ path = "src/apply-proof.rs"
 name = "drat2cdrat"
 path = "src/drat2cdrat.rs"
 
+[[bin]]
+name = "cdrat2drat"
+path = "src/cdrat2drat.rs"
+
 # [[bin]]
 # name = "split-proof"
 # path = "src/split-proof.rs"
