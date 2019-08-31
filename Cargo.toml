@@ -23,10 +23,6 @@ path = "src/drat2cdrat.rs"
 name = "cdrat2drat"
 path = "src/cdrat2drat.rs"
 
-# [[bin]]
-# name = "split-proof"
-# path = "src/split-proof.rs"
-
 [dependencies]
 rate-macros = { path = "rate-macros" }
 ansi_term = "0.11"
