@@ -1,6 +1,6 @@
-//! Stack that never grows.
+//! Vector that never grows.
 
-use crate::memory::{HeapSpace, Stack};
+use crate::memory::{HeapSpace, Vector};
 use rate_macros::HeapSpace;
 use std::{
     ops::{Index, IndexMut},
@@ -12,75 +12,75 @@ pub struct BoundedStack<T>
 where
     T: HeapSpace,
 {
-    stack: Stack<T>,
+    vector: Vector<T>,
 }
 
 impl<T: HeapSpace> BoundedStack<T> {
     pub fn with_capacity(capacity: usize) -> BoundedStack<T> {
         BoundedStack {
-            stack: Stack::with_capacity(capacity),
+            vector: Vector::with_capacity(capacity),
         }
     }
     pub fn push(&mut self, value: T) {
-        self.stack.push_no_grow(value)
+        self.vector.push_no_grow(value)
     }
     pub fn len(&self) -> usize {
-        self.stack.len()
+        self.vector.len()
     }
     pub fn is_empty(&self) -> bool {
-        self.stack.is_empty()
+        self.vector.is_empty()
     }
     pub fn capacity(&self) -> usize {
-        self.stack.capacity()
+        self.vector.capacity()
     }
     pub fn pop(&mut self) -> T {
-        self.stack.pop()
+        self.vector.pop()
     }
     pub fn first(&self) -> &T {
-        self.stack.first()
+        self.vector.first()
     }
     pub fn last(&self) -> &T {
-        self.stack.last()
+        self.vector.last()
     }
     pub fn iter(&self) -> slice::Iter<T> {
-        self.stack.iter()
+        self.vector.iter()
     }
     // pub fn as_slice(&self) -> Slice<T> {
-    //     self.stack.as_slice()
+    //     self.vector.as_slice()
     // }
     // pub fn mut_slice(&mut self) -> SliceMut<T> {
-    //     self.stack.mut_slice()
+    //     self.vector.mut_slice()
     // }
     pub fn as_ptr(&mut self) -> *const T {
-        self.stack.as_ptr()
+        self.vector.as_ptr()
     }
     pub fn mut_ptr(&mut self) -> *mut T {
-        self.stack.mut_ptr()
+        self.vector.mut_ptr()
     }
     pub fn truncate(&mut self, new_length: usize) {
-        self.stack.truncate(new_length)
+        self.vector.truncate(new_length)
     }
     pub fn clear(&mut self) {
-        self.stack.clear()
+        self.vector.clear()
     }
 }
 
 impl<T: HeapSpace + Clone + Default> BoundedStack<T> {
     pub fn resize(&mut self, new_length: usize) {
-        self.stack.resize(new_length)
+        self.vector.resize(new_length)
     }
 }
 
 impl<T: HeapSpace> Index<usize> for BoundedStack<T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
-        self.stack.index(offset)
+        self.vector.index(offset)
     }
 }
 
 impl<T: HeapSpace> IndexMut<usize> for BoundedStack<T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
-        self.stack.index_mut(offset)
+        self.vector.index_mut(offset)
     }
 }
 
@@ -88,7 +88,7 @@ impl<'a, T: HeapSpace> IntoIterator for &'a BoundedStack<T> {
     type Item = &'a T;
     type IntoIter = slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.stack.iter()
+        self.vector.iter()
     }
 }
 
@@ -98,12 +98,12 @@ impl<T: HeapSpace> BoundedStack<T> {
         F: FnMut(&T) -> K,
         K: Ord,
     {
-        self.stack.sort_unstable_by_key(f)
+        self.vector.sort_unstable_by_key(f)
     }
 }
 
 impl<T: HeapSpace + Ord> BoundedStack<T> {
     pub fn sort_unstable(&mut self) {
-        self.stack.sort_unstable()
+        self.vector.sort_unstable()
     }
 }

@@ -5,7 +5,7 @@ use crate::{
     clause::{write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
     config::{unreachable, Config, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Stack, StackMapping},
+    memory::{format_memory_usage, Array, BoundedStack, HeapSpace, Offset, StackMapping, Vector},
     output::{self, Timer},
     parser::{clause_db, open_file_for_writing, witness_db, Parser},
     sick::{Sick, Witness},
@@ -35,7 +35,7 @@ pub enum Verdict {
 /// Contains most everything but the clause and witness databases.
 #[derive(Debug)]
 pub struct Checker {
-    pub proof: Stack<ProofStep>,
+    pub proof: Vector<ProofStep>,
     pub config: Config,
     redundancy_property: RedundancyProperty,
 
@@ -46,7 +46,7 @@ pub struct Checker {
     proof_steps_until_conflict: usize,
     soft_propagation: bool,
     rejection: Sick,
-    rejection_lemma: Stack<Literal>,
+    rejection_lemma: Vector<Literal>,
 
     implication_graph: StackMapping<usize, bool>,
     literal_is_in_cone_preprocess: Array<Literal, bool>,
@@ -56,23 +56,23 @@ pub struct Checker {
     clause_pivot: Array<Clause, Literal>,
     is_in_witness: Array<Literal, bool>,
 
-    revisions: Stack<Revision>,
+    revisions: Vector<Revision>,
 
-    lrat: Stack<LRATLiteral>,
+    lrat: Vector<LRATLiteral>,
     clause_lrat_offset: Array<Clause, usize>,
     clause_lrat_id: Array<Clause, Clause>,
-    dependencies: Stack<LRATDependency>,
+    dependencies: Vector<LRATDependency>,
     lrat_id: Clause,
     prerat_clauses: StackMapping<Clause, bool>, // Linear lookup should be fine here as well.
     optimized_proof: BoundedStack<ProofStep>,
 
-    grat: Stack<GRATLiteral>,
+    grat: Vector<GRATLiteral>,
     grat_conflict_clause: Clause,
     grat_in_deletion: bool,
     grat_rat_counts: Array<Literal, usize>,
-    grat_pending: Stack<GRATLiteral>,
-    grat_pending_deletions: Stack<Clause>,
-    grat_pending_prerat: Stack<GRATLiteral>,
+    grat_pending: Vector<GRATLiteral>,
+    grat_pending_deletions: Vector<Clause>,
+    grat_pending_prerat: Vector<GRATLiteral>,
     grat_prerat: Array<Clause, bool>,
 
     /// Size of the input formula.
@@ -117,11 +117,11 @@ bitfield! {
 #[derive(Debug, HeapSpace, Default, Clone)]
 struct Revision {
     /// The literals that were unassigned.
-    cone: Stack<Literal>,
+    cone: Vector<Literal>,
     /// The position of each unassigned literal.
-    position_in_trail: Stack<usize>,
+    position_in_trail: Vector<usize>,
     /// The reason clause of each unassigned literal.
-    reason_clause: Stack<Clause>,
+    reason_clause: Vector<Clause>,
     /// The length of the trail after unassigning literals (but before propagating).
     trail_length_after_removing_cone: usize,
 }
@@ -146,7 +146,7 @@ impl Checker {
                 Array::default()
             },
             clause_pivot: Array::from(parser.clause_pivot),
-            dependencies: Stack::new(),
+            dependencies: Vector::new(),
             config,
             redundancy_property: parser.redundancy_property,
             soft_propagation: false,
@@ -166,7 +166,7 @@ impl Checker {
             } else {
                 Array::default()
             },
-            lrat: Stack::new(),
+            lrat: Vector::new(),
             prerat_clauses: if lrat {
                 StackMapping::with_array_value_size_stack_size(
                     false,
@@ -181,7 +181,7 @@ impl Checker {
             } else {
                 BoundedStack::default()
             },
-            grat: Stack::new(),
+            grat: Vector::new(),
             grat_conflict_clause: Clause::UNINITIALIZED,
             grat_in_deletion: false,
             grat_rat_counts: if grat {
@@ -189,9 +189,9 @@ impl Checker {
             } else {
                 Array::default()
             },
-            grat_pending: Stack::new(),
-            grat_pending_prerat: Stack::new(),
-            grat_pending_deletions: Stack::new(),
+            grat_pending: Vector::new(),
+            grat_pending_prerat: Vector::new(),
+            grat_pending_deletions: Vector::new(),
             grat_prerat: if grat {
                 Array::new(false, num_clauses)
             } else {
@@ -202,11 +202,11 @@ impl Checker {
             lemma: parser.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
-            revisions: Stack::new(),
-            watchlist_noncore: Array::new(Stack::new(), maxvar.array_size_for_literals()),
-            watchlist_core: Array::new(Stack::new(), maxvar.array_size_for_literals()),
+            revisions: Vector::new(),
+            watchlist_noncore: Array::new(Vector::new(), maxvar.array_size_for_literals()),
+            watchlist_core: Array::new(Vector::new(), maxvar.array_size_for_literals()),
             rejection: Sick::default(),
-            rejection_lemma: Stack::new(),
+            rejection_lemma: Vector::new(),
 
             premise_length: parser.proof_start.as_offset(),
             rup_introductions: 0,
@@ -224,7 +224,7 @@ impl Checker {
             }
         }
         if checker.config.sick_filename.is_some() {
-            checker.rejection.witness = Some(Stack::new())
+            checker.rejection.witness = Some(Vector::new())
         }
         checker
     }
@@ -660,8 +660,8 @@ macro_rules! preserve_assignment {
 }
 
 /// Create the list of all resolution candidates for a given pivot literal.
-fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Clause> {
-    let mut candidates = Stack::new();
+fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Vector<Clause> {
+    let mut candidates = Vector::new();
     for lit in Literal::all(checker.maxvar) {
         for i in 0..checker.watchlist_core[lit].len() {
             let head = checker.watchlist_core[lit][i];
@@ -722,7 +722,7 @@ enum Reduct {
     /// The clause is satisified by that assignment.
     Top,
     /// The non-empty set of unassigned literals in the clause.
-    Clause(Stack<Literal>),
+    Clause(Vector<Literal>),
 }
 
 /// Compute the reuduct of a clause given an assignment.
@@ -752,7 +752,7 @@ fn reduct(
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
-    let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
+    let mut tmp = Vector::from_vec(checker.clause(lemma).iter().cloned().collect());
     let lemma_length = tmp.len();
     for clause in Clause::range(0, lemma) {
         for offset in checker.witness_range(lemma) {
@@ -971,7 +971,7 @@ fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: 
 fn rat(
     checker: &mut Checker,
     pivot: Literal,
-    resolution_candidates: Stack<Clause>,
+    resolution_candidates: Vector<Clause>,
     trail_length_before_rat: usize,
 ) -> bool {
     assignment_invariants(checker);
@@ -992,7 +992,7 @@ fn rat(
                     );
                     if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
                         if checker.config.sick_filename.is_some() {
-                            let failing_clause = Stack::from_iter(
+                            let failing_clause = Vector::from_iter(
                                 checker
                                     .clause(resolution_candidate)
                                     .iter()
@@ -1999,7 +1999,7 @@ fn assignment_invariants(checker: &Checker) {
 }
 
 /// A list of watched clauses, each clause is stored by its offset in the clause database
-type Watchlist = Stack<usize>;
+type Watchlist = Vector<usize>;
 
 /// The mode of a watchlist
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -2132,9 +2132,9 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     let unit_reason = checker.assignment.trail_at(unit_position).1;
     checker.fields_mut(clause).set_has_revision(true);
     let mut revision = Revision {
-        cone: Stack::new(),
-        position_in_trail: Stack::new(),
-        reason_clause: Stack::new(),
+        cone: Vector::new(),
+        position_in_trail: Vector::new(),
+        reason_clause: Vector::new(),
         trail_length_after_removing_cone: usize::max_value(),
     };
     add_to_revision(checker, &mut revision, unit, unit_reason);
@@ -2241,7 +2241,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     // let mut left_position = checker.assignment.len();
     // ```
     // However, instead of popping and pushing later we do that implicitly by
-    // overwriting the latter part of the stack. For this we need a different
+    // overwriting the latter part of the vector. For this we need a different
     // value of `introductions` and `left_position`.
     // This might be an unnecessesarily complex way of doing this without any benefit.
     let mut introductions = 0;

@@ -9,14 +9,14 @@
 //!
 //! - Bounds checking can be disabled.
 //!
-//! If we know a good upper bound for the size of a stack we prefer to use
+//! If we know a good upper bound for the size of a vector we prefer to use
 //! `BoundedStack<T>` or `StackMapping<Key, T>` as they never allocate after
 //! being constructed.
 
 mod array;
 mod boundedstack;
 #[macro_use]
-mod stack;
+mod vector;
 mod smallstack;
 mod stackmapping;
 
@@ -26,8 +26,8 @@ pub use crate::memory::{
     array::Array,
     boundedstack::BoundedStack,
     smallstack::SmallStack,
-    stack::{assert_in_bounds, Stack},
     stackmapping::StackMapping,
+    vector::{assert_in_bounds, Vector},
 };
 
 /// Trait for index-like types

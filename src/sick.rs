@@ -2,7 +2,7 @@
 
 use crate::{
     literal::Literal,
-    memory::{HeapSpace, Stack},
+    memory::{HeapSpace, Vector},
 };
 
 /// A SICK certificate.
@@ -13,18 +13,18 @@ pub struct Sick {
     //// The line in the proof that failed
     pub proof_step: usize,
     /// The trail of the formula before any inference checks
-    pub natural_model: Stack<Literal>,
+    pub natural_model: Vector<Literal>,
     /// The list of witnesses (none for RUP, one for each pivot for RAT)
-    pub witness: Option<Stack<Witness>>,
+    pub witness: Option<Vector<Witness>>,
 }
 
 /// The refutation of an inference given a witness
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct Witness {
     /// The candidate clause that failed to produce a conflict
-    pub failing_clause: Stack<Literal>,
+    pub failing_clause: Vector<Literal>,
     /// The trail after the inference check failed
-    pub failing_model: Stack<Literal>,
+    pub failing_model: Vector<Literal>,
     /// If RAT, the pivot literal.
     pub pivot: Option<Literal>,
 }

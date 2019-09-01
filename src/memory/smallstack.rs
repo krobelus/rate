@@ -1,6 +1,6 @@
-//! A stack that does not allocate if it contains one ore no element.
+//! A vector that does not allocate if it contains one ore no element.
 
-use crate::{config::unreachable, memory::Stack};
+use crate::{config::unreachable, memory::Vector};
 
 use std::iter::FromIterator;
 
@@ -8,7 +8,7 @@ use std::iter::FromIterator;
 pub enum SmallStack<T> {
     Empty,
     One(T),
-    Many(Stack<T>),
+    Many(Vector<T>),
 }
 
 impl<T: Copy + Default> SmallStack<T> {
@@ -19,14 +19,14 @@ impl<T: Copy + Default> SmallStack<T> {
     pub fn singleton(value: T) -> SmallStack<T> {
         SmallStack::One(value)
     }
-    pub fn from_stack(stack: Stack<T>) -> SmallStack<T> {
-        SmallStack::Many(stack)
+    pub fn from_stack(vector: Vector<T>) -> SmallStack<T> {
+        SmallStack::Many(vector)
     }
     pub fn front(&self) -> Option<T> {
         match self {
             SmallStack::Empty => None,
             &SmallStack::One(value) => Some(value),
-            SmallStack::Many(stack) => stack.get(0).cloned(),
+            SmallStack::Many(vector) => vector.get(0).cloned(),
         }
     }
     pub fn push(&mut self, new_value: T) {
@@ -35,10 +35,10 @@ impl<T: Copy + Default> SmallStack<T> {
             return;
         }
         if let SmallStack::One(value) = *self {
-            *self = SmallStack::Many(stack!(value));
+            *self = SmallStack::Many(vector!(value));
         }
-        if let SmallStack::Many(stack) = self {
-            stack.push(new_value);
+        if let SmallStack::Many(vector) = self {
+            vector.push(new_value);
             return;
         }
         unreachable();
@@ -48,11 +48,11 @@ impl<T: Copy + Default> SmallStack<T> {
         if let SmallStack::One(value) = *self {
             *self = SmallStack::Empty;
             Some(value)
-        } else if let SmallStack::Many(stack) = self {
-            if stack.is_empty() {
+        } else if let SmallStack::Many(vector) = self {
+            if vector.is_empty() {
                 None
             } else {
-                Some(stack.swap_remove(0))
+                Some(vector.swap_remove(0))
             }
         } else {
             None
@@ -63,13 +63,13 @@ impl<T: Copy + Default> SmallStack<T> {
         match &self {
             SmallStack::Empty => vec![],
             SmallStack::One(value) => vec![*value],
-            SmallStack::Many(stack) => stack.clone().to_vec(),
+            SmallStack::Many(vector) => vector.clone().to_vec(),
         }
     }
 }
 
 impl<T: Copy + Default> FromIterator<T> for SmallStack<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> SmallStack<T> {
-        SmallStack::from_stack(Stack::from_iter(iter))
+        SmallStack::from_stack(Vector::from_iter(iter))
     }
 }

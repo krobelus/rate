@@ -1,6 +1,8 @@
-//! A stack, much like std::vec::Vec.
+//! A thin wrapper around std::vec::Vec
 //!
-//! We use a different growth factor (1.5 instead of 2)
+//! See https://doc.rust-lang.org/std/vec/struct.Vec.html
+//!
+//! We use a different growth factor (1.5 instead of 2).
 
 use crate::memory::HeapSpace;
 use crate::{config::ENABLE_BOUNDS_CHECKING, features::RangeContainsExt};
@@ -14,18 +16,18 @@ use std::{
 };
 
 #[derive(Debug, Clone, Default, Eq)]
-pub struct Stack<T>(Vec<T>);
+pub struct Vector<T>(Vec<T>);
 
-impl<T> Stack<T> {
+impl<T> Vector<T> {
     /// Currently it's not possible to make the `new` const.
-    pub fn new() -> Stack<T> {
-        Stack(Vec::new())
+    pub fn new() -> Vector<T> {
+        Vector(Vec::new())
     }
-    pub fn with_capacity(capacity: usize) -> Stack<T> {
-        Stack(Vec::with_capacity(capacity))
+    pub fn with_capacity(capacity: usize) -> Vector<T> {
+        Vector(Vec::with_capacity(capacity))
     }
-    pub fn from_vec(vec: Vec<T>) -> Stack<T> {
-        Stack(vec)
+    pub fn from_vec(vec: Vec<T>) -> Vector<T> {
+        Vector(vec)
     }
     pub fn into_vec(self) -> Vec<T> {
         self.0
@@ -77,50 +79,50 @@ impl<T> Stack<T> {
     }
 }
 
-impl<T: Clone + Default> Stack<T> {
+impl<T: Clone + Default> Vector<T> {
     pub fn resize(&mut self, new_length: usize) {
         self.0.resize(new_length, T::default())
     }
 }
 
-impl<T> Deref for Stack<T> {
+impl<T> Deref for Vector<T> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         &self.0
     }
 }
 
-impl<T> DerefMut for Stack<T> {
+impl<T> DerefMut for Vector<T> {
     fn deref_mut(&mut self) -> &mut [T] {
         &mut self.0
     }
 }
 
-impl<T> AsRef<Stack<T>> for Stack<T> {
-    fn as_ref(&self) -> &Stack<T> {
+impl<T> AsRef<Vector<T>> for Vector<T> {
+    fn as_ref(&self) -> &Vector<T> {
         self
     }
 }
 
-impl<T> AsMut<Stack<T>> for Stack<T> {
-    fn as_mut(&mut self) -> &mut Stack<T> {
+impl<T> AsMut<Vector<T>> for Vector<T> {
+    fn as_mut(&mut self) -> &mut Vector<T> {
         self
     }
 }
 
-impl<T> AsRef<[T]> for Stack<T> {
+impl<T> AsRef<[T]> for Vector<T> {
     fn as_ref(&self) -> &[T] {
         self
     }
 }
 
-impl<T> AsMut<[T]> for Stack<T> {
+impl<T> AsMut<[T]> for Vector<T> {
     fn as_mut(&mut self) -> &mut [T] {
         self
     }
 }
 
-impl<T: Clone + Default> Stack<T> {
+impl<T: Clone + Default> Vector<T> {
     pub fn push(&mut self, value: T) {
         if self.len() == self.capacity() {
             let new_capacity = next_capacity(self);
@@ -128,8 +130,8 @@ impl<T: Clone + Default> Stack<T> {
         }
         self.push_no_grow(value)
     }
-    pub fn fill(size: usize, default_value: T) -> Stack<T> {
-        let mut result = Stack::new();
+    pub fn fill(size: usize, default_value: T) -> Vector<T> {
+        let mut result = Vector::new();
         for _ in 0..size {
             result.push(default_value.clone());
         }
@@ -138,33 +140,33 @@ impl<T: Clone + Default> Stack<T> {
 }
 
 // Related: https://github.com/rust-lang/rust/issues/29931
-fn next_capacity<T>(stack: &Stack<T>) -> usize {
-    if stack.is_empty() {
+fn next_capacity<T>(vector: &Vector<T>) -> usize {
+    if vector.is_empty() {
         4
     } else {
         // Assuming we are running on a 64 bit system, this will not overflow
         // for our expected input sizes.
         const_assert!(size_of::<usize>() >= 8);
-        stack.capacity() * 3 / 2
+        vector.capacity() * 3 / 2
     }
 }
 
 #[allow(unused_macros)]
-macro_rules! stack {
+macro_rules! vector {
     ($($x:expr),*) => (
         {
             #[allow(unused_mut)]
-            let mut result = Stack::new();
+            let mut result = Vector::new();
             $(
                 result.push($x);
             )*
             result
         }
     );
-    ($($x:expr,)*) => (stack!($($x),*))
+    ($($x:expr,)*) => (vector!($($x),*))
 }
 
-impl<T: Copy> Stack<T> {
+impl<T: Copy> Vector<T> {
     pub fn swap_remove(&mut self, index: usize) -> T {
         // copied from Vec::swap_remove to use our own bounds checking
         unsafe {
@@ -179,13 +181,13 @@ impl<T: Copy> Stack<T> {
     }
 }
 
-impl<T: Ord> Stack<T> {
+impl<T: Ord> Vector<T> {
     pub fn sort_unstable(&mut self) {
         self.0.sort_unstable()
     }
 }
 
-impl<T> Stack<T> {
+impl<T> Vector<T> {
     pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
     where
         F: FnMut(&T) -> K,
@@ -207,7 +209,7 @@ pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
     }
 }
 
-impl<T> Index<usize> for Stack<T> {
+impl<T> Index<usize> for Vector<T> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
         assert_in_bounds(0..self.len(), index);
@@ -215,7 +217,7 @@ impl<T> Index<usize> for Stack<T> {
     }
 }
 
-impl<T> Index<Range<usize>> for Stack<T> {
+impl<T> Index<Range<usize>> for Vector<T> {
     type Output = [T];
     #[allow(clippy::range_plus_one)]
     fn index(&self, index: Range<usize>) -> &Self::Output {
@@ -225,14 +227,14 @@ impl<T> Index<Range<usize>> for Stack<T> {
     }
 }
 
-impl<T> IndexMut<usize> for Stack<T> {
+impl<T> IndexMut<usize> for Vector<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         assert_in_bounds(0..self.len(), index);
         unsafe { self.0.get_unchecked_mut(index) }
     }
 }
 
-impl<T> IndexMut<Range<usize>> for Stack<T> {
+impl<T> IndexMut<Range<usize>> for Vector<T> {
     #[allow(clippy::range_plus_one)]
     fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
         assert_in_bounds(0..self.len() + 1, index.start);
@@ -243,13 +245,13 @@ impl<T> IndexMut<Range<usize>> for Stack<T> {
     }
 }
 
-impl<T: PartialEq> PartialEq for Stack<T> {
+impl<T: PartialEq> PartialEq for Vector<T> {
     fn eq(&self, other: &Self) -> bool {
         self.len() == other.len() && (0..self.len()).all(|i| self[i] == other[i])
     }
 }
 
-impl<'a, T> IntoIterator for &'a Stack<T> {
+impl<'a, T> IntoIterator for &'a Vector<T> {
     type Item = &'a T;
     type IntoIter = slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
@@ -257,20 +259,20 @@ impl<'a, T> IntoIterator for &'a Stack<T> {
     }
 }
 
-impl<T> FromIterator<T> for Stack<T> {
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Stack<T> {
-        Stack(Vec::from_iter(iter))
+impl<T> FromIterator<T> for Vector<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Vector<T> {
+        Vector(Vec::from_iter(iter))
     }
 }
 
-impl<T: HeapSpace> HeapSpace for Stack<T> {
+impl<T: HeapSpace> HeapSpace for Vector<T> {
     fn heap_space(&self) -> usize {
         self.capacity() * size_of::<T>()
             + (0..self.len()).fold(0, |sum, i| sum + self[i].heap_space())
     }
 }
 
-impl<T> IntoIterator for Stack<T> {
+impl<T> IntoIterator for Vector<T> {
     type Item = T;
     type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
@@ -278,7 +280,7 @@ impl<T> IntoIterator for Stack<T> {
     }
 }
 
-impl<T: Clone + Serialize> Serialize for Stack<T> {
+impl<T: Clone + Serialize> Serialize for Vector<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -287,11 +289,11 @@ impl<T: Clone + Serialize> Serialize for Stack<T> {
     }
 }
 
-impl<'de, T: Clone + Deserialize<'de>> Deserialize<'de> for Stack<T> {
+impl<'de, T: Clone + Deserialize<'de>> Deserialize<'de> for Vector<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        Vec::deserialize(deserializer).map(Stack::from_vec)
+        Vec::deserialize(deserializer).map(Vector::from_vec)
     }
 }

@@ -1,6 +1,6 @@
 //! A dynamic array.
 
-use crate::memory::{assert_in_bounds, HeapSpace, Offset, Stack};
+use crate::memory::{assert_in_bounds, HeapSpace, Offset, Vector};
 use std::{
     marker::PhantomData,
     ops::{Deref, DerefMut, Index, IndexMut},
@@ -14,7 +14,7 @@ use std::{
 /// already.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Array<I: Offset, T> {
-    pub data: Stack<T>,
+    pub data: Vector<T>,
     pub phantom: PhantomData<I>,
 }
 
@@ -27,7 +27,7 @@ impl<I: Offset, T> Default for Array<I, T> {
 impl<I: Offset, T: Clone> Array<I, T> {
     pub fn new(value: T, size: usize) -> Array<I, T> {
         Array {
-            data: Stack::from_vec(vec![value; size]),
+            data: Vector::from_vec(vec![value; size]),
             phantom: PhantomData,
         }
     }
@@ -35,11 +35,11 @@ impl<I: Offset, T: Clone> Array<I, T> {
 impl<I: Offset, T> Array<I, T> {
     pub fn with_capacity(size: usize) -> Array<I, T> {
         Array {
-            data: Stack::with_capacity(size),
+            data: Vector::with_capacity(size),
             phantom: PhantomData,
         }
     }
-    pub fn from(data: Stack<T>) -> Array<I, T> {
+    pub fn from(data: Vector<T>) -> Array<I, T> {
         Array {
             data,
             phantom: PhantomData,

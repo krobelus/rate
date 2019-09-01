@@ -5,7 +5,7 @@ use crate::{
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{format_memory_usage, HeapSpace, Offset, SmallStack, Stack},
+    memory::{format_memory_usage, HeapSpace, Offset, SmallStack, Vector},
     output::{self, Timer},
 };
 use std::{
@@ -59,11 +59,11 @@ pub struct Parser {
     ///
     /// It is necessary to store this because the clauses will be sorted
     /// (and watches will be shuffled).
-    pub clause_pivot: Stack<Literal>,
+    pub clause_pivot: Vector<Literal>,
     /// The first clause that is part of the proof (and not the input formula)
     pub proof_start: Clause,
     /// The proof steps
-    pub proof: Stack<ProofStep>,
+    pub proof: Vector<ProofStep>,
     /// How many proof steps we want to parse
     pub max_proof_steps: Option<usize>,
     /// Whether to insert an extra empty clause at the end
@@ -93,9 +93,9 @@ impl Parser {
         Parser {
             redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
-            clause_pivot: Stack::new(),
+            clause_pivot: Vector::new(),
             proof_start: Clause::new(0),
-            proof: Stack::new(),
+            proof: Vector::new(),
             max_proof_steps: None,
             no_terminating_empty_clause: false,
             verbose: true,
@@ -129,7 +129,7 @@ pub trait HashTable {
 /// Given that we expect the number of clauses in the hash table
 /// not to exceed a couple million this should be faster and leaner than
 /// [DynamicHashTable](struct.DynamicHashTable.html).
-pub struct FixedSizeHashTable(Stack<Stack<Clause>>);
+pub struct FixedSizeHashTable(Vector<Vector<Clause>>);
 
 /// Return the hash bucket to which this clause belongs.
 fn bucket_index(clause: &[Literal]) -> usize {
@@ -146,8 +146,8 @@ impl FixedSizeHashTable {
     /// Allocate the hash table.
     #[allow(clippy::new_without_default)]
     pub fn new() -> FixedSizeHashTable {
-        FixedSizeHashTable(Stack::from_vec(vec![
-            Stack::with_capacity(
+        FixedSizeHashTable(Vector::from_vec(vec![
+            Vector::with_capacity(
                 FixedSizeHashTable::BUCKET_INITIAL_SIZE.into()
             );
             FixedSizeHashTable::SIZE
@@ -158,7 +158,7 @@ impl FixedSizeHashTable {
 /// An iterator over the elements of the hash table
 pub struct FixedSizeHashTableIterator<'a> {
     /// The iterator over the buckets
-    buckets: slice::Iter<'a, Stack<Clause>>,
+    buckets: slice::Iter<'a, Vector<Clause>>,
     /// The iterator over a single bucket
     bucket: slice::Iter<'a, Clause>,
 }
@@ -260,7 +260,7 @@ impl HashTable for DynamicHashTable {
     fn clause_is_active(&self, needle: Clause) -> bool {
         self.0
             .get(&ClauseHashEq(needle))
-            .map_or(false, |stack| !stack.to_vec().is_empty())
+            .map_or(false, |vector| !vector.to_vec().is_empty())
     }
     fn delete_clause(&mut self, needle: Clause) -> bool {
         self.0
@@ -1003,7 +1003,7 @@ mod tests {
 
     #[allow(unused_macros)]
     macro_rules! literals {
-        ($($x:expr),*) => (Stack::from_vec(vec!($(Literal::new($x)),*)));
+        ($($x:expr),*) => (Vector::from_vec(vec!($(Literal::new($x)),*)));
     }
 
     fn sample_formula(clause_ids: &mut impl HashTable) -> Parser {
@@ -1042,7 +1042,7 @@ c comment
         assert_eq!(
             clause_db(),
             &ClauseDatabase::from(
-                stack!(
+                vector!(
                     raw(0),
                     raw(0),
                     lit(1),
@@ -1063,18 +1063,18 @@ c comment
                     raw(0),
                     lit(0),
                 ),
-                stack!(0, 5, 10, 16)
+                vector!(0, 5, 10, 16)
             )
         );
-        assert_eq!(witness_db(), &WitnessDatabase::from(stack!(), stack!()));
+        assert_eq!(witness_db(), &WitnessDatabase::from(vector!(), vector!()));
         assert_eq!(
             parser,
             Parser {
                 redundancy_property: RedundancyProperty::RAT,
                 maxvar: Variable::new(3),
-                clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
+                clause_pivot: vector!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                 proof_start: Clause::new(2),
-                proof: stack!(
+                proof: vector!(
                     ProofStep::lemma(Clause::new(2)),
                     ProofStep::deletion(Clause::new(0)),
                     ProofStep::lemma(Clause::new(3)),

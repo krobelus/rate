@@ -27,7 +27,7 @@ use crate::{
     clause::Reason,
     config::RedundancyProperty,
     literal::Literal,
-    memory::{Array, Stack},
+    memory::{Array, Vector},
     output::solution,
     parser::{
         clause_db, open_file, proof_format_by_extension, run_parser, witness_db,
@@ -128,7 +128,7 @@ fn main() -> Result<(), ()> {
             );
         }
     }
-    let witnesses = sick.witness.unwrap_or_else(Stack::new);
+    let witnesses = sick.witness.unwrap_or_else(Vector::new);
     const PIVOT: &str = "RAT requires to specify a pivot for each witness";
     if redundancy_property == RedundancyProperty::RAT {
         let mut specified_pivots: Vec<Literal> = witnesses

@@ -1,7 +1,7 @@
 //! A propositional assignment
 //!
 //! This has proven to be a useful abstraction. Unfortunately we need to expose
-//! most of its internals since we modify the assignment stack when applying a
+//! most of its internals since we modify the assignment vector when applying a
 //! revision.
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 };
 use std::{fmt, fmt::Display, ops::Index, slice};
 
-/// An assignment comprising a mapping plus a trail (stack of literals).
+/// An assignment comprising a mapping plus a trail (vector of literals).
 ///
 /// Note that [`Literal::TOP`] is always assigned.
 ///

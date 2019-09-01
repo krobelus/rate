@@ -3,7 +3,7 @@
 use crate::{
     clause::{Clause, ClauseIdentifierType},
     literal::Literal,
-    memory::{Offset, Stack},
+    memory::{Offset, Vector},
 };
 
 use rate_macros::HeapSpace;
@@ -27,9 +27,9 @@ pub struct ClauseDatabase {
     /// The first element encodes the clause ID.
     /// The second element contains a `struct ClauseFields`.
     /// After that, the literals are stored (zero-terminated)
-    data: Stack<Literal>,
+    data: Vector<Literal>,
     /// Maps clause ID to offset in above data.
-    offset: Stack<usize>,
+    offset: Vector<usize>,
     /// Used to assert that `offset` contains an extra value that points
     /// one beyond the last element of `data`.
     have_sentinel: bool,
@@ -38,13 +38,13 @@ pub struct ClauseDatabase {
 impl ClauseDatabase {
     pub fn new() -> ClauseDatabase {
         ClauseDatabase {
-            data: Stack::new(),
-            offset: Stack::new(),
+            data: Vector::new(),
+            offset: Vector::new(),
             have_sentinel: false,
         }
     }
     #[cfg(test)]
-    pub fn from(data: Stack<Literal>, offset: Stack<usize>) -> ClauseDatabase {
+    pub fn from(data: Vector<Literal>, offset: Vector<usize>) -> ClauseDatabase {
         let mut db = ClauseDatabase {
             data,
             offset,
@@ -149,7 +149,7 @@ impl ClauseDatabase {
                 .iter()
                 .filter(|&literal| *literal != Literal::BOTTOM)
                 .map(|&literal| format!(" {}", literal))
-                .collect::<Stack<_>>()
+                .collect::<Vector<_>>()
                 .join("")
         )
     }
@@ -232,19 +232,19 @@ impl IndexMut<usize> for ClauseDatabase {
 /// Each witness is a set of literals that are associated with a clause.
 #[derive(Debug, PartialEq, HeapSpace)]
 pub struct WitnessDatabase {
-    data: Stack<Literal>,
-    offset: Stack<usize>,
+    data: Vector<Literal>,
+    offset: Vector<usize>,
 }
 
 impl WitnessDatabase {
     pub fn new() -> WitnessDatabase {
         WitnessDatabase {
-            data: Stack::new(),
-            offset: Stack::new(),
+            data: Vector::new(),
+            offset: Vector::new(),
         }
     }
     #[cfg(test)]
-    pub fn from(data: Stack<Literal>, offset: Stack<usize>) -> WitnessDatabase {
+    pub fn from(data: Vector<Literal>, offset: Vector<usize>) -> WitnessDatabase {
         WitnessDatabase { data, offset }
     }
     pub fn empty(&self) -> bool {
