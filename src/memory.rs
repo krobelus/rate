@@ -17,7 +17,7 @@ mod array;
 mod boundedvector;
 #[macro_use]
 mod vector;
-mod smallstack;
+mod smallvector;
 mod stackmapping;
 
 use std::convert::TryFrom;
@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 pub use crate::memory::{
     array::Array,
     boundedvector::BoundedVector,
-    smallstack::SmallStack,
+    smallvector::SmallVector,
     stackmapping::StackMapping,
     vector::{assert_in_bounds, Vector},
 };

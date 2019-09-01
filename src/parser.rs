@@ -5,7 +5,7 @@ use crate::{
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{format_memory_usage, HeapSpace, Offset, SmallStack, Vector},
+    memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
     output::{self, Timer},
 };
 use std::{
@@ -226,9 +226,9 @@ impl HeapSpace for FixedSizeHashTable {
 /// A hashtable that simply uses the standard `HashMap`
 ///
 /// This maps clauses (by equality) to a a list of clause identifiers.
-/// We chose `SmallStack<Clause>` for the latter because most clauses are
+/// We chose `SmallVector<Clause>` for the latter because most clauses are
 /// not duplicated. This way we can avoid one allocation for unique clauses.
-pub struct DynamicHashTable(HashMap<ClauseHashEq, SmallStack<Clause>>);
+pub struct DynamicHashTable(HashMap<ClauseHashEq, SmallVector<Clause>>);
 
 impl DynamicHashTable {
     /// Create a new empty hash table.
@@ -241,7 +241,7 @@ impl HashTable for DynamicHashTable {
         let key = ClauseHashEq(clause);
         self.0
             .entry(key)
-            .or_insert_with(SmallStack::new)
+            .or_insert_with(SmallVector::new)
             .push(clause)
     }
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {
