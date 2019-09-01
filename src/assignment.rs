@@ -1,4 +1,4 @@
-//! A partial assignment.
+//! A propositional assignment
 //!
 //! This has proven to be a useful abstraction. Unfortunately we need to expose
 //! most of its internals since we modify the assignment stack when applying a
@@ -148,7 +148,9 @@ impl HeapSpace for Assignment {
     }
 }
 
-/// UP-models in rupee
+/// Given an assignment, return true whenever the clause will not trigger
+/// unit propagation.
+/// This is equivalent to `UP-models` in rupee's sickcheck.
 pub fn stable_under_unit_propagation(assignment: &Assignment, clause: &[Literal]) -> bool {
     let clause_is_satisfied = clause.iter().any(|&literal| assignment[literal]);
     let unknown_count = clause

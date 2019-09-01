@@ -1,4 +1,4 @@
-//! Stack with fast lookup.
+//! Stack with fast by-value lookup.
 
 use crate::memory::{Array, BoundedStack, Offset};
 use rate_macros::HeapSpace;

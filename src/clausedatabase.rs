@@ -1,6 +1,7 @@
-///! Container for clauses
+//! Container for clauses
+
 use crate::{
-    clause::{Clause, ClauseStorage},
+    clause::{Clause, ClauseIdentifierType},
     literal::Literal,
     memory::{Offset, Stack},
 };
@@ -12,10 +13,14 @@ use std::{
     ops::{Index, IndexMut, Range},
 };
 
+/// Size of metadata that precede the literals of a clause
 pub const PADDING_START: usize = 2;
+/// Location of the fields within the metadata.
 pub const FIELDS_OFFSET: usize = 1;
+/// Size of the clause suffix (terminating 0)
 pub const PADDING_END: usize = 1;
 
+/// Stores clauses in a flat buffer
 #[derive(Debug, PartialEq, HeapSpace)]
 pub struct ClauseDatabase {
     /// Stores clauses with some metadata.
@@ -53,11 +58,11 @@ impl ClauseDatabase {
         self.push_sentinel(0);
     }
     pub const PADDING: usize = 1;
-    pub fn number_of_clauses(&self) -> ClauseStorage {
+    pub fn number_of_clauses(&self) -> ClauseIdentifierType {
         assert!(self.have_sentinel);
         let number = self.offset.len() - ClauseDatabase::PADDING;
-        assert!(ClauseStorage::try_from(number).is_ok());
-        number as ClauseStorage
+        assert!(ClauseIdentifierType::try_from(number).is_ok());
+        number as ClauseIdentifierType
     }
     pub fn last_clause(&self) -> Clause {
         requires!(self.have_sentinel);
@@ -209,10 +214,6 @@ impl ClauseDatabase {
     }
 }
 
-fn is_size_1_clause(clause: &[Literal]) -> bool {
-    clause.len() == 2 && (clause[0] == Literal::BOTTOM || clause[1] == Literal::BOTTOM)
-}
-
 impl Index<usize> for ClauseDatabase {
     type Output = Literal;
     fn index(&self, offset: usize) -> &Literal {
@@ -226,6 +227,9 @@ impl IndexMut<usize> for ClauseDatabase {
     }
 }
 
+/// Stores witnesses in a flat buffer
+///
+/// Each witness is a set of literals that are associated with a clause.
 #[derive(Debug, PartialEq, HeapSpace)]
 pub struct WitnessDatabase {
     data: Stack<Literal>,
@@ -305,20 +309,14 @@ impl IndexMut<usize> for WitnessDatabase {
     }
 }
 
-pub fn sort_clause(clause: &mut [Literal]) {
+/// Return true if this clause is of size one (special type of unit clause).
+fn is_size_1_clause(clause: &[Literal]) -> bool {
+    clause.len() == 2 && (clause[0] == Literal::BOTTOM || clause[1] == Literal::BOTTOM)
+}
+
+/// Sort a clause by its internal encoding
+fn sort_clause(clause: &mut [Literal]) {
     let _sort_literally = |&literal: &Literal| literal.decode();
     let _sort_magnitude = |&literal: &Literal| literal.encoding;
     clause.sort_unstable_by_key(_sort_literally);
-}
-
-pub fn external_clause_to_string(clause: &[Literal]) -> String {
-    format!(
-        "{} 0",
-        clause
-            .iter()
-            .filter(|&literal| *literal != Literal::BOTTOM)
-            .map(|&literal| format!(" {}", literal))
-            .collect::<Vec<_>>()
-            .join("")
-    )
 }

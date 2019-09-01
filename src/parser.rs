@@ -21,17 +21,26 @@ use std::{
     slice,
 };
 
-// This needs to be static so that hash and equality functions can access it.
+/// The static singleton instance of the clause database.
+///
+/// It needs to be static so that hash and equality functions can access it.
 pub static mut CLAUSE_DATABASE: NonNull<ClauseDatabase> = NonNull::dangling();
+
+/// Static singleton instance of the witness database.
+///
+/// This should be made non-static.
 pub static mut WITNESS_DATABASE: NonNull<WitnessDatabase> = NonNull::dangling();
 
+/// Wrapper to access the clause database safely in a single-threaded context.
 pub fn clause_db() -> &'static mut ClauseDatabase {
     unsafe { CLAUSE_DATABASE.as_mut() }
 }
+/// Wrapper to access the witness database safely in a single-threaded context.
 pub fn witness_db() -> &'static mut WitnessDatabase {
     unsafe { WITNESS_DATABASE.as_mut() }
 }
 
+/// Release the memory by both clause and witness database.
 pub fn free_clause_database() {
     unsafe {
         Box::from_raw(CLAUSE_DATABASE.as_ptr());
@@ -39,19 +48,34 @@ pub fn free_clause_database() {
     }
 }
 
+/// CNF and DRAT/DPR parser.
 #[derive(Debug, PartialEq)]
 pub struct Parser {
+    /// The redundancy property identifying the proof format.
     pub redundancy_property: RedundancyProperty,
+    /// The highest variable parsed so far
     pub maxvar: Variable,
+    /// For RAT, the pivot (first literal) for each clause
+    ///
+    /// It is necessary to store this because the clauses will be sorted
+    /// (and watches will be shuffled).
     pub clause_pivot: Stack<Literal>,
+    /// The first clause that is part of the proof (and not the input formula)
     pub proof_start: Clause,
+    /// The proof steps
     pub proof: Stack<ProofStep>,
+    /// How many proof steps we want to parse
     pub max_proof_steps: Option<usize>,
+    /// Whether to insert an extra empty clause at the end
     pub no_terminating_empty_clause: bool,
+    /// Print diagnostics and timing information
     pub verbose: bool,
 }
 
 impl Parser {
+    /// Create a new parser.
+    ///
+    /// *Note*: this initializes the clause and witness databases, so this should only be called once.
     pub fn new() -> Parser {
         unsafe {
             CLAUSE_DATABASE =
@@ -77,29 +101,49 @@ impl Parser {
             verbose: true,
         }
     }
+    /// Returns true if we are parsing a (D)PR proof.
     pub fn is_pr(&self) -> bool {
         self.redundancy_property == RedundancyProperty::PR
     }
 }
 
+/// A hash table that maps clauses (sets of literals) to clause identifiers.
 pub trait HashTable {
+    /// Add a new clause to the hashtable.
     fn add_clause(&mut self, clause: Clause);
+    /// Find a clause that is equivalent to given clause.
+    ///
+    /// If delete is true, delete the found clause.
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause>;
+    /// Return true if this exact clause is active.
     #[allow(dead_code)]
     fn clause_is_active(&self, needle: Clause) -> bool;
+    /// Delete this exact clause, return true if that succeeded.
     #[allow(dead_code)]
     fn delete_clause(&mut self, needle: Clause) -> bool;
 }
 
+/// A hash table with a fixed size
+///
+/// This should work exactly like the one used in `drat-trim`.
+/// Given that we expect the number of clauses in the hash table
+/// not to exceed a couple million this should be faster and leaner than
+/// [DynamicHashTable](struct.DynamicHashTable.html).
 pub struct FixedSizeHashTable(Stack<Stack<Clause>>);
 
+/// Return the hash bucket to which this clause belongs.
 fn bucket_index(clause: &[Literal]) -> usize {
     clause_hash(clause) % FixedSizeHashTable::SIZE
 }
 
 impl FixedSizeHashTable {
+    /// The number of buckets in our hash table (`drat-trim` uses a million)
     const SIZE: usize = 2 * 1024 * 1024;
+    /// The initial size of each bucket.
+    ///
+    /// We could increase this to at least use `malloc_usable_size` (system-dependent).
     const BUCKET_INITIAL_SIZE: u16 = 4;
+    /// Allocate the hash table.
     #[allow(clippy::new_without_default)]
     pub fn new() -> FixedSizeHashTable {
         FixedSizeHashTable(Stack::from_vec(vec![
@@ -111,8 +155,11 @@ impl FixedSizeHashTable {
     }
 }
 
+/// An iterator over the elements of the hash table
 pub struct FixedSizeHashTableIterator<'a> {
+    /// The iterator over the buckets
     buckets: slice::Iter<'a, Stack<Clause>>,
+    /// The iterator over a single bucket
     bucket: slice::Iter<'a, Clause>,
 }
 
@@ -176,9 +223,15 @@ impl HeapSpace for FixedSizeHashTable {
     }
 }
 
+/// A hashtable that simply uses the standard `HashMap`
+///
+/// This maps clauses (by equality) to a a list of clause identifiers.
+/// We chose `SmallStack<Clause>` for the latter because most clauses are
+/// not duplicated. This way we can avoid one allocation for unique clauses.
 pub struct DynamicHashTable(HashMap<ClauseHashEq, SmallStack<Clause>>);
 
 impl DynamicHashTable {
+    /// Create a new empty hash table.
     pub fn new() -> DynamicHashTable {
         DynamicHashTable(HashMap::new())
     }
@@ -226,6 +279,8 @@ impl HashTable for DynamicHashTable {
     }
 }
 
+/// Wrapper struct around clause implementing hash and equality by looking
+/// at the literals in the clause database.
 #[derive(Debug, Eq, Clone, Copy)]
 pub struct ClauseHashEq(pub Clause);
 
@@ -241,6 +296,7 @@ impl PartialEq for ClauseHashEq {
     }
 }
 
+/// Parse a formula and a proof file.
 pub fn parse_files(
     formula_file: &str,
     proof_file: &str,
@@ -258,6 +314,7 @@ pub fn parse_files(
     parser
 }
 
+/// Print the memory usage of a parser (useful after parsing).
 fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
     let usages = vec![
         ("db", clause_db().heap_space()),
@@ -272,6 +329,10 @@ fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
     }
 }
 
+/// Parse a formula.
+///
+/// This requires the proof file as well to determine the proof format,
+/// which is necessary for initialization of the witness database.
 pub fn run_parser_on_formula(
     mut parser: &mut Parser,
     formula: Option<&str>,
@@ -299,6 +360,7 @@ pub fn run_parser_on_formula(
     }
 }
 
+/// Parse a formula and a proof file using a given hash table.
 pub fn run_parser(
     mut parser: &mut Parser,
     formula: Option<&str>,
@@ -327,22 +389,38 @@ pub fn run_parser(
     parser.proof.shrink_to_fit();
 }
 
+/// Open a file for reading.
+/// # Panics
+/// Panics on error.
 pub fn open_file(filename: &str) -> File {
     File::open(filename).unwrap_or_else(|err| die!("cannot open file: {}", err))
 }
 
+/// Open a file for writing.
+/// # Panics
+/// Panics on error.
 pub fn open_file_for_writing(filename: &str) -> BufWriter<File> {
     BufWriter::new(
         File::create(filename).unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
     )
 }
 
+/// File extension of Zstandard archives.
 const ZSTD: &str = ".zst";
+/// File extension of Gzip archives.
 const GZIP: &str = ".gz";
+/// File extension of Bzip2 archives.
 const BZIP2: &str = ".bz2";
-const LZ4: &str = ".lz4";
+/// File extension of XZ archives.
 const XZ: &str = ".xz";
+/// File extension of LZ4 archives.
+const LZ4: &str = ".lz4";
 
+/// Strip the compression format off a filename.
+///
+/// If the filename ends with a known archive extension,
+/// return the filname without extension and the extension.
+/// Otherwise return the unmodified filename and the empty string.
 fn compression_format_by_extension(filename: &str) -> (&str, &str) {
     let mut basename = filename;
     let mut compression_format = "";
@@ -356,6 +434,7 @@ fn compression_format_by_extension(filename: &str) -> (&str, &str) {
     (basename, compression_format)
 }
 
+/// Determine the proof format based on the proof filename.
 pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
     let (basename, _compression_format) = compression_format_by_extension(proof_filename);
     if basename.ends_with(".drat") {
@@ -368,6 +447,7 @@ pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
 }
 
 impl RedundancyProperty {
+    /// Give the canonical file extension for proofs based on this redundancy property.
     #[allow(dead_code)]
     pub fn file_extension(&self) -> &str {
         match self {
@@ -377,6 +457,11 @@ impl RedundancyProperty {
     }
 }
 
+/// Return an [Input](struct.Input.html) to read from a possibly compressed file.
+///
+/// If the file is compressed it is transparently uncompressed.
+/// If the filename is "-", returns an [Input](struct.Input.html) reading data from stdin.
+/// Argument `binary` is passed on to [Input](struct.Input.html).
 pub fn read_compressed_file_or_stdin<'a>(
     filename: &'a str,
     binary: bool,
@@ -388,10 +473,17 @@ pub fn read_compressed_file_or_stdin<'a>(
     }
 }
 
+/// Return an [Input](struct.Input.html) to read from a possibly compressed file.
+///
+/// If the file is compressed it is transparently uncompressed.
+/// Argument `binary` is passed on to [Input](struct.Input.html).
 pub fn read_compressed_file(filename: &str, binary: bool) -> Input {
     Input::new(read_compressed_file_impl(filename), binary)
 }
 
+/// Return an Iterator to read from a possibly compressed file.
+///
+/// If the file is compressed it is transparently uncompressed.
 fn read_compressed_file_impl(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let file = open_file(filename);
     let (_basename, compression_format) = compression_format_by_extension(filename);
@@ -425,10 +517,14 @@ fn read_compressed_file_impl(filename: &str) -> Box<dyn Iterator<Item = u8>> {
     }
 }
 
+/// Unwraps a result, panicking on error.
 pub fn panic_on_error<T>(result: Result<T>) -> T {
     result.unwrap_or_else(|error| die!("{}", error))
 }
 
+/// Add a literal to the clause or witness database.
+///
+/// If the literal is zero, the current clause or witness will be terminated.
 fn add_literal(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
@@ -468,6 +564,9 @@ fn add_literal(
     }
 }
 
+/// Add a deletion to the proof.
+///
+/// Looks up the last parsed clause in the hash table and adds the deletion upon success.
 fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
     let clause = clause_db().last_clause();
     match clause_ids.find_equal_clause(clause, /*delete=*/ true) {
@@ -488,6 +587,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
     clause_db().pop_clause();
 }
 
+/// Compute the hash of a clause. This is the same hash function `drat-trim` uses.
 fn clause_hash(clause: &[Literal]) -> usize {
     let mut sum: usize = 0;
     let mut prod: usize = 1;
@@ -500,24 +600,38 @@ fn clause_hash(clause: &[Literal]) -> usize {
     ((1023 * sum + prod) ^ (31 * xor))
 }
 
+/// Check if a character is a decimal digit.
 fn is_digit(value: u8) -> bool {
     value >= b'0' && value <= b'9'
 }
 
+/// Check if a character is a decimal digit or a dash.
 fn is_digit_or_dash(value: u8) -> bool {
     is_digit(value) || value == b'-'
 }
 
+// Error messages.
+/// A numeric overflow. This should only happen for user input.
 const OVERFLOW: &str = "overflow while parsing number";
-const NUMBER: &str = "expected number";
-const SPACE: &str = "expected space";
-const NUMBER_OR_SPACE: &str = "expected number or space";
-const NUMBER_OR_MINUS: &str = "expected number or \"-\"";
+/// Parser error ("unexpected EOF")
 const EOF: &str = "premature end of file";
+/// Parser error (`expected ...`)
+const NUMBER: &str = "expected number";
+/// Parser error (`expected ...`)
+const SPACE: &str = "expected space";
+/// Parser error (`expected ...`)
+const NUMBER_OR_SPACE: &str = "expected number or space";
+/// Parser error (`expected ...`)
+const NUMBER_OR_MINUS: &str = "expected number or \"-\"";
+/// Parser error (`expected ...`)
 const P_CNF: &str = "expected \"p cnf\"";
+/// Parser error (`expected ...`)
 const DRAT: &str = "expected DRAT instruction";
+/// Parser error (`expected ...`)
 const NEWLINE: &str = "expected newline";
 
+/// Parse a decimal number.
+///
 /// Consumes one or more decimal digits, returning the value of the
 /// resulting number on success. Fails if there is no digit or if the digits do
 /// not end in a whitespace or newline.
@@ -557,6 +671,8 @@ fn parse_i32(input: &mut Input) -> Result<i32> {
     }
 }
 
+/// Parse a [Literal](../literal/struct.Literal.html).
+///
 /// Consumes zero or more whitespace characters followd
 /// by an optional "-", a number of at least one decimal digit,
 /// trailed by whitespace. If the number is zero, consumes all whitespace
@@ -582,6 +698,7 @@ pub fn parse_literal(input: &mut Input) -> Result<Literal> {
     }
 }
 
+/// Parse a literal from a compressed proof.
 pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
@@ -598,6 +715,8 @@ pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     Ok(Literal::from_raw(result))
 }
 
+/// Parse a DIMACS comment starting with "c ".
+///
 /// Consumes a leading "c" and any characters until (including) the next newline.
 fn parse_comment(input: &mut Input) -> Result<()> {
     match input.peek() {
@@ -614,6 +733,7 @@ fn parse_comment(input: &mut Input) -> Result<()> {
     }
 }
 
+/// Parse one or more spaces.
 fn parse_some_spaces(input: &mut Input) -> Result<()> {
     if input.peek() != Some(b' ') {
         return Err(input.error(SPACE));
@@ -624,6 +744,7 @@ fn parse_some_spaces(input: &mut Input) -> Result<()> {
     Ok(())
 }
 
+/// Parse zero or more spaces.
 fn parse_any_space(input: &mut Input) {
     while let Some(c) = input.peek() {
         if c != b' ' {
@@ -633,6 +754,7 @@ fn parse_any_space(input: &mut Input) {
     }
 }
 
+/// Parse zero or more spaces or linebreaks.
 fn parse_any_whitespace(input: &mut Input) {
     while let Some(c) = input.peek() {
         if !is_space(c) {
@@ -642,6 +764,7 @@ fn parse_any_whitespace(input: &mut Input) {
     }
 }
 
+/// Parse a DIMACS header.
 fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     while Some(b'c') == input.peek() {
         parse_comment(input)?
@@ -660,10 +783,15 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     Ok((maxvar, num_clauses))
 }
 
+/// Returns true if the character is one of the whitespace characters we allow.
 fn is_space(c: u8) -> bool {
     [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
 }
 
+/// Commence the addition of a new clause to the database.
+///
+/// Must be called before pushing th first literal with
+/// [add_literal()](fn.add_literal.html).
 fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     let clause = clause_db().open_clause();
     if parser.is_pr() && state != ProofParserState::Deletion {
@@ -673,6 +801,7 @@ fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     clause
 }
 
+/// Parse a DIMACS clause.
 fn parse_clause(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
@@ -689,6 +818,7 @@ fn parse_clause(
     }
 }
 
+/// Parse a DIMACS formula.
 fn parse_formula(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
@@ -705,10 +835,14 @@ fn parse_formula(
     Ok(())
 }
 
+/// Returns true if the file is in binary (compressed) DRAT.
+///
+/// Read the first ten characters of the given file to determine
+/// that, just like `drat-trim`. This works fine on real proofs.
 pub fn is_binary_drat(filename: &str) -> bool {
     is_binary_drat_impl(read_compressed_file_impl(filename))
 }
-// See drat-trim
+/// Implementation of `is_binary_drat`.
 fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
     for c in buffer {
         if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
@@ -719,14 +853,20 @@ fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
     false
 }
 
+/// The state of our proof parser
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ProofParserState {
+    /// Before the start of an instruction
     Start,
+    /// Inside a clause/lemma
     Clause,
+    /// Inside a witness
     Witness,
+    /// Inside a deletion
     Deletion,
 }
 
+/// Parse a single proof step
 pub fn parse_proof_step(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
@@ -785,6 +925,10 @@ pub fn parse_proof_step(
     Ok(None)
 }
 
+/// Fix-up incomplete proofs.
+///
+/// This adds a zero if the last line was missing one.
+/// Additionally it adds an empty clause as final lemma.
 pub fn finish_proof(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
@@ -810,6 +954,7 @@ pub fn finish_proof(
     }
 }
 
+/// Parse a proof given the hashtable.
 fn parse_proof(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
@@ -829,21 +974,10 @@ fn parse_proof(
         }
     }
     finish_proof(parser, clause_ids, &mut state);
-    assert_clause_ids_are_within_limits();
     Ok(())
 }
 
-fn assert_clause_ids_are_within_limits() {
-    let num_clauses = clause_db().number_of_clauses();
-    if num_clauses > Clause::MAX_ID + 1 {
-        die!(
-            "Number of clauses (in formula and proof) {} exceeds maximum number of clauses {}",
-            num_clauses,
-            Clause::MAX_ID + 1
-        );
-    }
-}
-
+/// Print the clause and witness databases, for debugging.
 #[allow(dead_code)]
 pub fn print_db() {
     let clause_db = &clause_db();
@@ -962,14 +1096,20 @@ impl HeapSpace for Parser {
     }
 }
 
+/// A peekable iterator for bytes that records line and column information.
 pub struct Input<'a> {
+    /// The source of the input data
     source: Peekable<Box<dyn Iterator<Item = u8> + 'a>>,
+    /// Whether we are parsing binary or textual data
     binary: bool,
+    /// The current line number (if not binary)
     line: usize,
+    /// The current column
     column: usize,
 }
 
 impl<'a> Input<'a> {
+    /// Create a new `Input` from some source
     pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
         Input {
             source: source.peekable(),
@@ -978,9 +1118,11 @@ impl<'a> Input<'a> {
             column: 1,
         }
     }
+    /// Look at the next byte without consuming it
     pub fn peek(&mut self) -> Option<u8> {
         self.source.peek().cloned()
     }
+    /// Create an io::Error with the given message and position information.
     pub fn error(&self, why: &'static str) -> Error {
         Error::new(
             ErrorKind::InvalidData,

@@ -1,4 +1,4 @@
-//! Proof checking logic.
+//! Proof checking logic
 
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
@@ -22,6 +22,7 @@ use std::{
     ops::{self, Index},
 };
 
+/// The (intermediate) result of a proof checker
 #[derive(PartialEq, Eq, Debug)]
 pub enum Verdict {
     Verified,
@@ -29,6 +30,9 @@ pub enum Verdict {
     Falsified,
 }
 
+/// The proof checker
+///
+/// Contains most everything but the clause and witness databases.
 #[derive(Debug)]
 pub struct Checker {
     pub proof: Stack<ProofStep>,
@@ -71,36 +75,61 @@ pub struct Checker {
     grat_pending_prerat: Stack<GRATLiteral>,
     grat_prerat: Array<Clause, bool>,
 
+    /// Size of the input formula.
     pub premise_length: usize,
+    /// Number of verified RUP inferences.
     pub rup_introductions: usize,
+    /// Number of verified RAT inferences.
     pub rat_introductions: usize,
+    /// Number of deletions that were applied.
     pub deletions: usize,
+    /// Number of deletions that were skipped.
     pub skipped_deletions: usize,
+    /// Number of reason deletions that were applied.
     pub reason_deletions: usize,
+    /// Number of unique reason deletions that were applied.
     pub reason_deletions_shrinking_trail: usize,
+    /// Number of clauses that were already satisfied in the forward pass,
+    /// so with `--skip-unit-deletions` we do not add them to the watchlists.
     pub satisfied_count: usize,
 }
 
 bitfield! {
+    /// The data to store for each clause in the metadata field of the
+    /// [ClauseDatabase](../clausedatabase/struct.ClauseDatabase.html).
     pub struct ClauseFields(u32);
     impl Debug;
+    /// Whether the clause is in the core (scheduled for verification).
     is_scheduled, set_is_scheduled: 0;
+    /// Whether the clause is a reason in the current trail.
     is_reason, set_is_reason: 1;
+    /// Whether the clause is in some watchlist.
     in_watchlist, set_in_watchlist: 2;
+    /// Whether a deletion of this clause produced a revision.
     has_revision, set_has_revision: 3;
+    /// Whether a deletion of this clause was ignored.
     deletion_ignored, set_deletion_ignored: 4;
+    /// Whether this clause is a reason for the current conflict.
     in_conflict_graph, set_in_conflict_graph: 5;
 }
 
+/// Stores the information that was removed from the trail after a reason deletion
 #[derive(Debug, HeapSpace, Default, Clone)]
 struct Revision {
+    /// The literals that were unassigned.
     cone: Stack<Literal>,
+    /// The position of each unassigned literal.
     position_in_trail: Stack<usize>,
+    /// The reason clause of each unassigned literal.
     reason_clause: Stack<Clause>,
+    /// The length of the trail after unassigning literals (but before propagating).
     trail_length_after_removing_cone: usize,
 }
 
 impl Checker {
+    /// Instantiate the checker, consuming a
+    /// [Parser](../parser/struct.Parser.html) and a
+    /// [Config](../config/struct.Config.html)
     pub fn new(parser: Parser, config: Config) -> Checker {
         let num_clauses = clause_db().number_of_clauses() as usize;
         let num_lemmas = parser.proof.len();
@@ -199,22 +228,28 @@ impl Checker {
         }
         checker
     }
+    /// Run the checker.
     pub fn run(&mut self) -> Verdict {
         run(self)
     }
+    /// Print memory usage statistics (after checking).
     pub fn print_memory_usage(&self) {
         print_memory_usage(self)
     }
+    /// Build the DIMACS representation of the given clause.
     fn clause_to_string(&self, clause: Clause) -> String {
         clause_db().clause_to_string(clause)
     }
+    /// Build the DIMACS representation of the given witness.
     #[allow(dead_code)]
     fn witness_to_string(&self, clause: Clause) -> String {
         witness_db().witness_to_string(clause)
     }
+    /// Access the clause by ID.
     fn clause(&self, clause: Clause) -> &[Literal] {
         clause_db().clause(clause)
     }
+    /// Access the witness by clause ID.
     #[allow(dead_code)]
     fn witness(&self, clause: Clause) -> &[Literal] {
         witness_db().witness(clause)
@@ -234,6 +269,7 @@ impl Checker {
     fn clause2offset(&self, clause: Clause) -> usize {
         clause_db().clause2offset(clause)
     }
+    /// Return whether this clause is in the core.
     fn clause_mode(&self, clause: Clause) -> Mode {
         if self.fields(clause).is_scheduled() {
             Mode::Core
@@ -255,6 +291,8 @@ impl Checker {
             &mut *(clause_db().fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
         }
     }
+    /// Build the DIMACS representation of this clause, but color literals
+    /// according to the current assignment.
     #[allow(dead_code)]
     fn clause_colorized(&self, clause: Clause) -> String {
         let mut result = String::new();
@@ -270,6 +308,7 @@ impl Checker {
         }
         result
     }
+    /// Return the empty clause that finishes the proof.
     fn closing_empty_clause(&self) -> Clause {
         requires!(self.proof_steps_until_conflict != usize::max_value());
         let proof_step = self.proof[self.proof_steps_until_conflict];
@@ -277,6 +316,7 @@ impl Checker {
     }
 }
 
+/// Run the checker.
 fn run(checker: &mut Checker) -> Verdict {
     let verdict = if checker.config.forward {
         forward_check(checker)
@@ -304,6 +344,7 @@ fn run(checker: &mut Checker) -> Verdict {
     }
 }
 
+/// Perform a forward check.
 fn forward_check(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("forward check");
     for clause in Clause::range(0, checker.lemma) {
@@ -333,6 +374,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
     Verdict::NoConflict
 }
 
+/// Delete a clause during the forward pass.
 fn forward_delete(checker: &mut Checker, clause: Clause) {
     if clause == Clause::DOES_NOT_EXIST {
         return;
@@ -390,6 +432,9 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
     }
 }
 
+/// Must be called before adding a clause in the forward pass.
+///
+/// Returns true if we hit the empty clause (trivial UNSAT).
 fn forward_preadd(checker: &mut Checker, step: usize, clause: Clause) -> bool {
     invariant!(clause == checker.lemma);
     if checker.clause(clause).is_empty() {
@@ -417,11 +462,19 @@ impl fmt::Display for Revision {
     }
 }
 
+/// A boolean value that states whether a conflict has been reached by unit propagation.
+///
+/// We use the newtype pattern here to clearly distinguish from other
+/// boolean values. We provide both constants explicitly and use `==` to compare it
+/// instead of making it an enum for the lack of a good enum name.
 #[derive(Debug, PartialEq, Eq)]
 struct MaybeConflict(bool);
+/// A conflict has been found
 const CONFLICT: MaybeConflict = MaybeConflict(true);
+/// No conflict has been found yet
 const NO_CONFLICT: MaybeConflict = MaybeConflict(false);
 
+/// Add the clause to the core / schedule it for verification.
 fn schedule(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.fields(clause).is_scheduled() {
         if checker.config.lrat_filename.is_some() {
@@ -434,6 +487,7 @@ fn schedule(checker: &mut Checker, clause: Clause) {
     checker.fields_mut(clause).set_is_scheduled(true);
 }
 
+/// Change the reason flag for some clause.
 fn set_reason_flag(checker: &mut Checker, reason: Reason, value: bool) {
     if !reason.is_assumed() {
         let clause = checker.offset2clause(reason.offset());
@@ -441,6 +495,10 @@ fn set_reason_flag(checker: &mut Checker, reason: Reason, value: bool) {
     }
 }
 
+/// Add a literal to the trail with a given reason.
+///
+/// The literal must not be already satisfied.
+/// If the literal is falsified, return a conflict.
 fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConflict {
     requires!(!checker.assignment[literal]);
     checker.assignment.push(literal, reason);
@@ -458,7 +516,11 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
     }
 }
 
-// stolen from gratgen
+/// Perform core-first unit propagation.
+///
+/// This is heavily inspired by `gratgen`.
+///
+/// Returns a conflict if it can be found by unit propagation.
 fn propagate(checker: &mut Checker) -> MaybeConflict {
     let mut processed_core = checker.processed;
     let mut core_mode = true;
@@ -565,6 +627,7 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
     }
 }
 
+/// Move a clause from the non-core watchlists to the core ones.
 fn move_to_core(checker: &mut Checker, offset: usize) {
     if checker.fields_from_offset(offset).is_scheduled() {
         return;
@@ -582,6 +645,8 @@ fn move_to_core(checker: &mut Checker, offset: usize) {
     watch_add(checker, Mode::Core, w2, offset);
 }
 
+/// Record the size of the trail, perform some computation, and truncate
+/// the trail to the recorded size.
 macro_rules! preserve_assignment {
     ($checker:expr, $computation:expr) => {{
         let trail_length = $checker.assignment.len();
@@ -594,15 +659,12 @@ macro_rules! preserve_assignment {
     }};
 }
 
-fn watchlist_filter_core(checker: &Checker) -> &Array<Literal, Watchlist> {
-    &checker.watchlist_core
-}
-
+/// Create the list of all resolution candidates for a given pivot literal.
 fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Clause> {
     let mut candidates = Stack::new();
     for lit in Literal::all(checker.maxvar) {
-        for i in 0..watchlist_filter_core(checker)[lit].len() {
-            let head = watchlist_filter_core(checker)[lit][i];
+        for i in 0..checker.watchlist_core[lit].len() {
+            let head = checker.watchlist_core[lit][i];
             let clause = checker.offset2clause(head);
             invariant!(checker.fields(clause).is_scheduled());
             if checker.clause(clause)[0] == lit
@@ -619,6 +681,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
     candidates
 }
 
+/// Check the current inference.
 fn check_inference(checker: &mut Checker) -> bool {
     checker.soft_propagation = true;
     let ok = match checker.redundancy_property {
@@ -654,11 +717,15 @@ fn check_inference(checker: &mut Checker) -> bool {
     ok
 }
 
+/// The reduct of a clause with respect to some assignment.
 enum Reduct {
+    /// The clause is satisified by that assignment.
     Top,
+    /// The non-empty set of unassigned literals in the clause.
     Clause(Stack<Literal>),
 }
 
+/// Compute the reuduct of a clause given an assignment.
 fn reduct(
     checker: &Checker,
     assignment: &impl Index<Literal, Output = bool>,
@@ -682,6 +749,7 @@ fn reduct(
     }
 }
 
+/// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
@@ -715,6 +783,10 @@ fn pr(checker: &mut Checker) -> bool {
     true
 }
 
+/// Call after finding a conflict during a RUP check.
+///
+/// Adds the clause that was found to be falsified by the literals in
+/// the trail to the GRAT output.
 fn add_rup_conflict_for_grat(checker: &mut Checker) {
     requires!(checker.config.grat_filename.is_some());
     let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
@@ -732,6 +804,7 @@ fn add_rup_conflict_for_grat(checker: &mut Checker) {
         .push(GRATLiteral::from_clause(reason_clause));
 }
 
+/// Return true if the lemma is a RUP or RAT inference.
 fn rup_or_rat(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
     assignment_invariants(checker);
@@ -793,9 +866,10 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
     }
 }
 
-// NOTE: lratcheck/sickcheck might require us to first assign all units before
-// returning.
+/// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
 fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeConflict {
+    // NOTE: rupee's lratcheck/sickcheck might require us to first assign all units before
+    // returning.
     for offset in checker.clause_range(clause) {
         let unit = clause_db()[offset];
         if pivot.map_or(false, |pivot| unit == -pivot) {
@@ -811,6 +885,7 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
     propagate(checker)
 }
 
+/// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
 fn slice_rup(checker: &mut Checker, clause: &[Literal]) -> MaybeConflict {
     for &unit in clause {
         if !checker.assignment[-unit] {
@@ -822,6 +897,8 @@ fn slice_rup(checker: &mut Checker, clause: &[Literal]) -> MaybeConflict {
     propagate(checker)
 }
 
+/// Returns the index of the pivot if the clause is a resolution asymmetric
+/// tautology (RAT) inference.
 fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<usize> {
     let lemma = checker.lemma;
     let pivot = checker.clause_pivot[lemma];
@@ -864,6 +941,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
     })
 }
 
+/// Returns true if the clause is a RAT inference on the given pivot.
 fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: usize) -> bool {
     let lemma = checker.lemma;
     log!(
@@ -888,6 +966,8 @@ fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: 
     }
 }
 
+/// Returns true if the clause is a RAT inference on the given pivot with
+/// respect to the resolution candidates.
 fn rat(
     checker: &mut Checker,
     pivot: Literal,
@@ -972,21 +1052,25 @@ fn rat(
     })
 }
 
+/// Add the reason clause to the conflict graph.
 fn add_to_conflict_graph(checker: &mut Checker, reason: Reason) {
     checker
         .fields_mut_from_offset(reason.offset())
         .set_in_conflict_graph(true);
 }
+/// Remove the reason clause from the conflict graph.
 fn remove_from_conflict_graph(checker: &mut Checker, reason: Reason) {
     checker
         .fields_mut_from_offset(reason.offset())
         .set_in_conflict_graph(false);
 }
+/// Returns true if the reason clause is in the conflict graph.
 fn is_in_conflict_graph(checker: &Checker, reason: Reason) -> bool {
     checker
         .fields_from_offset(reason.offset())
         .in_conflict_graph()
 }
+/// Adds the reason for the given literal to the conflict graph.
 fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
     let position = checker.assignment.position_in_trail(literal);
     let reason = checker.assignment.trail_at(position).1;
@@ -995,6 +1079,12 @@ fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
     }
 }
 
+/// Analyze a conflict.
+///
+/// This adds reasons for the conflict to the core. It performs a depth-first
+/// search in the conflict graph to add only a minimal number of clauses.
+///
+/// The reasons for the conflict are recorded for the LRAT and GRAT outputs if applicable.
 fn extract_dependencies(
     checker: &mut Checker,
     trail_length_before_rup: usize,
@@ -1090,18 +1180,20 @@ fn extract_dependencies(
     }
 }
 
-fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, is_rat: bool) {
+/// Write a line of LRAT (justyfing a single inference.
+fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, rat_inference: bool) {
     if !checker.config.lrat_filename.is_some() {
         return;
     }
-    write_dependencies_for_lrat_aux(checker, clause, is_rat);
+    write_dependencies_for_lrat_aux(checker, clause, rat_inference);
     checker.lrat.push(LRATLiteral::zero());
 }
 
-fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_check: bool) {
+/// Write a line of LRAT (justyfing a single inference (implementation).
+fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_inference: bool) {
     checker.clause_lrat_offset[clause] = checker.lrat.len();
 
-    if !rat_check {
+    if !rat_inference {
         for dependency in &checker.dependencies {
             checker
                 .lrat
@@ -1148,6 +1240,8 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_ch
     checker.lrat.push(LRATLiteral::zero());
 }
 
+/// After failing to find a conflict in an inference check, copy the natural
+/// model before the check.
 fn extract_natural_model(checker: &mut Checker, trail_length: usize) {
     if checker.config.sick_filename.is_some() {
         checker.rejection.natural_model = checker
@@ -1160,16 +1254,21 @@ fn extract_natural_model(checker: &mut Checker, trail_length: usize) {
     }
 }
 
+/// The current phase of double-sweep checking
 #[derive(Debug, PartialEq, Eq)]
 enum Stage {
+    /// Forward pass
     Preprocessing,
+    /// Backward pass
     Verification,
 }
 
+/// Find the offset of the first non-falsified literal in the clause.
 fn first_non_falsified(checker: &Checker, clause: Clause, start: usize) -> Option<usize> {
     (start..checker.clause_range(clause).end).find(|&i| !checker.assignment[-clause_db()[i]])
 }
 
+/// Find the offset of the first non-falsified literal in the clause (slightly more efficient).
 fn first_non_falsified_raw(checker: &Checker, mut start: usize) -> Option<usize> {
     while !clause_db()[start].is_zero() {
         if !checker.assignment[-clause_db()[start]] {
@@ -1180,12 +1279,17 @@ fn first_non_falsified_raw(checker: &Checker, mut start: usize) -> Option<usize>
     None
 }
 
+/// The result of searching for two non-falsified literals
 enum NonFalsified {
+    /// All literals are falsified
     None,
+    /// All but one literal are falsified
     One(usize),
+    /// There are two non-falsified literals
     Two(usize, usize),
 }
 
+/// Find the first two non-falsified literals in the clause.
 fn first_two_non_falsified(checker: &Checker, clause: Clause) -> NonFalsified {
     let head = checker.clause_range(clause).start;
     match first_non_falsified(checker, clause, head) {
@@ -1197,6 +1301,10 @@ fn first_two_non_falsified(checker: &Checker, clause: Clause) -> NonFalsified {
     }
 }
 
+/// Add the clause to the watchlists.
+///
+/// Assigns the unit literal if the clause is unit.
+/// Returns a conflict if the clause is falsified.
 fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConflict {
     log!(
         checker,
@@ -1244,6 +1352,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
     }
 }
 
+/// Returns true if the clause is satisfied.
 fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
     checker
         .clause(clause)
@@ -1251,6 +1360,10 @@ fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
         .any(|&literal| checker.assignment[literal])
 }
 
+/// Add a clause that is part of the input formula.
+///
+/// Assigns the unit literal if the clause is unit.
+/// Returns a conflict if the clause is falsified.
 fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     log!(
         checker,
@@ -1273,6 +1386,11 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     propagate(checker)
 }
 
+/// Finish the proof at the given step.
+///
+/// This replaces the instruction at the given step by a RUP inference of
+/// the empty clause. This works around some solvers omitting the empty clause
+/// in their proofs.
 fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
     checker.proof_steps_until_conflict = steps_until_conflict;
     let empty_clause = checker.lemma;
@@ -1304,6 +1422,10 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
     Verdict::Verified
 }
 
+/// Preprocess the proof (forward pass).
+///
+/// This propagates after each proof step and returns a conflict as soon
+/// as it arises.
 fn preprocess(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("preprocessing proof");
     log!(checker, 1, "[preprocess]");
@@ -1337,6 +1459,7 @@ fn preprocess(checker: &mut Checker) -> Verdict {
     unreachable()
 }
 
+/// Check inferences (backward pass).
 #[allow(clippy::cyclomatic_complexity)]
 fn verify(checker: &mut Checker) -> bool {
     log!(checker, 1, "[verify]");
@@ -1431,6 +1554,7 @@ fn verify(checker: &mut Checker) -> bool {
     true
 }
 
+/// Undo the propagations that were induced by the given reason clause.
 fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
     if !checker.fields(clause).is_reason() {
         return;
@@ -1465,7 +1589,13 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
     }
 }
 
-/// sortSize in drat-trim
+/// Move falsified literals to the end of the clause.
+///
+/// After moving them, they will effectively be deleted by being replaced by
+/// `Literal::BOTTOM`.  This is done to be compatible with the verified LRAT
+/// checker, which does not accept lemmas with falsified literals.
+///
+/// Equivalent to `sortSize()` in `drat-trim`
 fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
@@ -1497,6 +1627,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
     effective_end - head
 }
 
+/// Write core lemmas to a file.
 fn write_lemmas(checker: &Checker) -> io::Result<()> {
     let mut file = match &checker.config.lemmas_filename {
         Some(filename) => open_file_for_writing(filename),
@@ -1511,6 +1642,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
     Ok(())
 }
 
+/// Write the GRAT certificate to a file.
 fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.grat_filename {
         Some(filename) => open_file_for_writing(filename),
@@ -1664,6 +1796,7 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
     Ok(())
 }
 
+/// Write the LRAT certificate to a file.
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut file = match &checker.config.lrat_filename {
         Some(filename) => open_file_for_writing(filename),
@@ -1724,10 +1857,12 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     Ok(())
 }
 
+/// Get the clause's LRAT id.
 fn lrat_id(checker: &Checker, clause: Clause) -> Clause {
     checker.clause_lrat_id[clause]
 }
 
+/// Write the LRAT line justifying an inference.
 fn write_lrat_lemma(
     checker: &mut Checker,
     file: &mut impl Write,
@@ -1759,6 +1894,7 @@ fn write_lrat_lemma(
     writeln!(file, "0")
 }
 
+/// Write an LRAT line of deletions.
 fn write_lrat_deletion(
     checker: &Checker,
     file: &mut impl Write,
@@ -1782,6 +1918,7 @@ fn write_lrat_deletion(
     }
 }
 
+/// Write the SICK incorrectness witness to a file.
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     let mut file = match &checker.config.sick_filename {
         Some(filename) => open_file_for_writing(filename),
@@ -1837,6 +1974,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     Ok(())
 }
 
+/// Check invariants on the trail (expensive).
 fn assignment_invariants(checker: &Checker) {
     if !crate::config::CHECK_TRAIL_INVARIANTS {
         return;
@@ -1860,14 +1998,19 @@ fn assignment_invariants(checker: &Checker) {
     }
 }
 
+/// A list of watched clauses, each clause is stored by its offset in the clause database
 type Watchlist = Stack<usize>;
 
+/// The mode of a watchlist
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Mode {
+    /// Watchlist for core clauses
     Core,
+    /// Watchlist for non-core clauses
     NonCore,
 }
 
+/// Check watch invariants (expensive).
 fn watch_invariants(checker: &Checker) {
     if crate::config::CHECK_WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
@@ -1881,6 +2024,7 @@ fn watch_invariants(checker: &Checker) {
     }
 }
 
+/// Check invariants for some watched clause.
 fn watch_invariant(checker: &Checker, lit: Literal, head: usize) {
     let [w1, w2] = checker.watches(head);
     invariant!(
@@ -1906,6 +2050,7 @@ fn watch_invariant(checker: &Checker, lit: Literal, head: usize) {
     );
 }
 
+/// Returns the watchlist for core or non-core clauses.
 fn watchlist(checker: &Checker, mode: Mode) -> &Array<Literal, Watchlist> {
     match mode {
         Mode::Core => &checker.watchlist_core,
@@ -1913,6 +2058,7 @@ fn watchlist(checker: &Checker, mode: Mode) -> &Array<Literal, Watchlist> {
     }
 }
 
+/// Returns the mutable watchlist for core or non-core clauses.
 fn watchlist_mut(checker: &mut Checker, mode: Mode) -> &mut Array<Literal, Watchlist> {
     match mode {
         Mode::Core => &mut checker.watchlist_core,
@@ -1920,14 +2066,17 @@ fn watchlist_mut(checker: &mut Checker, mode: Mode) -> &mut Array<Literal, Watch
     }
 }
 
+/// Remove an entry in a watchlist.
 fn watch_remove_at(checker: &mut Checker, mode: Mode, lit: Literal, position_in_watchlist: usize) {
     watchlist_mut(checker, mode)[lit].swap_remove(position_in_watchlist);
 }
 
+/// Add an etnry to a watchlist.
 fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) {
     watchlist_mut(checker, mode)[lit].push(head)
 }
 
+/// Remove the watchlist entries for a clause.
 fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
     let head = checker.clause_range(clause).start;
     let [w1, w2] = checker.watches(head);
@@ -1936,6 +2085,7 @@ fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
     checker.fields_mut(clause).set_in_watchlist(false);
 }
 
+/// Remove the entries for a clause in the watchlist of a literal.
 fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) -> bool {
     requires!(lit != Literal::TOP);
     if crate::config::CHECK_WATCH_INVARIANTS {
@@ -1959,6 +2109,7 @@ fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head
 
 // Revisions
 
+/// Returns true if the literal was unassigned after reason deletion.
 fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
     invariant!(!reason.is_assumed());
     checker
@@ -1967,6 +2118,7 @@ fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
         .any(|&lit| lit != literal && checker.literal_is_in_cone_preprocess[-lit])
 }
 
+/// Create a revision after a reason deletion in the forward pass.
 fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
     watch_invariants(checker);
@@ -2015,6 +2167,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
 }
 
+/// Fix watchlist of a literal that were unassigned after a reason deletion.
 fn watchlist_revise(checker: &mut Checker, lit: Literal) {
     for &mode in &[Mode::Core, Mode::NonCore] {
         let mut i = 0;
@@ -2027,6 +2180,7 @@ fn watchlist_revise(checker: &mut Checker, lit: Literal) {
     }
 }
 
+/// Fix the watches of some clause whose watch was unassigned after a reason deletion.
 fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Clause) {
     let head = checker.clause_range(clause).start;
     if clause_db()[head] == lit {
@@ -2052,6 +2206,7 @@ fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Claus
     };
 }
 
+/// Add some, just unassigned literal to the revision.
 fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal, reason: Reason) {
     revision.cone.push(lit);
     checker.literal_is_in_cone_preprocess[lit] = true;
@@ -2066,6 +2221,10 @@ fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal,
     set_reason_flag(checker, reason, false);
 }
 
+/// Apply a revision in the backward pass.
+///
+/// This restores the trail to be like before
+/// [revision_create](fn.revision_create.html) was called.
 fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     assignment_invariants(checker);
     // During the forward pass, after revision_create, we propagate.
@@ -2131,6 +2290,7 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     assignment_invariants(checker);
 }
 
+/// Reshuffle affected watches after applying a revision.
 fn watches_reset(checker: &mut Checker, revision: &Revision) {
     for &literal in &revision.cone {
         watches_reset_list(checker, literal);
@@ -2138,6 +2298,7 @@ fn watches_reset(checker: &mut Checker, revision: &Revision) {
     }
 }
 
+/// Reshuffle the clauses in the given watchlist after applying a revision.
 fn watches_reset_list(checker: &mut Checker, literal: Literal) {
     for &mode in &[Mode::Core, Mode::NonCore] {
         let mut i = 0;
@@ -2148,6 +2309,7 @@ fn watches_reset_list(checker: &mut Checker, literal: Literal) {
     }
 }
 
+/// Reshuffle the clause to restore watch invariants.
 fn watches_reset_list_at(
     checker: &mut Checker,
     mode: Mode,
@@ -2226,6 +2388,13 @@ fn watches_reset_list_at(
     }
 }
 
+/// Scans a clause to find a non-falsified, or the most recently falsified literal.
+///
+/// Returns as soon as a non-falsified literal is found. Its location in
+/// the clause database is stored in `offset`.
+///
+/// The location and position in trail of the most recently falsified is stored
+/// in `latest_falsified_offset` and `latest_falsified_position` respectively.
 fn find_nonfalsified_and_most_recently_falsified<'a>(
     checker: &Checker,
     clause: Clause,
@@ -2250,6 +2419,7 @@ fn find_nonfalsified_and_most_recently_falsified<'a>(
     false
 }
 
+/// Print memory usage statistics (after checking)
 fn print_memory_usage(checker: &Checker) {
     macro_rules! heap_space {
         ($($x:expr,)*) => (vec!($(($x).heap_space()),*));

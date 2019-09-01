@@ -212,6 +212,9 @@ impl<'de> Deserialize<'de> for Literal {
     }
 }
 
+/// A deserializer for integers.
+///
+/// Used in the TOML parser in `sick-check`.
 struct I32Visitor;
 
 impl<'de> Visitor<'de> for I32Visitor {

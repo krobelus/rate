@@ -8,17 +8,20 @@ pub fn is_a_tty() -> bool {
     atty::is(Stream::Stdout)
 }
 
+/// This should be used for every write to stdout.
 macro_rules! write_to_stdout {
     ($($arg:tt)*) => ({
         use std::io::Write;
         match write!(std::io::stdout(), $($arg)*) {
             Ok(()) => (),
+            // Don't panic on SIGPIPE.
             Err(ref err) if err.kind() == std::io::ErrorKind::BrokenPipe =>  std::process::exit(141),
             Err(ref err) =>  panic!("{}", err),
         };
     })
 }
 
+/// implementation of log.
 macro_rules! _log {
     ($verbosity:expr, $level:expr, $($arg:tt)*) => {
         if crate::config::ENABLE_LOGGING && $level <= $verbosity
@@ -29,7 +32,7 @@ macro_rules! _log {
     };
 }
 
-// Print based on verbosity level
+/// Print a formatted message based on verbosity level
 macro_rules! log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
         _log!($checker.config.verbosity, $level, $($arg)*)
@@ -76,7 +79,6 @@ macro_rules! die {
 
 // Native assertions cannot be disabled, that's why why prefer to use this
 // macro.
-#[macro_export]
 macro_rules! invariant {
     ($($arg:tt)*) => ({
         if crate::config::CHECK_INVARIANTS {
@@ -103,22 +105,29 @@ macro_rules! comment {
     })
 }
 
+/// Write a solution line (`"s ..."`) to stdout.
 pub fn solution(verdict: &str) {
     write_to_stdout!("s {}\n", verdict);
 }
 
+/// Write a key-value pair to stdout.
 pub fn value(key: &str, value: impl Display) {
     requires!(key.len() < 35);
     comment!("{:<35} {:>15}", format!("{}:", key), value);
 }
 
+/// A RAII object that prints a timing message when it is destroyed.
 pub struct Timer {
+    /// The name of the thing that is being timed
     name: &'static str,
+    /// The start time, set at construction time
     start: SystemTime,
+    /// Whether this timer should be silenced
     pub disabled: bool,
 }
 
 impl Timer {
+    /// Create a timer with a given name.
     pub fn name(name: &'static str) -> Timer {
         Timer {
             name,
@@ -129,6 +138,7 @@ impl Timer {
 }
 
 impl Drop for Timer {
+    /// Write the elapsed time as comment.
     fn drop(&mut self) {
         if self.disabled {
             return;

@@ -4,7 +4,7 @@ use clap::ArgMatches;
 use libc::{self, signal};
 use std::fmt;
 
-/// Parsed arguments.
+/// Parsed arguments. See `rate --help` or `main.rs`.
 #[derive(Debug)]
 pub struct Config {
     pub skip_unit_deletions: bool,
@@ -35,15 +35,18 @@ pub const CHECK_TRAIL_INVARIANTS: bool = cfg!(debug_assertions);
 /// Check correctness of watches (very expensive).
 pub const CHECK_WATCH_INVARIANTS: bool = false;
 
+/// Our version of `std::unreachable()`, unsafe if invariants are disabled.
 pub fn unreachable() -> ! {
     invariant!(false, "unreachable");
     unsafe { std::hint::unreachable_unchecked() }
 }
 
+/// Report an error due to invalid parameters.
 fn incompatible_options(what: &str) {
     die!("incompatible options: {}", what);
 }
 
+/// The redundancy property to use for inference checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RedundancyProperty {
     RAT,
@@ -63,11 +66,13 @@ impl fmt::Display for RedundancyProperty {
     }
 }
 
+/// We handle SIGPIPE ourselves to avoid printing errors.
 pub fn signals() {
     assert!(unsafe { signal(libc::SIGPIPE, libc::SIG_DFL) } != libc::SIG_ERR);
 }
 
 impl Config {
+    /// Create a config from commandline arguments.
     pub fn new(matches: ArgMatches) -> Config {
         let drat_trim = matches.is_present("DRAT_TRIM");
         let rupee = matches.is_present("RUPEE");

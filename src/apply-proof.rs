@@ -1,3 +1,6 @@
+//! Apply a clausal proof up to a given line number and output the accumulated
+//! formula and the remaining proof.
+
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![allow(clippy::collapsible_if)]

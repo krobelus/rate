@@ -1,4 +1,5 @@
 //! Stack that never grows.
+
 use crate::memory::{HeapSpace, Stack};
 use rate_macros::HeapSpace;
 use std::{

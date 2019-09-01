@@ -1,4 +1,4 @@
-//! Data structures for the checker.
+//! Data structures for the checker
 
 use crate::memory::Offset;
 use derive_more::Add;
@@ -13,31 +13,39 @@ use std::{
 
 use crate::literal::Literal;
 
-pub type ClauseStorage = u32;
-
-/// The index of a clause or lemma, immutable during the lifetime of the program.
+/// An index uniquely identifying a clause or lemma during the lifetime of the program
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash, Default)]
 pub struct Clause {
-    pub index: ClauseStorage,
+    pub index: ClauseIdentifierType,
 }
 
+/// The type that backs [Clause](struct.Clause.html).
+pub type ClauseIdentifierType = u32;
+
 impl Clause {
-    pub fn new(index: ClauseStorage) -> Clause {
+    /// Create the clause index with the given ID.
+    /// # Panics
+    /// Panics if the index exceeds the internal limit.
+    pub fn new(index: ClauseIdentifierType) -> Clause {
         requires!(index <= Clause::MAX_ID);
         Clause { index }
     }
+    /// Create the clause index with the given usize ID.
+    /// # Panics
+    /// Panics if the index exceeds the internal limit.
     pub fn from_usize(index: usize) -> Clause {
-        requires!(index < ClauseStorage::max_value().try_into().unwrap());
-        Clause::new(index as ClauseStorage)
+        requires!(index < ClauseIdentifierType::max_value().try_into().unwrap());
+        Clause::new(index as ClauseIdentifierType)
     }
+    /// Create an iterator from clause indices `start` up to (excluding) `end`.
     pub fn range(start: impl Offset, end: impl Offset) -> impl Iterator<Item = Clause> {
-        const_assert!(size_of::<usize>() >= size_of::<ClauseStorage>());
+        const_assert!(size_of::<usize>() >= size_of::<ClauseIdentifierType>());
         (start.as_offset()..end.as_offset()).map(Clause::from_usize)
     }
-    /// A clause ID uses 30 bits.
-    pub const MAX_ID: ClauseStorage = Tagged32::MAX_PAYLOAD - 1;
+    /// The maximum value a regular `Clause` can assume.
+    pub const MAX_ID: ClauseIdentifierType = Tagged32::MAX_PAYLOAD - 1;
     /// We need one special value for deleted clauses that do not actually exist.
-    /// We cannot simply drop those deletions from the proof because sick-check
+    /// We cannot simply drop those deletions from the proof because `sick-check`
     /// relies on the line in the proof.
     pub const DOES_NOT_EXIST: Clause = Clause {
         index: Clause::MAX_ID + 1,
@@ -55,28 +63,28 @@ impl Offset for Clause {
     }
 }
 
-impl Add<ClauseStorage> for Clause {
+impl Add<ClauseIdentifierType> for Clause {
     type Output = Clause;
-    fn add(self, value: ClauseStorage) -> Clause {
+    fn add(self, value: ClauseIdentifierType) -> Clause {
         Clause::new(self.index + value)
     }
 }
 
-impl AddAssign<ClauseStorage> for Clause {
-    fn add_assign(&mut self, value: ClauseStorage) {
+impl AddAssign<ClauseIdentifierType> for Clause {
+    fn add_assign(&mut self, value: ClauseIdentifierType) {
         self.index += value;
     }
 }
 
-impl Sub<ClauseStorage> for Clause {
+impl Sub<ClauseIdentifierType> for Clause {
     type Output = Clause;
-    fn sub(self, value: ClauseStorage) -> Clause {
+    fn sub(self, value: ClauseIdentifierType) -> Clause {
         Clause::new(self.index - value)
     }
 }
 
-impl SubAssign<ClauseStorage> for Clause {
-    fn sub_assign(&mut self, value: ClauseStorage) {
+impl SubAssign<ClauseIdentifierType> for Clause {
+    fn sub_assign(&mut self, value: ClauseIdentifierType) {
         self.index -= value;
     }
 }
@@ -87,6 +95,9 @@ impl fmt::Display for Clause {
     }
 }
 
+/// A clause introduction or deletion
+///
+/// This is essentially this enum, but we pack everything into 32 bits.
 /// ```
 /// enum ProofStep {
 ///     Lemma(Clause),
@@ -97,15 +108,19 @@ impl fmt::Display for Clause {
 pub struct ProofStep(Tagged32);
 
 impl ProofStep {
+    /// Create a proof step that introduces the given clause.
     pub fn lemma(clause: Clause) -> ProofStep {
         ProofStep(Tagged32::new(clause.index))
     }
+    /// Create a proof step that deletes the given clause.
     pub fn deletion(clause: Clause) -> ProofStep {
         ProofStep(Tagged32::new(clause.index).with_bit1())
     }
+    /// Return true if this proof step is a clause deletion.
     pub fn is_deletion(self) -> bool {
         self.0.bit1()
     }
+    /// Return the clause that this proof step introduces or deletes.
     pub fn clause(self) -> Clause {
         Clause {
             index: self.0.payload(),
@@ -113,23 +128,33 @@ impl ProofStep {
     }
 }
 
+/// The reason for assigning a literal
+///
+/// A literal can be assumed, or forced by some clause. The clause
+/// is stored as offset to reduce the number of indirections in
+/// [propagate](../checker/fn.propagate.html).
+///
+/// This is essentially this enum, but we pack everything into `size_of::<usize>()` bits.
 /// ```
 /// enum Reason {
 ///     Assumed,
 ///     Forced(usize),
 /// }
 /// ```
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Reason(TaggedUSize);
 
 impl Reason {
+    /// Create an invalid reason, i.e. for unassigned literals.
     pub fn invalid() -> Reason {
         Reason(TaggedUSize::new(0))
     }
+    /// Create a reason for assumed literals.
     pub fn assumed() -> Reason {
         Reason(TaggedUSize::new(0).with_bit1())
     }
+    /// Create a reason for a clause that has been forced by the clause with
+    /// the given offset.
     pub fn forced(offset: usize) -> Reason {
         Reason(
             TaggedUSize::new(offset.try_into().unwrap())
@@ -137,10 +162,13 @@ impl Reason {
                 .with_bit2(),
         )
     }
+    /// Return true when this is an assumption.
     pub fn is_assumed(self) -> bool {
         invariant!(self != Reason::invalid());
         !self.0.bit2()
     }
+    /// Return the offset of the clause. Only valid if this is not an
+    /// assumption or invalid.
     pub fn offset(self) -> usize {
         invariant!(self != Reason::invalid());
         invariant!(self != Reason::assumed());
@@ -162,7 +190,9 @@ impl fmt::Display for Reason {
     }
 }
 
-/// NOTE: This should be 64 bits but we want to be comparable to drat-trim so 32 it is.
+/// An intermediate representation of an LRAT hint
+///
+/// This is essentially this enum, but we pack everything into 32 bits.
 /// ```
 /// enum LRATDependency {
 ///     Unit(Clause),
@@ -174,24 +204,33 @@ impl fmt::Display for Reason {
 pub struct LRATDependency(Tagged32);
 
 impl LRATDependency {
+    /// Create a hint stating that the given clause became unit during the
+    /// redundancy check.
     pub fn unit(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged32::new(clause.index as u32))
     }
+    /// Return true if this is a unit clause hint.
     pub fn is_unit(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
+    /// Create a hint stating that the given clause was unit even before
+    /// the redundancy check.
     pub fn forced_unit(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged32::new(clause.index as u32).with_bit1())
     }
+    /// Return true if this is a hint for a forced unit clause.
     pub fn is_forced_unit(self) -> bool {
         self.0.bit1() && !self.0.bit2()
     }
+    /// Create a hint referring to the given clause as resolution candidate.
     pub fn resolution_candidate(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged32::new(clause.index as u32).with_bit1().with_bit2())
     }
+    /// Return true if this is a hint for a resolution candidate.
     pub fn is_resolution_candidate(self) -> bool {
         self.0.bit1() && self.0.bit2()
     }
+    /// Return the clause referenced by this hint.
     pub fn clause(self) -> Clause {
         Clause {
             index: self.0.payload(),
@@ -199,6 +238,9 @@ impl LRATDependency {
     }
 }
 
+/// A literal in the LRAT proof output
+///
+/// This is essentially this enum, but we pack everything into 32 bits.
 /// ```
 /// enum LRATLiteral {
 ///     ResolutionCandidate(Clause),
@@ -210,24 +252,31 @@ impl LRATDependency {
 pub struct LRATLiteral(Tagged32);
 
 impl LRATLiteral {
+    /// Create a hint for a resolution candidate.
     pub fn resolution_candidate(clause: Clause) -> LRATLiteral {
         LRATLiteral(Tagged32::new(clause.index as u32))
     }
+    /// Return true if this is refers to a resolution candidate.
     pub fn is_resolution_candidate(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
+    /// Create a hint for a unit clause.
     pub fn hint(clause: Clause) -> LRATLiteral {
         LRATLiteral(Tagged32::new(clause.index as u32).with_bit1())
     }
+    /// Return true if this is a unit clause hint.
     pub fn is_hint(self) -> bool {
         self.0.bit1() && !self.0.bit2()
     }
+    /// Create a zero terminator literal.
     pub fn zero() -> LRATLiteral {
         LRATLiteral(Tagged32::new(0).with_bit1().with_bit2())
     }
+    /// Return true if this is a zero terminator.
     pub fn is_zero(self) -> bool {
         self.0.bit1() && self.0.bit2()
     }
+    /// Assuming this is not a zero terminator, return the referenced clause.
     pub fn clause(self) -> Clause {
         requires!(!self.is_zero());
         Clause {
@@ -236,6 +285,7 @@ impl LRATLiteral {
     }
 }
 
+/// A literal for the GRAT proof output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GRATLiteral(pub i32);
 
@@ -247,13 +297,15 @@ impl GRATLiteral {
     pub const RAT_LEMMA: Self = Self(4);
     pub const CONFLICT: Self = Self(5);
     pub const RAT_COUNTS: Self = Self(6);
+    /// Create a GRAT literal that references the given internal clause.
     pub fn from_clause(clause: Clause) -> GRATLiteral {
-        requires!(clause.index + 1 < ClauseStorage::max_value());
+        requires!(clause.index + 1 < ClauseIdentifierType::max_value());
         Self((clause.index + 1) as i32)
     }
+    /// Compute the internal clause from a given GRAT literal.
     pub fn to_clause(self) -> Clause {
         requires!(self.0 != 0);
-        Clause::new(ClauseStorage::try_from(self.0).unwrap() - 1)
+        Clause::new(ClauseIdentifierType::try_from(self.0).unwrap() - 1)
     }
 }
 
@@ -263,13 +315,18 @@ impl fmt::Display for GRATLiteral {
     }
 }
 
+/// Value with 30 bit payload with 2 flag bits
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct Tagged32(u32);
 
 impl Tagged32 {
+    /// Mask for the both flag bits.
     const MASK: u32 = Tagged32::MASK1 | Tagged32::MASK2;
+    /// Mask for the first flag bit.
     const MASK1: u32 = 0x80_00_00_00;
+    /// Mask for the second flag bit.
     const MASK2: u32 = 0x40_00_00_00;
+    /// The maximum value for the payload.
     const MAX_PAYLOAD: u32 = u32::max_value() & !Tagged32::MASK;
 
     pub fn new(payload: u32) -> Tagged32 {
@@ -293,6 +350,7 @@ impl Tagged32 {
     }
 }
 
+/// Value with `size_of::<usize>() - 2` bits of payload and 2 flag bits
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct TaggedUSize(usize);
 
@@ -323,6 +381,7 @@ impl TaggedUSize {
     }
 }
 
+/// State the sizes of data types.
 #[allow(dead_code)]
 fn assert_primitive_sizes() {
     const_assert!(size_of::<crate::literal::Literal>() == 4);
@@ -334,6 +393,9 @@ fn assert_primitive_sizes() {
     const_assert!(align_of::<Reason>() == align_of::<usize>());
 }
 
+/// Write a clause-like data type in DIMACS format.
+///
+/// Includes a terminating 0, but no newline.
 pub fn write_clause<'a, T>(file: &mut impl Write, clause: T) -> io::Result<()>
 where
     T: Iterator<Item = &'a Literal>,

@@ -33,10 +33,12 @@ use crate::{
     parser::{free_clause_database, parse_files},
 };
 
+/// Run `rate`.
 fn main() {
     std::process::exit(run());
 }
 
+/// Run `rate`, returning its exit code.
 fn run() -> i32 {
     crate::config::signals();
     let mut app = clap::App::new("rate")

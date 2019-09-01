@@ -1,6 +1,8 @@
+//! Implementation of nightly-only language features
+
 use std::ops::{Bound, RangeBounds};
 
-// #![feature(range_contains)]
+/// Replacement for `#![feature(range_contains)]`
 pub(crate) trait RangeContainsExt<T> {
     fn contains_item<U>(&self, item: &U) -> bool
     where

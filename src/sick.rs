@@ -1,20 +1,31 @@
+//! SICK incorrectness certificates
+
 use crate::{
     literal::Literal,
     memory::{HeapSpace, Stack},
 };
 
+/// A SICK certificate.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Sick {
+    /// The string identifying the proof format
     pub proof_format: String,
+    //// The line in the proof that failed
     pub proof_step: usize,
+    /// The trail of the formula before any inference checks
     pub natural_model: Stack<Literal>,
+    /// The list of witnesses (none for RUP, one for each pivot for RAT)
     pub witness: Option<Stack<Witness>>,
 }
 
+/// The refutation of an inference given a witness
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct Witness {
+    /// The candidate clause that failed to produce a conflict
     pub failing_clause: Stack<Literal>,
+    /// The trail after the inference check failed
     pub failing_model: Stack<Literal>,
+    /// If RAT, the pivot literal.
     pub pivot: Option<Literal>,
 }
 
@@ -30,37 +41,3 @@ impl HeapSpace for Witness {
         self.failing_clause.heap_space() + self.failing_model.heap_space()
     }
 }
-
-// #[derive(Debug)]
-// struct Rejection {
-//     lemma: Stack<Literal>,
-//     failed_proof_step: usize,
-//     pivot: Option<Literal>,
-//     resolved_with: Option<Clause>,
-//     stable_assignment: Option<Assignment>,
-//     natural_model_length: Option<usize>,
-// }
-
-// // Can't derive HeapSpace for Option<T> yet.
-// impl HeapSpace for Rejection {
-//     fn heap_space(&self) -> usize {
-//         self.lemma.heap_space()
-//             + match &self.stable_assignment {
-//                 None => 0,
-//                 Some(assignment) => assignment.heap_space(),
-//             }
-//     }
-// }
-
-// impl Rejection {
-//     fn new() -> Rejection {
-//         Rejection {
-//             lemma: Stack::new(),
-//             failed_proof_step: usize::max_value(),
-//             pivot: None,
-//             resolved_with: None,
-//             stable_assignment: None,
-//             natural_model_length: None,
-//         }
-//     }
-// }
