@@ -1,4 +1,4 @@
-//! A stack that does not allocate if it is contains less than 2 elements.
+//! A stack that does not allocate if it contains one ore no element.
 
 use crate::{config::unreachable, memory::Stack};
 

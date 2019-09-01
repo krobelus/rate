@@ -55,8 +55,9 @@ impl Offset for i32 {
     }
 }
 
-/// Report memory usage
+/// A trait for objects that can report their memory usage on the heap
 pub trait HeapSpace {
+    /// The number of bytes allocated on the heap that this owns.
     fn heap_space(&self) -> usize;
 }
 
@@ -66,6 +67,7 @@ impl<T: Copy> HeapSpace for T {
     }
 }
 
+/// Convert bytes to  megabytes for readability.
 pub fn format_memory_usage(bytes: usize) -> String {
     format!("{:12}", bytes >> 20) // MB
 }

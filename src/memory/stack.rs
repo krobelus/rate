@@ -17,7 +17,7 @@ use std::{
 pub struct Stack<T>(Vec<T>);
 
 impl<T> Stack<T> {
-    /// ATM it's not possible to make the `new` const.
+    /// Currently it's not possible to make the `new` const.
     pub fn new() -> Stack<T> {
         Stack(Vec::new())
     }
