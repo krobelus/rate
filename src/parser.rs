@@ -586,7 +586,9 @@ pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     let mut i = 0;
     let mut result = 0;
     while let Some(value) = input.next() {
-        requires!((u64::from(value & 0x7f) << (7 * i)) <= u32::max_value().into());
+        if (u64::from(value & 0x7f) << (7 * i)) > u32::max_value().into() {
+            return Err(input.error(OVERFLOW));
+        }
         result |= u32::from(value & 0x7f) << (7 * i);
         i += 1;
         if (value & 0x80) == 0 {
