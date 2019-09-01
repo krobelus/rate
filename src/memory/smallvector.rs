@@ -88,8 +88,9 @@ impl<T: Copy + Default> SmallVector<T> {
             value
         } else if let SmallVector::Many(vector) = self {
             vector.swap_remove(0)
+        } else {
+            unreachable!()
         }
-        unreachable!()
     }
 }
 

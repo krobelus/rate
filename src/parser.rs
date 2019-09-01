@@ -1,4 +1,4 @@
-//! DIMACS and DRAT parser
+//! DIMACS and DRAT/DPR parser
 
 use crate::{
     clause::{Clause, ProofStep},

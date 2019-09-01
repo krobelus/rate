@@ -1,3 +1,5 @@
+//! Verify a SICK certificate
+
 #![allow(dead_code)]
 #![allow(unused_macros)]
 #![allow(clippy::collapsible_if)]

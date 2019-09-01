@@ -1,4 +1,4 @@
-//! Output routines.
+//! Output routines
 
 use atty::{self, Stream};
 use std::{fmt::Display, time::SystemTime};
