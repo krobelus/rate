@@ -248,7 +248,7 @@ impl HashTable for DynamicHashTable {
         self.0
             .get_mut(&ClauseHashEq(needle))
             .and_then(|equal_clauses| {
-                let first = equal_clauses.front();
+                let first = equal_clauses.first();
                 invariant!(first != Some(needle));
                 if delete {
                     equal_clauses.swap_remove(0);
@@ -260,20 +260,19 @@ impl HashTable for DynamicHashTable {
     fn clause_is_active(&self, needle: Clause) -> bool {
         self.0
             .get(&ClauseHashEq(needle))
-            .map_or(false, |vector| !vector.to_vec().is_empty())
+            .map_or(false, |vector| !vector.is_empty())
     }
     fn delete_clause(&mut self, needle: Clause) -> bool {
         self.0
             .get_mut(&ClauseHashEq(needle))
             .map_or(false, |equal_clauses| {
                 let mut i = 0;
-                let mut clauses = equal_clauses.to_vec();
-                while clauses[i] != needle {
+                while equal_clauses[i] != needle {
                     i += 1;
-                    invariant!(i < clauses.len());
+                    invariant!(i < equal_clauses.len());
                 }
-                clauses.swap_remove(i);
-                *equal_clauses = clauses.into_iter().collect();
+                invariant!(i == 0);
+                equal_clauses.swap_remove(i);
                 true
             })
     }

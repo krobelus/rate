@@ -1,5 +1,5 @@
-//! A contiguous but non-growable array type, similar to
-//! [`std::vec::Vec`](https://doc.rust-lang.org/std/vec/struct.Vec.html)
+//! `BoundedVector` is a non-growable
+//! [`std::vec::Vec`](https://doc.rust-lang.org/std/vec/struct.Vec.html).
 
 use crate::memory::{HeapSpace, Vector};
 use rate_macros::HeapSpace;
