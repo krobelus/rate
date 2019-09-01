@@ -30,7 +30,7 @@ pub use crate::memory::{
     vector::{assert_in_bounds, Vector},
 };
 
-/// Trait for index-like types
+/// Trait for types that can be used as an array index.
 pub trait Offset {
     fn as_offset(&self) -> usize;
 }

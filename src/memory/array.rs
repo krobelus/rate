@@ -1,4 +1,5 @@
-//! A dynamic array.
+//! [Array](struct.Array.html) is a non-growable
+//! [Vector](../vector/struct.Vector.html) with strongly-typed indexing.
 
 use crate::memory::{assert_in_bounds, HeapSpace, Offset, Vector};
 use std::{
@@ -6,25 +7,26 @@ use std::{
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 
-/// Map data structure with contiguous storage.
+/// A contiguous non-growable array type with strongly-typed indexing.
 ///
-/// The first template argument is the type that is used for indexing.
+/// The first template argument specifies the type that can be used for
+/// indexing the array. The second template argument specifies the type of
+/// the elements in the array.
 ///
-/// The array is allocated at construction time, i.e. the maximum capacity needs to be known
-/// already.
+/// An `Array` can be used as a fixed size map or set data structure.
+/// The maximum index must be set at construction time, which will allocate
+/// an area of memory of that size. As a result, this can be quite memory-consuming
+/// for sparse maps or sets, but it is as efficient as it gets for fast lookups.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Array<I: Offset, T> {
+    /// The vector of elements
     pub data: Vector<T>,
+    /// Zero-sized field to appease the compiler, since `I` is not used in any other field
     pub phantom: PhantomData<I>,
 }
 
-impl<I: Offset, T> Default for Array<I, T> {
-    fn default() -> Array<I, T> {
-        Array::with_capacity(0)
-    }
-}
-
 impl<I: Offset, T: Clone> Array<I, T> {
+    /// Create a new array of size `size` with all elements set to `value`.
     pub fn new(value: T, size: usize) -> Array<I, T> {
         Array {
             data: Vector::from_vec(vec![value; size]),
@@ -33,20 +35,29 @@ impl<I: Offset, T: Clone> Array<I, T> {
     }
 }
 impl<I: Offset, T> Array<I, T> {
+    /// Create a new array of size `size` without initializing its elements.
     pub fn with_capacity(size: usize) -> Array<I, T> {
         Array {
             data: Vector::with_capacity(size),
             phantom: PhantomData,
         }
     }
+    /// Create a new array by taking ownership of a `Vector`.
     pub fn from(data: Vector<T>) -> Array<I, T> {
         Array {
             data,
             phantom: PhantomData,
         }
     }
+    /// Returns the size of the array.
     pub fn size(&self) -> usize {
         self.data.capacity()
+    }
+}
+
+impl<I: Offset, T> Default for Array<I, T> {
+    fn default() -> Array<I, T> {
+        Array::with_capacity(0)
     }
 }
 

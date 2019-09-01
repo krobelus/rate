@@ -230,6 +230,9 @@ impl<T> AsMut<[T]> for Vector<T> {
     }
 }
 
+/// Check if an offset is contained in a half-open range.
+/// # Panics
+/// Panic if bounds checking is enabled and the index is out of the given bounds.
 pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
     if ENABLE_BOUNDS_CHECKING {
         assert!(
