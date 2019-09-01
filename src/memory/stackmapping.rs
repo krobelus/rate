@@ -1,6 +1,6 @@
 //! Vector with fast by-value lookup.
 
-use crate::memory::{Array, BoundedStack, Offset};
+use crate::memory::{Array, BoundedVector, Offset};
 use rate_macros::HeapSpace;
 use std::{fmt::Debug, iter::IntoIterator, ops::Index, slice};
 
@@ -8,7 +8,7 @@ use std::{fmt::Debug, iter::IntoIterator, ops::Index, slice};
 pub struct StackMapping<Key: Offset + Copy + Debug, T: Copy + Debug> {
     default_value: T,
     array: Array<Key, T>,
-    vector: BoundedStack<Key>,
+    vector: BoundedVector<Key>,
 }
 
 impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
@@ -20,7 +20,7 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
         StackMapping {
             default_value: array_value,
             array: Array::new(array_value, array_size),
-            vector: BoundedStack::with_capacity(stack_size),
+            vector: BoundedVector::with_capacity(stack_size),
         }
     }
     pub fn len(&self) -> usize {

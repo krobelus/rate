@@ -7,7 +7,7 @@
 use crate::{
     clause::Reason,
     literal::{Literal, Variable},
-    memory::{Array, BoundedStack, HeapSpace},
+    memory::{Array, BoundedVector, HeapSpace},
 };
 use std::{fmt, fmt::Display, ops::Index, slice};
 
@@ -22,7 +22,7 @@ pub struct Assignment {
     /// Maps assigned literal to true.
     mapping: Array<Literal, bool>,
     /// Assigned literals, in chronologic order.
-    trail: BoundedStack<(Literal, Reason)>,
+    trail: BoundedVector<(Literal, Reason)>,
     /// Maps literal to their offset in `trail`, or `usize::max_value()`
     position_in_trail: Array<Literal, usize>,
 }
@@ -44,7 +44,7 @@ impl Assignment {
         let mut assignment = Assignment {
             mapping: Array::new(false, maxvar.array_size_for_literals()),
             /// + 2 for Literal::TOP and one conflicting assignment
-            trail: BoundedStack::with_capacity(maxvar.array_size_for_variables() + 2),
+            trail: BoundedVector::with_capacity(maxvar.array_size_for_variables() + 2),
             position_in_trail: Array::new(usize::max_value(), maxvar.array_size_for_literals()),
         };
         // Equivalent to assignment.push(Literal::TOP); but does not check invariants

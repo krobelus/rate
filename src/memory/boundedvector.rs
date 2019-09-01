@@ -8,16 +8,16 @@ use std::{
 };
 
 #[derive(Debug, Clone, HeapSpace, PartialEq, Default)]
-pub struct BoundedStack<T>
+pub struct BoundedVector<T>
 where
     T: HeapSpace,
 {
     vector: Vector<T>,
 }
 
-impl<T: HeapSpace> BoundedStack<T> {
-    pub fn with_capacity(capacity: usize) -> BoundedStack<T> {
-        BoundedStack {
+impl<T: HeapSpace> BoundedVector<T> {
+    pub fn with_capacity(capacity: usize) -> BoundedVector<T> {
+        BoundedVector {
             vector: Vector::with_capacity(capacity),
         }
     }
@@ -65,26 +65,26 @@ impl<T: HeapSpace> BoundedStack<T> {
     }
 }
 
-impl<T: HeapSpace + Clone + Default> BoundedStack<T> {
+impl<T: HeapSpace + Clone + Default> BoundedVector<T> {
     pub fn resize(&mut self, new_length: usize) {
         self.vector.resize(new_length)
     }
 }
 
-impl<T: HeapSpace> Index<usize> for BoundedStack<T> {
+impl<T: HeapSpace> Index<usize> for BoundedVector<T> {
     type Output = T;
     fn index(&self, offset: usize) -> &T {
         self.vector.index(offset)
     }
 }
 
-impl<T: HeapSpace> IndexMut<usize> for BoundedStack<T> {
+impl<T: HeapSpace> IndexMut<usize> for BoundedVector<T> {
     fn index_mut(&mut self, offset: usize) -> &mut T {
         self.vector.index_mut(offset)
     }
 }
 
-impl<'a, T: HeapSpace> IntoIterator for &'a BoundedStack<T> {
+impl<'a, T: HeapSpace> IntoIterator for &'a BoundedVector<T> {
     type Item = &'a T;
     type IntoIter = slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
@@ -92,7 +92,7 @@ impl<'a, T: HeapSpace> IntoIterator for &'a BoundedStack<T> {
     }
 }
 
-impl<T: HeapSpace> BoundedStack<T> {
+impl<T: HeapSpace> BoundedVector<T> {
     pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
     where
         F: FnMut(&T) -> K,
@@ -102,7 +102,7 @@ impl<T: HeapSpace> BoundedStack<T> {
     }
 }
 
-impl<T: HeapSpace + Ord> BoundedStack<T> {
+impl<T: HeapSpace + Ord> BoundedVector<T> {
     pub fn sort_unstable(&mut self) {
         self.vector.sort_unstable()
     }

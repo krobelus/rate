@@ -10,11 +10,11 @@
 //! - Bounds checking can be disabled.
 //!
 //! If we know a good upper bound for the size of a vector we prefer to use
-//! `BoundedStack<T>` or `StackMapping<Key, T>` as they never allocate after
+//! `BoundedVector<T>` or `StackMapping<Key, T>` as they never allocate after
 //! being constructed.
 
 mod array;
-mod boundedstack;
+mod boundedvector;
 #[macro_use]
 mod vector;
 mod smallstack;
@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 pub use crate::memory::{
     array::Array,
-    boundedstack::BoundedStack,
+    boundedvector::BoundedVector,
     smallstack::SmallStack,
     stackmapping::StackMapping,
     vector::{assert_in_bounds, Vector},

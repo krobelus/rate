@@ -5,7 +5,7 @@ use crate::{
     clause::{write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
     config::{unreachable, Config, RedundancyProperty},
     literal::{Literal, Variable},
-    memory::{format_memory_usage, Array, BoundedStack, HeapSpace, Offset, StackMapping, Vector},
+    memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{self, Timer},
     parser::{clause_db, open_file_for_writing, witness_db, Parser},
     sick::{Sick, Witness},
@@ -64,7 +64,7 @@ pub struct Checker {
     dependencies: Vector<LRATDependency>,
     lrat_id: Clause,
     prerat_clauses: StackMapping<Clause, bool>, // Linear lookup should be fine here as well.
-    optimized_proof: BoundedStack<ProofStep>,
+    optimized_proof: BoundedVector<ProofStep>,
 
     grat: Vector<GRATLiteral>,
     grat_conflict_clause: Clause,
@@ -177,9 +177,9 @@ impl Checker {
                 StackMapping::default()
             },
             optimized_proof: if lrat {
-                BoundedStack::with_capacity(2 * num_lemmas + num_clauses)
+                BoundedVector::with_capacity(2 * num_lemmas + num_clauses)
             } else {
-                BoundedStack::default()
+                BoundedVector::default()
             },
             grat: Vector::new(),
             grat_conflict_clause: Clause::UNINITIALIZED,
