@@ -1,17 +1,22 @@
-//! Data structures.
+//! General purpose data structures.
 //!
-//! Currently they mostly behave the same as standard vectors and slices. Some
-//! differences include:
+//! These are simply `std::vec::Vec` wrappers tuned for a specific purpose,
+//! so they are harder to misuse, or more efficient.
+//!
+//! For example:
 //!
 //! - The first template argument in `Array<I, T>` and `StackMapping<I, T>`
 //!   requires to specify a type that will be used for indexing. This prevents
 //!   us from accidentally using an index of the wrong type.
 //!
-//! - Bounds checking can be disabled.
+//! - If we know a good upper bound for the size of a vector we prefer to
+//!   use `Array<I, T>`, `BoundedVector<T>` or `StackMapping<Key, T>` as
+//!   they never allocate after being constructed.
 //!
-//! If we know a good upper bound for the size of a vector we prefer to use
-//! `BoundedVector<T>` or `StackMapping<Key, T>` as they never allocate after
-//! being constructed.
+//! - Bounds checking can be disabled for all these vectors.
+//!
+//! - `SmallVector` does not allocate anything when it contains only one or no elements.
+//!   This can save memory when there are lots of vectors of size one.
 
 mod array;
 mod boundedvector;
