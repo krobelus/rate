@@ -79,12 +79,13 @@ impl Assignment {
         self.trail[self.len() - 1]
     }
     /// Unassign the literal that was assigned last.
-    pub fn pop(&mut self) -> (Literal, Reason) {
-        let (literal, reason) = self.trail.pop();
-        if !literal.is_constant() {
-            self.mapping[literal] = false;
-        }
-        (literal, reason)
+    pub fn pop(&mut self) -> Option<(Literal, Reason)> {
+        self.trail.pop().map(|(literal, reason)| {
+            if !literal.is_constant() {
+                self.mapping[literal] = false;
+            }
+            (literal, reason)
+        })
     }
     /// Move the literal at trail position `src` to `dst`.
     pub fn move_to(&mut self, src: usize, dst: usize) {

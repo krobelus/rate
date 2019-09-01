@@ -33,7 +33,7 @@ impl<T: HeapSpace> BoundedStack<T> {
     pub fn capacity(&self) -> usize {
         self.vector.capacity()
     }
-    pub fn pop(&mut self) -> T {
+    pub fn pop(&mut self) -> Option<T> {
         self.vector.pop()
     }
     pub fn first(&self) -> &T {

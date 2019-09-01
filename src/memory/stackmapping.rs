@@ -29,10 +29,11 @@ impl<Key: Offset + Copy + Debug, T: Copy + Debug> StackMapping<Key, T> {
     pub fn is_empty(&self) -> bool {
         self.vector.is_empty()
     }
-    pub fn pop(&mut self) -> Key {
-        let key = self.vector.pop();
-        self.array[key] = self.default_value;
-        key
+    pub fn pop(&mut self) -> Option<Key> {
+        self.vector.pop().map(|key| {
+            self.array[key] = self.default_value;
+            key
+        })
     }
     pub fn peek(&self) -> Key {
         self.vector[self.vector.len() - 1]

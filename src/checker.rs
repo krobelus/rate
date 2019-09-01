@@ -1407,7 +1407,7 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
     if checker.config.grat_filename.is_some() {
-        let reason = checker.assignment.pop().1;
+        let reason = checker.assignment.pop().unwrap().1;
         // let reason = checker.assignment.peek().1;
         if reason.is_assumed() {
             let empty_clause_in_premise = Clause::range(0, checker.lemma)
@@ -1486,7 +1486,7 @@ fn verify(checker: &mut Checker) -> bool {
                 }
             } else {
                 if checker.fields(clause).has_revision() {
-                    let mut revision = checker.revisions.pop();
+                    let mut revision = checker.revisions.pop().unwrap();
                     revision_apply(checker, &mut revision);
                 }
                 watches_add(checker, Stage::Verification, clause);
@@ -1582,7 +1582,7 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
             checker.grat.push(GRATLiteral::ZERO);
         }
         while checker.assignment.len() > trail_length {
-            let reason = checker.assignment.pop().1;
+            let reason = checker.assignment.pop().unwrap().1;
             set_reason_flag(checker, reason, false);
         }
         checker.processed = trail_length;
