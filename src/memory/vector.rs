@@ -1,4 +1,4 @@
-//! [Vector](struct.Vector.html) is a thin wrapper around
+//! `Vector` is a thin wrapper around
 //! [std::vec::Vec](https://doc.rust-lang.org/std/vec/struct.Vec.html)
 
 use crate::memory::HeapSpace;
@@ -31,62 +31,62 @@ impl<T> Vector<T> {
     pub fn into_vec(self) -> Vec<T> {
         self.0
     }
-    /// See [Vec::new()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.new).
+    /// See [`Vec::new()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.new).
     // Currently it's not possible to make the `new` const (even though it does not allocate).
     pub fn new() -> Vector<T> {
         Vector(Vec::new())
     }
-    /// See [Vec::with_capacity()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.with_capacity).
+    /// See [`Vec::with_capacity()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.with_capacity).
     pub fn with_capacity(capacity: usize) -> Vector<T> {
         Vector(Vec::with_capacity(capacity))
     }
-    /// See [Vec::len()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.len)
+    /// See [`Vec::len()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.len).
     pub fn len(&self) -> usize {
         self.0.len()
     }
-    /// See [Vec::is_empty()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.is_empty)
+    /// See [`Vec::is_empty()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.is_empty).
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
-    /// See [Vec::capacity()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.capacity)
+    /// See [`Vec::capacity()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.capacity).
     pub fn capacity(&self) -> usize {
         self.0.capacity()
     }
-    /// See [Vec::pop()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.pop)
+    /// See [`Vec::pop()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.pop).
     pub fn pop(&mut self) -> Option<T> {
         self.0.pop()
     }
-    /// See [Vec::first()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.first)
+    /// See [`Vec::first()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.first).
     pub fn first(&self) -> &T {
         requires!(!self.is_empty());
         &self[0]
     }
-    /// See [Vec::last()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.last)
+    /// See [`Vec::last()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.last).
     pub fn last(&self) -> &T {
         requires!(!self.is_empty());
         &self[self.len() - 1]
     }
-    /// See [Vec::iter()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.iter)
+    /// See [`Vec::iter()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.iter).
     pub fn iter(&self) -> slice::Iter<T> {
         self.0.iter()
     }
-    /// See [Vec::as_ptr()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.as_ptr)
+    /// See [`Vec::as_ptr()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.as_ptr).
     pub fn as_ptr(&self) -> *const T {
         self.0.as_ptr()
     }
-    /// See [Vec::mut_ptr()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.mut_ptr)
+    /// See [`Vec::mut_ptr()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.mut_ptr).
     pub fn mut_ptr(&mut self) -> *mut T {
         self.0.as_mut_ptr()
     }
-    /// See [Vec::truncate()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.truncate)
+    /// See [`Vec::truncate()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.truncate).
     pub fn truncate(&mut self, new_length: usize) {
         self.0.truncate(new_length)
     }
-    /// See [Vec::clear()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.clear)
+    /// See [`Vec::clear()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.clear).
     pub fn clear(&mut self) {
         self.0.clear()
     }
-    /// See [Vec::shrink_to_fit()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.shrink_to_fit)
+    /// See [`Vec::shrink_to_fit()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.shrink_to_fit).
     pub fn shrink_to_fit(&mut self) {
         self.0.shrink_to_fit()
     }
@@ -153,7 +153,7 @@ macro_rules! vector {
 }
 
 impl<T: Copy> Vector<T> {
-    /// See [Vec::swap_remove()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.swap_remove).
+    /// See [`Vec::swap_remove()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.swap_remove).
     pub fn swap_remove(&mut self, index: usize) -> T {
         // copied from Vec::swap_remove to use our own bounds checking
         unsafe {
@@ -169,14 +169,14 @@ impl<T: Copy> Vector<T> {
 }
 
 impl<T: Ord> Vector<T> {
-    /// See [Vec::sort_unstable()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.sort_unstable).
+    /// See [`Vec::sort_unstable()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.sort_unstable).
     pub fn sort_unstable(&mut self) {
         self.0.sort_unstable()
     }
 }
 
 impl<T> Vector<T> {
-    /// See [Vec::sort_unstable_by_key()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.sort_unstable_by_key).
+    /// See [`Vec::sort_unstable_by_key()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.sort_unstable_by_key).
     pub fn sort_unstable_by_key<F, K>(&mut self, f: F)
     where
         F: FnMut(&T) -> K,
@@ -187,7 +187,7 @@ impl<T> Vector<T> {
 }
 
 impl<T: Clone + Default> Vector<T> {
-    /// See [Vec::resize()](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.resize).
+    /// See [`Vec::resize()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.resize).
     pub fn resize(&mut self, new_length: usize) {
         self.0.resize(new_length, T::default())
     }

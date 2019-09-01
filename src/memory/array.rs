@@ -1,5 +1,6 @@
-//! [Array](struct.Array.html) is a non-growable
-//! [Vector](../vector/struct.Vector.html) with strongly-typed indexing.
+//! `Array` is a non-growable
+//! [`std::vec::Vec`](https://doc.rust-lang.org/std/vec/struct.Vec.html)` with
+//! strongly-typed indexing.
 
 use crate::memory::{assert_in_bounds, HeapSpace, Offset, Vector};
 use std::{
