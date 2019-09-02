@@ -335,9 +335,6 @@ pub fn run_parser_on_formula(
     if parser.verbose {
         comment!("mode: {}", parser.redundancy_property);
     }
-    if parser.redundancy_property != RedundancyProperty::RAT {
-        witness_db().initialize();
-    }
     let mut _timer = Timer::name("parsing formula");
     if !parser.verbose {
         _timer.disabled = true;
@@ -969,15 +966,14 @@ fn parse_proof(
 
 /// Print the clause and witness databases, for debugging.
 #[allow(dead_code)]
-pub fn print_db() {
+pub fn print_db(have_witnesses: bool) {
     let clause_db = &clause_db();
     let witness_db = &witness_db();
-    let is_pr = !witness_db.empty();
     for clause in Clause::range(0, clause_db.last_clause() + 1) {
         write_to_stdout!(
             "{}{} fields: {:?}\n",
             clause_db.clause_to_string(clause),
-            if is_pr {
+            if have_witnesses {
                 format!(", {}", witness_db.witness_to_string(clause))
             } else {
                 "".into()
@@ -1056,7 +1052,7 @@ c comment
                 vector!(0, 5, 10, 16)
             )
         );
-        assert_eq!(witness_db(), &WitnessDatabase::from(vector!(), vector!()));
+        assert_eq!(witness_db(), &WitnessDatabase::from(vector!(), vector!(0)));
         assert_eq!(
             parser,
             Parser {

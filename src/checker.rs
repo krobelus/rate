@@ -288,7 +288,7 @@ impl Checker {
     fn witness_to_string(&self, clause: Clause) -> String {
         witness_db().witness_to_string(clause)
     }
-    /// Access the clause by ID.
+    /// The literals in the the clause.
     fn clause(&self, clause: Clause) -> &[Literal] {
         clause_db().clause(clause)
     }
@@ -297,20 +297,25 @@ impl Checker {
     fn witness(&self, clause: Clause) -> &[Literal] {
         witness_db().witness(clause)
     }
+    /// The database offsets of the literals in the the clause.
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
         clause_db().clause_range(clause)
     }
+    /// The database offsets of the literals in the the witness.
     fn witness_range(&self, clause: Clause) -> ops::Range<usize> {
         witness_db().witness_range(clause)
     }
+    /// The first two literals in the clause.
     fn watches(&self, head: usize) -> [Literal; 2] {
         clause_db().watches(head)
     }
-    fn offset2clause(&self, head: usize) -> Clause {
-        clause_db().offset2clause(head)
-    }
+    /// Convert a clause identifier to the offset of the clause.
     fn clause2offset(&self, clause: Clause) -> usize {
         clause_db().clause2offset(clause)
+    }
+    /// Convert a clause offset to the identifier of the clause.
+    fn offset2clause(&self, head: usize) -> Clause {
+        clause_db().offset2clause(head)
     }
     /// Return whether this clause is in the core.
     fn clause_mode(&self, clause: Clause) -> Mode {
@@ -320,15 +325,21 @@ impl Checker {
             Mode::NonCore
         }
     }
+    /// Access the metadata for this clause.
     fn fields(&self, clause: Clause) -> &ClauseFields {
         unsafe { &*(clause_db().fields(clause) as *const u32 as *const ClauseFields) }
     }
+    /// Access the mutable metadata for this clause.
     fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
         unsafe { &mut *(clause_db().fields_mut(clause) as *mut u32 as *mut ClauseFields) }
     }
+    /// Access the metadata for the clause with this offset.
+    /// This is possibly more efficient than [`fields()`](#method.fields).
     fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
         unsafe { &*(clause_db().fields_from_offset(offset) as *const u32 as *const ClauseFields) }
     }
+    /// Access the mutable metadata for the clause with this offset.
+    /// This is possibly more efficient than [`fields()`](#method.fields_mut).
     fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
         unsafe {
             &mut *(clause_db().fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
