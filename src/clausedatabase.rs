@@ -36,13 +36,17 @@ pub struct ClauseDatabase {
 }
 
 impl ClauseDatabase {
+    /// Create an empty database.
     pub fn new() -> ClauseDatabase {
-        ClauseDatabase {
+        let mut db = ClauseDatabase {
             data: Vector::new(),
             offset: Vector::new(),
             have_sentinel: false,
-        }
+        };
+        db.push_sentinel(db.data.len());
+        db
     }
+    /// Create a database from raw elements; used only for tests.
     #[cfg(test)]
     pub fn from(data: Vector<Literal>, offset: Vector<usize>) -> ClauseDatabase {
         let mut db = ClauseDatabase {
@@ -53,14 +57,10 @@ impl ClauseDatabase {
         db.push_sentinel(db.data.len());
         db
     }
-    pub fn initialize(&mut self) {
-        requires!(!self.have_sentinel);
-        self.push_sentinel(0);
-    }
-    pub const PADDING: usize = 1;
+    pub const SENTINEL_SIZE: usize = 1;
     pub fn number_of_clauses(&self) -> ClauseIdentifierType {
         assert!(self.have_sentinel);
-        let number = self.offset.len() - ClauseDatabase::PADDING;
+        let number = self.offset.len() - ClauseDatabase::SENTINEL_SIZE;
         assert!(ClauseIdentifierType::try_from(number).is_ok());
         number as ClauseIdentifierType
     }

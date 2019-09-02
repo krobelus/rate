@@ -71,7 +71,7 @@ remaining proof to <OUTPUT>.drat "
     let mut clause_ids = FixedSizeHashTable::new();
     run_parser_on_formula(
         &mut parser,
-        Some(formula_filename),
+        formula_filename,
         proof_filename,
         &mut clause_ids,
     );

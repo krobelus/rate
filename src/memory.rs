@@ -1,4 +1,4 @@
-//! General purpose data structures.
+//! General purpose data structures
 //!
 //! These are simply `std::vec::Vec` wrappers tuned for a specific purpose,
 //! so they are harder to misuse, or more efficient.

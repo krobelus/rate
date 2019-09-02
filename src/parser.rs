@@ -75,7 +75,7 @@ pub struct Parser {
 impl Parser {
     /// Create a new parser.
     ///
-    /// *Note*: this initializes the clause and witness databases, so this should only be called once.
+    /// *Note*: this allocates the static clause and witness databases, so this should only be called once.
     pub fn new() -> Parser {
         unsafe {
             CLAUSE_DATABASE =
@@ -83,13 +83,6 @@ impl Parser {
             WITNESS_DATABASE =
                 NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
         }
-        assert!(
-            clause_db().is_empty(),
-            "Only one parser can be active at any time."
-        );
-        clause_db().clear();
-        witness_db().clear();
-        clause_db().initialize();
         Parser {
             redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
@@ -306,7 +299,7 @@ pub fn parse_files(
     parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = FixedSizeHashTable::new();
     // let mut clause_ids = DynamicHashTable::new();
-    run_parser(&mut parser, Some(formula_file), proof_file, &mut clause_ids);
+    run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
     if memory_usage_breakdown {
         print_memory_usage(&parser, &clause_ids);
     }
@@ -334,7 +327,7 @@ fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
 /// which is necessary for initialization of the witness database.
 pub fn run_parser_on_formula(
     mut parser: &mut Parser,
-    formula: Option<&str>,
+    formula_file: &str,
     proof_file: &str,
     clause_ids: &mut impl HashTable,
 ) {
@@ -345,24 +338,22 @@ pub fn run_parser_on_formula(
     if parser.redundancy_property != RedundancyProperty::RAT {
         witness_db().initialize();
     }
-    if let Some(formula_file) = formula {
-        let mut _timer = Timer::name("parsing formula");
-        if !parser.verbose {
-            _timer.disabled = true;
-        }
-        parse_formula(
-            &mut parser,
-            clause_ids,
-            read_compressed_file(formula_file, false),
-        )
-        .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
+    let mut _timer = Timer::name("parsing formula");
+    if !parser.verbose {
+        _timer.disabled = true;
     }
+    parse_formula(
+        &mut parser,
+        clause_ids,
+        read_compressed_file(formula_file, false),
+    )
+    .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
 }
 
 /// Parse a formula and a proof file using a given hash table.
 pub fn run_parser(
     mut parser: &mut Parser,
-    formula: Option<&str>,
+    formula: &str,
     proof_file: &str,
     clause_ids: &mut impl HashTable,
 ) {

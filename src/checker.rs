@@ -35,44 +35,87 @@ pub enum Verdict {
 /// Contains most everything but the clause and witness databases.
 #[derive(Debug)]
 pub struct Checker {
+    /// The input proof
     pub proof: Vector<ProofStep>,
+    /// Flags
     pub config: Config,
+    /// Which redundancy property to use for inferences
     redundancy_property: RedundancyProperty,
 
+    /// The highest variable that is used in the formula or proof
     maxvar: Variable,
+    /// The trail storing variable assignments
     assignment: Assignment,
+    /// Index of the first literal in the assignment that has not yet been propagated
     processed: usize,
-    lemma: Clause, // current lemma / first lemma of proof
+    /// The current lemma
+    ///
+    /// Initially this is the first lemma in the proof. It will be incremented
+    /// at each step in the forward pass until there is a conflict. In the
+    /// backwards pass, lemma is decremented, ending with the first lemma in
+    /// the proof.
+    lemma: Clause,
+    /// The forward pass can detect an early conflict at some proof step, this records that step
     proof_steps_until_conflict: usize,
+    /// True while inside an inference check (as opposed to propagating with no assumptions)
     soft_propagation: bool,
+    /// Incorrectness certificate
     rejection: Sick,
+    /// The unmodified lemma that failed the inference check.
+    ///
+    /// We need this to produce a correct SICK certificate, because of
+    /// [`move_falsified_literals_to_end`](fn.move_falsified_literals_to_end.html).
     rejection_lemma: Vector<Literal>,
 
+    /// Contains clauses that caused a conflict
     implication_graph: StackMapping<usize, bool>,
+    /// Used in the forward pass for literals that are unassigned after a reason deletion
     literal_is_in_cone_preprocess: Array<Literal, bool>,
+    /// The watch-lists for non-core clauses
     watchlist_noncore: Array<Literal, Watchlist>,
+    /// The watch-lists for core clauses
     watchlist_core: Array<Literal, Watchlist>,
 
+    /// Pivot to use (or rather try first) for each clause
     clause_pivot: Array<Clause, Literal>,
+    /// Used for querying the witness in PR checks
     is_in_witness: Array<Literal, bool>,
 
+    /// Revisions to restore the trail after reason deletions in the backward pass
     revisions: Vector<Revision>,
 
+    /// LRAT lines justifying inferences of core lemmas
     lrat: Vector<LRATLiteral>,
+    /// Maps core lemmas to the start of their LRAT line in [`lrat`](#structfield.lrat)
     clause_lrat_offset: Array<Clause, usize>,
+    /// Maps internal clause identifiers to LRAT clause identifiers
     clause_lrat_id: Array<Clause, Clause>,
+    /// Temporary place for the dependencies of a single inference
     dependencies: Vector<LRATDependency>,
+    /// The maximum LRAT clause identifier
     lrat_id: Clause,
+    /// Clauses that were unit in the RUP check (before the RAT check).
+    /// They need to be emitted in the LRAT proof before the units for RAT checks.
     prerat_clauses: StackMapping<Clause, bool>, // Linear lookup should be fine here as well.
+    /// Core lemmas plus aggressive deletions of no-longer used lemmas
     optimized_proof: BoundedVector<ProofStep>,
 
+    /// GRAT lines justifying inferences of core lemmas
     grat: Vector<GRATLiteral>,
+    /// THe falsified clause
     grat_conflict_clause: Clause,
+    /// Whether the current GRAT line is a deletion
     grat_in_deletion: bool,
+    /// Number of RAT inferences for each literal
     grat_rat_counts: Array<Literal, usize>,
+    /// Temporary place for GRAT hints, to be written to [`grat`](#structfield.grat)
     grat_pending: Vector<GRATLiteral>,
+    /// Temporary place for GRAT deletions, to be written to [`grat`](#structfield.grat)
     grat_pending_deletions: Vector<Clause>,
+    /// Temporary place for GRAT hints, to be written to [`grat`](#structfield.grat);
+    /// see [`grat_prerat`](#structfield.grat_prerat)
     grat_pending_prerat: Vector<GRATLiteral>,
+    /// Similar to [`prerat_clauses`](#structfield.prerat_clauses) but for GRAT
     grat_prerat: Array<Clause, bool>,
 
     /// Size of the input formula.

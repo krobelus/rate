@@ -1,6 +1,6 @@
 //! Convert DRAT to compressed (binary) DRAT
 //!
-//! This shares almost no code with the other files but it duplicates some of the parsing logic.
+//! This shares little code with the other files but it duplicates some of the parsing logic.
 
 #![allow(dead_code)]
 #![allow(unused_macros)]

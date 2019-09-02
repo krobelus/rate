@@ -84,7 +84,7 @@ fn main() -> Result<(), ()> {
     parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
         &mut parser,
-        Some(formula_filename),
+        formula_filename,
         proof_filename,
         &mut clause_ids,
     );
