@@ -134,6 +134,10 @@ impl Literal {
     pub const fn is_zero(self) -> bool {
         self.encoding == 0
     }
+    
+    pub fn is_positive(self) -> bool {
+        self.encoding > 1 && (self.encoding & 1 == 0)
+    }
 }
 
 /// Enable as array index.
