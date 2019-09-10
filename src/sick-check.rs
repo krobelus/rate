@@ -12,6 +12,9 @@ mod clausedatabase;
 mod config;
 mod features;
 mod literal;
+mod proof ;
+mod hashtable;
+mod input;
 mod parser;
 mod sick;
 
@@ -25,14 +28,11 @@ use toml;
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{Clause, Reason},
-    config::RedundancyProperty,
     literal::Literal,
     memory::{Array, Stack},
     output::solution,
-    parser::{
-        clause_db, proof_format_by_extension, run_parser, witness_db, FixedSizeHashTable,
-        HashTable, Parser,
-    },
+    hashtable::{FixedSizeHashTable},
+    parser::{Parser} ,
     sick::Sick,
 };
 

@@ -10,6 +10,7 @@ use std::{
     convert::TryFrom,
     mem::size_of,
     ops::{Index, IndexMut, Range},
+    ptr::{self, NonNull} ,
 };
 
 pub const PADDING_START: usize = 2;
@@ -317,4 +318,33 @@ pub fn external_clause_to_string(clause: &[Literal]) -> String {
             .collect::<Vec<_>>()
             .join("")
     )
+}
+
+// This needs to be static so that hash and equality functions can access it.
+pub static mut CLAUSE_DATABASE: NonNull<ClauseDatabase> = NonNull::dangling();
+pub static mut WITNESS_DATABASE: NonNull<WitnessDatabase> = NonNull::dangling();
+
+pub fn clause_db() -> &'static mut ClauseDatabase {
+    unsafe { CLAUSE_DATABASE.as_mut() }
+}
+pub fn witness_db() -> &'static mut WitnessDatabase {
+    unsafe { WITNESS_DATABASE.as_mut() }
+}
+
+pub fn make_clause_database() {
+    unsafe {
+        CLAUSE_DATABASE = NonNull::new_unchecked(Box::into_raw(Box::new(ClauseDatabase::new())));
+        WITNESS_DATABASE = NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
+    }
+    clause_db().clear();
+    witness_db().clear();
+    clause_db().initialize();
+    witness_db().initialize();
+}
+
+pub fn free_clause_database() {
+    unsafe {
+        Box::from_raw(CLAUSE_DATABASE.as_ptr());
+        Box::from_raw(WITNESS_DATABASE.as_ptr());
+    }
 }

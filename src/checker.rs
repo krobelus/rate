@@ -3,11 +3,12 @@
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
-    config::{unreachable, Config, RedundancyProperty},
+    clausedatabase::{clause_db , witness_db} ,
+    config::{unreachable , Config , ProofFormat},
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedStack, HeapSpace, Offset, Stack, StackMapping},
     output::{self, Timer},
-    parser::{clause_db, witness_db, Parser},
+    proof::{Proof},
     sick::{Sick, Witness},
 };
 use ansi_term::Colour;
@@ -33,7 +34,7 @@ pub enum Verdict {
 pub struct Checker {
     pub proof: Stack<ProofStep>,
     pub config: Config,
-    redundancy_property: RedundancyProperty,
+    pub proof_format: ProofFormat,
 
     maxvar: Variable,
     assignment: Assignment,
@@ -101,13 +102,14 @@ struct Revision {
 }
 
 impl Checker {
-    pub fn new(parser: Parser, config: Config) -> Checker {
+    pub fn new(proof: Proof, config: Config) -> Checker {
         let num_clauses = clause_db().number_of_clauses() as usize;
-        let num_lemmas = parser.proof.len();
-        let maxvar = parser.maxvar;
+        let num_lemmas = proof.proof.len();
+        let maxvar = proof.maxvar;
         let assignment = Assignment::new(maxvar);
         let lrat = config.lrat_filename.is_some();
         let grat = config.grat_filename.is_some();
+        let proof_format = config.proof_format ;
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
@@ -116,10 +118,10 @@ impl Checker {
             } else {
                 Array::default()
             },
-            clause_pivot: Array::from(parser.clause_pivot),
+            clause_pivot: Array::from(proof.pivots),
             dependencies: Stack::new(),
             config,
-            redundancy_property: parser.redundancy_property,
+            proof_format ,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -169,8 +171,8 @@ impl Checker {
                 Array::default()
             },
             maxvar,
-            proof: parser.proof,
-            lemma: parser.proof_start,
+            proof: proof.proof,
+            lemma: proof.proof_start,
             proof_steps_until_conflict: usize::max_value(),
             literal_is_in_cone_preprocess: Array::new(false, maxvar.array_size_for_literals()),
             revisions: Stack::new(),
@@ -179,7 +181,7 @@ impl Checker {
             rejection: Sick::default(),
             rejection_lemma: Stack::new(),
 
-            premise_length: parser.proof_start.as_offset(),
+            premise_length: proof.proof_start.as_offset(),
             rup_introductions: 0,
             rat_introductions: 0,
             deletions: 0,
@@ -622,10 +624,11 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Stack<Cla
 
 fn check_inference(checker: &mut Checker) -> bool {
     checker.soft_propagation = true;
-    let ok = match checker.redundancy_property {
-        RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
-        RedundancyProperty::PR => pr(checker),
-    };
+    // let ok = match checker.redundancy_property {
+    //     RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
+    //     RedundancyProperty::PR => pr(checker),
+    // };
+    let ok = preserve_assignment!(checker , rup_or_rat(checker)) ;
     if checker.config.grat_filename.is_some() {
         if !checker.grat_pending_deletions.is_empty() {
             if !checker.grat_in_deletion {
@@ -655,66 +658,66 @@ fn check_inference(checker: &mut Checker) -> bool {
     ok
 }
 
-enum Reduct {
-    Top,
-    Clause(Stack<Literal>),
-}
+// enum Reduct {
+//     Top,
+//     Clause(Stack<Literal>),
+// }
 
-fn reduct(
-    checker: &Checker,
-    assignment: &impl Index<Literal, Output = bool>,
-    clause: Clause,
-) -> Reduct {
-    if checker
-        .clause(clause)
-        .iter()
-        .any(|&literal| assignment[literal])
-    {
-        Reduct::Top
-    } else {
-        Reduct::Clause(
-            checker
-                .clause(clause)
-                .iter()
-                .filter(|&literal| !assignment[-*literal])
-                .cloned()
-                .collect(),
-        )
-    }
-}
+// fn reduct(
+//     checker: &Checker,
+//     assignment: &impl Index<Literal, Output = bool>,
+//     clause: Clause,
+// ) -> Reduct {
+//     if checker
+//         .clause(clause)
+//         .iter()
+//         .any(|&literal| assignment[literal])
+//     {
+//         Reduct::Top
+//     } else {
+//         Reduct::Clause(
+//             checker
+//                 .clause(clause)
+//                 .iter()
+//                 .filter(|&literal| !assignment[-*literal])
+//                 .cloned()
+//                 .collect(),
+//         )
+//     }
+// }
 
-fn pr(checker: &mut Checker) -> bool {
-    let lemma = checker.lemma;
-    let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
-    let lemma_length = tmp.len();
-    for clause in Clause::range(0, lemma) {
-        for offset in checker.witness_range(lemma) {
-            let literal = witness_db()[offset];
-            invariant!(!checker.is_in_witness[literal]);
-            checker.is_in_witness[literal] = true;
-        }
-        // C u D|w is a rup
-        match reduct(checker, &checker.is_in_witness, clause) {
-            Reduct::Top => (),
-            Reduct::Clause(reduct_by_witness) => {
-                for &literal in &reduct_by_witness {
-                    tmp.push(literal);
-                }
-                let ok = preserve_assignment!(checker, slice_rup(checker, &tmp)) == CONFLICT;
-                tmp.truncate(lemma_length);
-                if !ok {
-                    return false;
-                }
-            }
-        }
-        for offset in checker.witness_range(lemma) {
-            let literal = witness_db()[offset];
-            invariant!(checker.is_in_witness[literal]);
-            checker.is_in_witness[literal] = false;
-        }
-    }
-    true
-}
+// fn pr(checker: &mut Checker) -> bool {
+//     let lemma = checker.lemma;
+//     let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
+//     let lemma_length = tmp.len();
+//     for clause in Clause::range(0, lemma) {
+//         for offset in checker.witness_range(lemma) {
+//             let literal = witness_db()[offset];
+//             invariant!(!checker.is_in_witness[literal]);
+//             checker.is_in_witness[literal] = true;
+//         }
+//         // C u D|w is a rup
+//         match reduct(checker, &checker.is_in_witness, clause) {
+//             Reduct::Top => (),
+//             Reduct::Clause(reduct_by_witness) => {
+//                 for &literal in &reduct_by_witness {
+//                     tmp.push(literal);
+//                 }
+//                 let ok = preserve_assignment!(checker, slice_rup(checker, &tmp)) == CONFLICT;
+//                 tmp.truncate(lemma_length);
+//                 if !ok {
+//                     return false;
+//                 }
+//             }
+//         }
+//         for offset in checker.witness_range(lemma) {
+//             let literal = witness_db()[offset];
+//             invariant!(checker.is_in_witness[literal]);
+//             checker.is_in_witness[literal] = false;
+//         }
+//     }
+//     true
+// }
 
 fn add_rup_conflict_for_grat(checker: &mut Checker) {
     requires!(checker.config.grat_filename.is_some());
@@ -848,7 +851,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
             .unwrap();
         return Some(pivot_index);
     }
-    if checker.config.pivot_is_first_literal {
+    if checker.proof_format.rat_first_pivot() {
         return None;
     }
     checker.clause_range(lemma).position(|offset| {
@@ -1793,16 +1796,17 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         Some(filename) => BufWriter::new(File::create(filename)?),
         None => return Ok(()),
     };
-    let proof_format = match checker.redundancy_property {
-        RedundancyProperty::RAT => {
-            if checker.config.pivot_is_first_literal {
-                "DRAT-pivot-is-first-literal"
-            } else {
-                "DRAT-arbitrary-pivot"
-            }
-        }
-        RedundancyProperty::PR => "PR",
-    };
+    // let proof_format = match checker.redundancy_property {
+    //     RedundancyProperty::RAT => {
+    //         if checker.config.pivot_is_first_literal {
+    //             "DRAT-pivot-is-first-literal"
+    //         } else {
+    //             "DRAT-arbitrary-pivot"
+    //         }
+    //     }
+    //     RedundancyProperty::PR => "PR",
+    // };
+    let proof_format = checker.proof_format.sick_id() ;
     let proof_step = checker.rejection.proof_step;
 
     write!(file, "# Failed to prove lemma")?;
