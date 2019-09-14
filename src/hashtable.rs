@@ -2,12 +2,7 @@ use crate::{
     clause::Clause,
     clausedatabase::clause_db,
     literal::Literal,
-    memory::{HeapSpace, Offset, Stack},
-};
-use std::{
-    alloc::{alloc, dealloc, realloc, Layout},
-    mem::{align_of, size_of},
-    ptr,
+    memory::{HeapSpace, Offset, Vector},
 };
 
 pub trait HashTable {
@@ -21,9 +16,9 @@ pub trait HashTable {
 
 // #[derive(HeapSpace)]
 pub struct FixedSizeHashTable {
-    buckets: Stack<*mut Clause>,
-    length: Stack<usize>,
-    capacity: Stack<usize>,
+    buckets: Vector<*mut Clause>,
+    length: Vector<usize>,
+    capacity: Vector<usize>,
 }
 
 fn bucket_layout(count: usize) -> Layout {
@@ -48,15 +43,15 @@ impl FixedSizeHashTable {
     const SIZE: usize = 1_000_000;
     const INIT: u16 = 4;
     pub fn new() -> FixedSizeHashTable {
-        let mut buckets = Stack::from_vec(vec![ptr::null_mut(); FixedSizeHashTable::SIZE]);
+        let mut buckets = Vector::from_vec(vec![ptr::null_mut(); FixedSizeHashTable::SIZE]);
         for i in 0..buckets.len() {
             buckets[i] =
                 unsafe { alloc(bucket_layout(FixedSizeHashTable::INIT.into())) } as *mut Clause;
         }
         FixedSizeHashTable {
             buckets,
-            length: Stack::from_vec(vec![0; FixedSizeHashTable::SIZE]),
-            capacity: Stack::from_vec(vec![
+            length: Vector::from_vec(vec![0; FixedSizeHashTable::SIZE]),
+            capacity: Vector::from_vec(vec![
                 FixedSizeHashTable::INIT.into();
                 FixedSizeHashTable::SIZE
             ]),
@@ -152,7 +147,7 @@ impl Drop for FixedSizeHashTable {
     }
 }
 
-// pub struct DynamicHashTable(HashMap<ClauseHashEq, SmallStack<Clause>>);
+// pub struct DynamicHashTable(HashMap<ClauseHashEq, SmallVector<Clause>>);
 
 // impl DynamicHashTable {
 //     pub fn new() -> DynamicHashTable {
@@ -164,7 +159,7 @@ impl Drop for FixedSizeHashTable {
 //         let key = ClauseHashEq(clause);
 //         self.0
 //             .entry(key)
-//             .or_insert_with(SmallStack::new)
+//             .or_insert_with(SmallVector::new)
 //             .push(clause)
 //     }
 //     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {

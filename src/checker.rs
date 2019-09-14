@@ -187,7 +187,7 @@ impl Checker {
                 Array::default()
             },
             clause_pivot: Array::from(proof.pivots),
-            dependencies: Stack::new(),
+            dependencies: Vector::new(),
             config,
             proof_format,
             soft_propagation: false,
@@ -772,7 +772,7 @@ fn check_inference(checker: &mut Checker) -> bool {
 
 // enum Reduct {
 //     Top,
-//     Clause(Stack<Literal>),
+//     Clause(Vector<Literal>),
 // }
 
 // fn reduct(
@@ -800,7 +800,7 @@ fn check_inference(checker: &mut Checker) -> bool {
 
 // fn pr(checker: &mut Checker) -> bool {
 //     let lemma = checker.lemma;
-//     let mut tmp = Stack::from_vec(checker.clause(lemma).iter().cloned().collect());
+//     let mut tmp = Vector::from_vec(checker.clause(lemma).iter().cloned().collect());
 //     let lemma_length = tmp.len();
 //     for clause in Clause::range(0, lemma) {
 //         for offset in checker.witness_range(lemma) {

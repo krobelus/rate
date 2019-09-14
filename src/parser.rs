@@ -7,7 +7,7 @@ use crate::{
     hashtable::{FixedSizeHashTable, HashTable},
     input::SimpleInput,
     literal::{Literal, Variable},
-    memory::{format_memory_usage, HeapSpace, Offset, SmallStack, Stack},
+    memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
     output::{self, RuntimeError, RuntimeResult, Timer},
     proof::Proof,
 };
@@ -434,9 +434,9 @@ impl Parser {
 // pub struct Parser {
 //     pub redundancy_property: RedundancyProperty,
 //     pub maxvar: Variable,
-//     pub clause_pivot: Stack<Literal>,
+//     pub clause_pivot: Vector<Literal>,
 //     pub proof_start: Clause,
-//     pub proof: Stack<ProofStep>,
+//     pub proof: Vector<ProofStep>,
 //     pub max_proof_steps: Option<usize>,
 //     pub no_terminating_empty_clause: bool,
 //     pub verbose: bool,
@@ -458,9 +458,9 @@ impl Parser {
 //         Parser {
 //             redundancy_property: RedundancyProperty::RAT,
 //             maxvar: Variable::new(0),
-//             clause_pivot: Stack::new(),
+//             clause_pivot: Vector::new(),
 //             proof_start: Clause::new(0),
-//             proof: Stack::new(),
+//             proof: Vector::new(),
 //             max_proof_steps: None,
 //             no_terminating_empty_clause: false,
 //             verbose: true,
@@ -966,7 +966,7 @@ impl Parser {
 
 //     #[allow(unused_macros)]
 //     macro_rules! literals {
-//         ($($x:expr),*) => (Stack::from_vec(vec!($(Literal::new($x)),*)));
+//         ($($x:expr),*) => (Vector::from_vec(vec!($(Literal::new($x)),*)));
 //     }
 
 //     fn sample_formula(clause_ids: &mut impl HashTable) -> Parser {

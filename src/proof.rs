@@ -1,7 +1,7 @@
 use crate::{
     clause::{Clause, ProofStep},
     literal::{Literal, Variable},
-    memory::Stack,
+    memory::Vector,
 };
 
 #[derive(Debug)]
@@ -12,8 +12,8 @@ pub struct Proof {
     pub proof_deletions: u64,
     pub proof_srs: u64,
     pub proof_start: Clause,
-    pub pivots: Stack<Literal>,
-    pub proof: Stack<ProofStep>,
+    pub pivots: Vector<Literal>,
+    pub proof: Vector<ProofStep>,
 }
 impl Proof {
     pub fn new() -> Proof {
@@ -24,8 +24,8 @@ impl Proof {
             proof_deletions: 0u64,
             proof_srs: 0u64,
             proof_start: Clause::new(0),
-            pivots: Stack::<Literal>::new(),
-            proof: Stack::<ProofStep>::new(),
+            pivots: Vector::<Literal>::new(),
+            proof: Vector::<ProofStep>::new(),
         }
     }
 }
