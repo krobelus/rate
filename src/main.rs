@@ -31,7 +31,7 @@ use clap::Arg;
 
 use crate::{
     checker::{Checker, Verdict},
-    clausedatabase::{free_clause_database, make_clause_database},
+    clausedatabase::free_clause_database,
     config::{Config, ProofFormat},
     output::{solution, value, RuntimeResult, Timer},
     parser::{BinaryMode, Parser, ParsingInfo, SyntaxFormat},
@@ -199,7 +199,6 @@ fn run() -> RuntimeResult<i32> {
     let config = Config::new(app.get_matches());
     comment!("rate version: {}", env!("GIT_COMMIT"));
     let timer = Timer::name("total time");
-    make_clause_database();
 
     let proof = parse_files(&config)?;
 
