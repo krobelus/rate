@@ -1,6 +1,6 @@
 //! Compile time and run time configuration
 
-use crate::{input::SimpleInput, output::RuntimeResult, parser::BinaryMode};
+use crate::{input::Input, output::RuntimeResult, parser::BinaryMode};
 use clap::ArgMatches;
 use libc::{self, signal};
 use std::fmt;

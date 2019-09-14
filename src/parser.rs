@@ -5,7 +5,7 @@ use crate::{
     clausedatabase::{clause_db, witness_db, ClauseDatabase, WitnessDatabase},
     config::{unreachable, ProofFormat},
     hashtable::{FixedSizeHashTable, HashTable},
-    input::SimpleInput,
+    input::Input,
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
     output::{self, RuntimeError, RuntimeResult, Timer},
@@ -92,7 +92,7 @@ impl BinaryMode {
         }
     }
     fn drat_trim_detection(&self, filename: &str) -> RuntimeResult<bool> {
-        let mut input = SimpleInput::from_file(filename, false)?;
+        let mut input = Input::from_file(filename, false)?;
         for i in 0..10 {
             match input
                 .next()
@@ -115,7 +115,7 @@ impl BinaryMode {
         Ok(false)
     }
     fn prefix_detection(&self, filename: &str) -> RuntimeResult<bool> {
-        let mut input = SimpleInput::from_file(filename, false)?;
+        let mut input = Input::from_file(filename, false)?;
         let b = input
             .peek()
             .map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))?;
@@ -148,7 +148,7 @@ pub enum ParsingError {
 
 pub struct Parser {
     info: ParsingInfo,
-    input: SimpleInput,
+    input: Input,
     syntax: SyntaxFormat,
     binary: bool,
 }
@@ -164,7 +164,7 @@ impl Parser {
         // todo : verbosity
         // todo : how to initialize witness_db ?
         let mode = binary.detect(filename)?;
-        let input = SimpleInput::from_file(filename, mode)?;
+        let input = Input::from_file(filename, mode)?;
         Ok(Parser {
             info: info,
             input: input,
@@ -226,7 +226,7 @@ impl Parser {
         }
         while let Some(c) = self.input.peek()? {
             //todo: check spaces and peeking
-            if SimpleInput::is_digit_or_dash(c) {
+            if Input::is_digit_or_dash(c) {
                 self.parse_introduction(false)?;
                 clauses = clauses + 1;
             } else if c == b'd' && self.syntax != SyntaxFormat::Dimacs {
@@ -524,7 +524,7 @@ impl Parser {
 //         parse_formula(
 //             &mut parser,
 //             clause_ids,
-//             SimpleInput::new(Box::new(formula_input), false),
+//             Input::new(Box::new(formula_input), false),
 //         )
 //         .unwrap_or_else(|err| die!("error parsing formula at line {}", err.line));
 //     }
@@ -551,7 +551,7 @@ impl Parser {
 //     parse_proof(
 //         &mut parser,
 //         clause_ids,
-//         SimpleInput::new(proof_input, binary),
+//         Input::new(proof_input, binary),
 //         binary,
 //     )
 //     .unwrap_or_else(|err| die!("error parsing proof at line {}", err.line));
@@ -980,7 +980,7 @@ impl Parser {
 //         assert!(parse_formula(
 //             &mut parser,
 //             clause_ids,
-//             SimpleInput::new(Box::new(example.as_bytes().iter().cloned()), false),
+//             Input::new(Box::new(example.as_bytes().iter().cloned()), false),
 //         )
 //         .is_ok());
 //         parser
@@ -992,7 +992,7 @@ impl Parser {
 //         let result = parse_proof(
 //             &mut parser,
 //             &mut clause_ids,
-//             SimpleInput::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
+//             Input::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
 //             false,
 //         );
 //         assert!(result.is_ok());

@@ -91,14 +91,14 @@ impl MaybeCompressedFile {
     }
 }
 
-pub struct SimpleInput {
+pub struct Input {
     source: MaybeCompressedFile,
     binary: bool,
     line: usize,
 }
-impl SimpleInput {
-    pub fn from_file(filename: &str, binary: bool) -> RuntimeResult<SimpleInput> {
-        Ok(SimpleInput {
+impl Input {
+    pub fn from_file(filename: &str, binary: bool) -> RuntimeResult<Input> {
+        Ok(Input {
             source: MaybeCompressedFile::from_file(filename)?,
             binary: binary,
             line: 0,
