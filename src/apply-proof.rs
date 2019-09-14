@@ -13,20 +13,23 @@ mod clause;
 mod clausedatabase;
 mod config;
 mod features;
+mod hashtable;
+mod input;
 mod literal;
 mod parser;
-
-#[macro_use(Serialize, Deserialize)]
-extern crate serde_derive;
+mod proof;
 
 use clap::Arg;
 use std::io::{Result, Write};
 
 use crate::{
     clause::{write_clause, Clause},
+    clausedatabase::clause_db,
+    hashtable::{FixedSizeHashTable, HashTable},
+    input::Input,
     parser::{
-        clause_db, is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
-        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
+        is_binary_drat, open_file_for_writing, parse_proof_step, BinaryMode, Parser, ParsingInfo,
+        ProofParserState, SyntaxFormat,
     },
 };
 
@@ -66,18 +69,29 @@ remaining proof to <OUTPUT>.drat "
         .parse()
         .unwrap_or_else(|err| die!("Line number must be an integer: {}", err));
     let output_name = matches.value_of("OUTPUT").unwrap();
-    let mut parser = Parser::new();
-    parser.verbose = false;
     let mut clause_ids = FixedSizeHashTable::new();
-    run_parser_on_formula(
-        &mut parser,
-        formula_filename,
-        proof_filename,
-        &mut clause_ids,
-    );
+    let mut parse_info = ParsingInfo::new();
+    {
+        let parser = Parser::new(
+            parse_info,
+            &formula_filename,
+            SyntaxFormat::Dimacs,
+            BinaryMode::Text,
+        )
+        .unwrap();
+        parse_info = parser.parse().unwrap();
+    }
+    let proof_format = crate::parser::proof_format_by_extension(proof_filename);
+    let mut parser = Parser::new(
+        parse_info,
+        &proof_filename,
+        SyntaxFormat::from(proof_format),
+        BinaryMode::DratTrimDetection,
+    )
+    .unwrap();
     let mut state = ProofParserState::Start;
     let binary = is_binary_drat(proof_filename);
-    let mut proof_input = read_compressed_file(&proof_filename, binary);
+    let mut proof_input = Input::from_file(&proof_filename, binary).unwrap();
     let mut formula_output = open_file_for_writing(&format!("{}.cnf", output_name));
     let mut proof_output = open_file_for_writing(&format!("{}.drat", output_name));
     for _ in 0..line_number {
@@ -99,7 +113,7 @@ remaining proof to <OUTPUT>.drat "
         writeln!(
             &mut formula_output,
             "p cnf {} {}",
-            parser.maxvar, number_of_active_clauses
+            parser.info.proof.maxvar, number_of_active_clauses
         )?;
         for clause in (0..clause_db().number_of_clauses()).map(Clause::new) {
             if !clause_ids.clause_is_active(clause) {
@@ -112,7 +126,7 @@ remaining proof to <OUTPUT>.drat "
         result
     };
     write_formula().expect("Failed to write formula");
-    while let Some(byte) = proof_input.next() {
+    while let Some(byte) = proof_input.next().unwrap() {
         proof_output
             .write_all(&[byte])
             .expect("Failed to write proof");

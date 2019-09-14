@@ -2,26 +2,20 @@
 
 use crate::{
     clause::{Clause, ProofStep},
-    clausedatabase::{clause_db, witness_db, ClauseDatabase, WitnessDatabase},
+    clausedatabase::{clause_db, witness_db},
     config::{unreachable, ProofFormat},
     hashtable::{FixedSizeHashTable, HashTable},
     input::Input,
     literal::{Literal, Variable},
-    memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
-    output::{self, RuntimeError, RuntimeResult, Timer},
+    memory::Offset,
+    output::{RuntimeError, RuntimeResult, Timer},
     proof::Proof,
 };
 use std::{
     cmp,
-    collections::HashMap,
-    convert::TryInto,
     fs::File,
-    hash::{Hash, Hasher},
-    io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
-    iter::Peekable,
+    io::{self, BufReader, BufWriter, Read},
     panic,
-    ptr::NonNull,
-    slice,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -93,10 +87,10 @@ impl BinaryMode {
     }
     fn drat_trim_detection(&self, filename: &str) -> RuntimeResult<bool> {
         let mut input = Input::from_file(filename, false)?;
-        for i in 0..10 {
+        for _ in 0..10 {
             match input
                 .next()
-                .map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))?
+                .map_err(|_e| RuntimeError::FileBinaryDetection(filename.to_string()))?
             {
                 None => return Ok(false),
                 Some(c) => {
@@ -118,14 +112,14 @@ impl BinaryMode {
         let mut input = Input::from_file(filename, false)?;
         let b = input
             .peek()
-            .map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))?;
+            .map_err(|_e| RuntimeError::FileBinaryDetection(filename.to_string()))?;
         Ok(b == Some(0x7F))
     }
 }
 
 pub struct ParsingInfo {
-    proof: Proof,
-    table: FixedSizeHashTable,
+    pub proof: Proof,
+    pub table: FixedSizeHashTable,
 }
 impl ParsingInfo {
     pub fn new() -> ParsingInfo {
@@ -147,10 +141,11 @@ pub enum ParsingError {
 }
 
 pub struct Parser {
-    info: ParsingInfo,
+    pub info: ParsingInfo,
     input: Input,
     syntax: SyntaxFormat,
     binary: bool,
+    pub max_proof_steps: Option<usize>,
 }
 impl Parser {
     pub fn new(
@@ -170,6 +165,7 @@ impl Parser {
             input: input,
             syntax: syntax,
             binary: mode,
+            max_proof_steps: None,
         })
     }
     pub fn parse(mut self) -> RuntimeResult<ParsingInfo> {
@@ -188,7 +184,7 @@ impl Parser {
         let mut clauses: u64 = 0u64;
         if self.input.peek()? == Some(0x7F) {
             //Skipping prefix if necessary
-            self.input.next();
+            self.input.next()?;
         }
         while let Some(c) = self.input.next()? {
             if c == 0x61u8 {
@@ -217,7 +213,7 @@ impl Parser {
     pub fn parse_text(&mut self) -> RuntimeResult<()> {
         let mut clauses: u64 = 0u64;
         let mut header: Option<usize> = None;
-        if (self.syntax == SyntaxFormat::Dimacs) {
+        if self.syntax == SyntaxFormat::Dimacs {
             self.skip_comments()?;
             let (vars, clauses, line) = self.parse_header()?;
             self.info.proof.maxvar = Variable::new(vars);
@@ -338,7 +334,7 @@ impl Parser {
             if check_repetition {
                 if literal == first {
                     clause_db().push_literal(Literal::new(0));
-                    self.parse_dpr_witness(literal);
+                    self.parse_dpr_witness(literal)?;
                     return Ok(clause);
                 }
             }
@@ -405,7 +401,7 @@ impl Parser {
     fn skip_comments(&mut self) -> RuntimeResult<()> {
         while let Some(c) = self.input.peek()? {
             if c == b'c' {
-                self.skip_line();
+                self.skip_line()?;
             } else {
                 break;
             }
@@ -561,39 +557,51 @@ impl Parser {
 //     parser.proof.shrink_to_fit();
 // }
 
-// fn open_file(filename: &str) -> File {
-//     File::open(&filename).unwrap_or_else(|err| die!("error opening file: {}", err))
-// }
+/// Open a file for reading.
+/// # Panics
+/// Panics on error.
+pub fn open_file(filename: &str) -> File {
+    File::open(filename).unwrap_or_else(|err| die!("cannot open file: {}", err))
+}
 
-// const ZSTD: &str = ".zst";
-// const GZIP: &str = ".gz";
-// const BZIP2: &str = ".bz2";
-// const LZ4: &str = ".lz4";
-// const XZ: &str = ".xz";
+/// Open a file for writing.
+/// # Panics
+/// Panics on error.
+pub fn open_file_for_writing(filename: &str) -> BufWriter<File> {
+    BufWriter::new(
+        File::create(filename).unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
+    )
+}
 
-// fn compression_format_by_extension(filename: &str) -> (&str, &str) {
-//     let mut basename = filename;
-//     let mut compression_format = "";
-//     for extension in &[ZSTD, GZIP, BZIP2, LZ4, XZ] {
-//         if filename.ends_with(extension) {
-//             compression_format = extension;
-//             basename = &filename[0..filename.len() - extension.len()];
-//             break;
-//         }
-//     }
-//     (basename, compression_format)
-// }
+const ZSTD: &str = ".zst";
+const GZIP: &str = ".gz";
+const BZIP2: &str = ".bz2";
+const LZ4: &str = ".lz4";
+const XZ: &str = ".xz";
 
-// pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
-//     let (basename, _compression_format) = compression_format_by_extension(proof_filename);
-//     if basename.ends_with(".drat") {
-//         RedundancyProperty::RAT
-//     } else if basename.ends_with(".pr") || basename.ends_with(".dpr") {
-//         RedundancyProperty::PR
-//     } else {
-//         RedundancyProperty::RAT
-//     }
-// }
+fn compression_format_by_extension(filename: &str) -> (&str, &str) {
+    let mut basename = filename;
+    let mut compression_format = "";
+    for extension in &[ZSTD, GZIP, BZIP2, LZ4, XZ] {
+        if filename.ends_with(extension) {
+            compression_format = extension;
+            basename = &filename[0..filename.len() - extension.len()];
+            break;
+        }
+    }
+    (basename, compression_format)
+}
+
+pub fn proof_format_by_extension(proof_filename: &str) -> ProofFormat {
+    let (basename, _compression_format) = compression_format_by_extension(proof_filename);
+    if basename.ends_with(".drat") {
+        ProofFormat::DratAnyPivot
+    } else if basename.ends_with(".pr") || basename.ends_with(".dpr") {
+        ProofFormat::DprFirstPivot
+    } else {
+        ProofFormat::DratAnyPivot
+    }
+}
 
 // impl RedundancyProperty {
 //     #[allow(dead_code)]
@@ -606,7 +614,7 @@ impl Parser {
 // }
 //
 // pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
-//     let file = open_file(filename);
+//     let file = open_file_for_writing(filename);
 //     let (_basename, compression_format) = compression_format_by_extension(filename);
 //     if compression_format == "" {
 //         return Box::new(std::io::BufReader::new(file).bytes().map(panic_on_error));
@@ -638,82 +646,148 @@ impl Parser {
 //     }
 // }
 //
-// fn panic_on_error(result: io::Result<u8>) -> u8 {
-//     result.unwrap_or_else(|error| die!("read error: {}", error))
-// }
+fn panic_on_error(result: io::Result<u8>) -> u8 {
+    result.unwrap_or_else(|error| die!("read error: {}", error))
+}
 
-// fn add_literal(
-//     parser: &mut Parser,
-//     clause_ids: &mut impl HashTable,
-//     state: ProofParserState,
-//     literal: Literal,
-// ) {
-//     parser.maxvar = cmp::max(parser.maxvar, literal.variable());
-//     match state {
-//         ProofParserState::Clause => {
-//             clause_db().push_literal(literal);
-//             if parser.is_pr() && literal.is_zero() {
-//                 witness_db().push_literal(literal);
-//             }
-//         }
-//         ProofParserState::Witness => {
-//             invariant!(parser.is_pr());
-//             witness_db().push_literal(literal);
-//             if literal.is_zero() {
-//                 clause_db().push_literal(literal);
-//             }
-//         }
-//         ProofParserState::Deletion => {
-//             clause_db().push_literal(literal);
-//             if literal.is_zero() {
-//                 add_deletion(parser, clause_ids);
-//             }
-//         }
-//         ProofParserState::Start => unreachable(),
-//     }
-//     match state {
-//         ProofParserState::Clause | ProofParserState::Witness => {
-//             if literal.is_zero() {
-//                 clause_ids.add_clause(clause_db().last_clause());
-//             }
-//         }
-//         _ => (),
+// /// Return an [Input](struct.Input.html) to read from a possibly compressed file.
+// ///
+// /// If the file is compressed it is transparently uncompressed.
+// /// If the filename is "-", returns an [Input](struct.Input.html) reading data from stdin.
+// /// Argument `binary` is passed on to [Input](struct.Input.html).
+// pub fn read_compressed_file_or_stdin<'a>(
+//     filename: &'a str,
+//     binary: bool,
+//     stdin: StdinLock<'a>,
+// ) -> Input {
+//     match filename {
+//         // "-" => Input::new(Box::new(stdin.bytes().map(panic_on_error)), binary),
+//         "-" => {assert!(false, "TODO"); unreachable()},
+//         filename => read_compressed_file(filename, binary),
 //     }
 // }
 
-// fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
-//     let clause = clause_db().last_clause();
-//     match clause_ids.find_equal_clause(clause, /*delete=*/ true) {
-//         None => {
-//             if parser.verbose {
-//                 warn!(
-//                     "Deleted clause is not present in the formula: {}",
-//                     clause_db().clause_to_string(clause)
-//                 );
-//             }
-//             // Need this for sickcheck
-//             parser
-//                 .proof
-//                 .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
-//         }
-//         Some(clause) => parser.proof.push(ProofStep::deletion(clause)),
-//     }
-//     clause_db().pop_clause();
+// /// Return an [Input](struct.Input.html) to read from a possibly compressed file.
+// ///
+// /// If the file is compressed it is transparently uncompressed.
+// /// Argument `binary` is passed on to [Input](struct.Input.html).
+// pub fn read_compressed_file(filename: &str, binary: bool) -> Input {
+//     Input::new(read_compressed_file_impl(filename), binary)
 // }
 
-// fn clause_hash(clause: &[Literal]) -> usize {
-//     let mut sum: usize = 0;
-//     let mut prod: usize = 1;
-//     let mut xor: usize = 0;
-//     for &literal in clause {
-//         prod = prod.wrapping_mul(literal.as_offset());
-//         sum = sum.wrapping_add(literal.as_offset());
-//         xor ^= literal.as_offset();
-//     }
-//     ((1023 * sum + prod) ^ (31 * xor))
-// }
+/// Return an Iterator to read from a possibly compressed file.
+///
+/// If the file is compressed it is transparently uncompressed.
+fn read_compressed_file_impl(filename: &str) -> Box<dyn Iterator<Item = u8>> {
+    let file = open_file(filename);
+    let (_basename, compression_format) = compression_format_by_extension(filename);
+    if compression_format == "" {
+        return Box::new(BufReader::new(file).bytes().map(panic_on_error));
+    }
+    match compression_format {
+        ZSTD => {
+            let de = zstd::stream::read::Decoder::new(file)
+                .unwrap_or_else(|err| die!("failed to decompress ZST archive: {}", err));
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        GZIP => {
+            let de = flate2::read::GzDecoder::new(file);
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        BZIP2 => {
+            let de = bzip2::read::BzDecoder::new(file);
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        XZ => {
+            let de = xz2::read::XzDecoder::new(file);
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        LZ4 => {
+            let de = lz4::Decoder::new(file)
+                .unwrap_or_else(|err| die!("failed to decode LZ4 archive: {}", err));
+            Box::new(de.bytes().map(panic_on_error))
+        }
+        _ => unreachable(),
+    }
+}
 
-// pub type Result<T> = std::result::Result<T, ParseError>;
+/// Add a literal to the clause or witness database.
+///
+/// If the literal is zero, the current clause or witness will be terminated.
+fn add_literal(
+    parser: &mut Parser,
+    clause_ids: &mut impl HashTable,
+    state: ProofParserState,
+    literal: Literal,
+) {
+    parser.info.proof.maxvar = cmp::max(parser.info.proof.maxvar, literal.variable());
+    match state {
+        ProofParserState::Clause => {
+            clause_db().push_literal(literal);
+            if parser.syntax.dpr() && literal.is_zero() {
+                witness_db().push_literal(literal);
+            }
+        }
+        ProofParserState::Witness => {
+            invariant!(parser.syntax.dpr());
+            witness_db().push_literal(literal);
+            if literal.is_zero() {
+                clause_db().push_literal(literal);
+            }
+        }
+        ProofParserState::Deletion => {
+            clause_db().push_literal(literal);
+            if literal.is_zero() {
+                add_deletion(parser, clause_ids);
+            }
+        }
+        ProofParserState::Start => unreachable(),
+    }
+    match state {
+        ProofParserState::Clause | ProofParserState::Witness => {
+            if literal.is_zero() {
+                clause_ids.add_clause(clause_db().last_clause());
+            }
+        }
+        _ => (),
+    }
+}
+
+fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
+    let clause = clause_db().last_clause();
+    match clause_ids.find_equal_clause(clause, /*delete=*/ true) {
+        None => {
+            // if parser.verbose {
+            //     warn!(
+            //         "Deleted clause is not present in the formula: {}",
+            //         clause_db().clause_to_string(clause)
+            //     );
+            // }
+            // Need this for sickcheck
+            parser
+                .info
+                .proof
+                .proof
+                .push(ProofStep::deletion(Clause::DOES_NOT_EXIST))
+        }
+        Some(clause) => parser.info.proof.proof.push(ProofStep::deletion(clause)),
+    }
+    clause_db().pop_clause();
+}
+
+pub type Result<T> = std::result::Result<T, RuntimeError>;
+
+fn clause_hash(clause: &[Literal]) -> usize {
+    let mut sum: usize = 0;
+    let mut prod: usize = 1;
+    let mut xor: usize = 0;
+    for &literal in clause {
+        prod = prod.wrapping_mul(literal.as_offset());
+        sum = sum.wrapping_add(literal.as_offset());
+        xor ^= literal.as_offset();
+    }
+    ((1023 * sum + prod) ^ (31 * xor))
+}
 
 // #[derive(Debug, PartialEq, Eq)]
 // pub struct ParseError {
@@ -721,13 +795,37 @@ impl Parser {
 //     pub why: &'static str,
 // }
 
-// const OVERFLOW: &str = "overflow while parsing number";
-// const NUMBER: &str = "expected number";
-// const EOF: &str = "premature end of file";
-// const P_CNF: &str = "expected \"p cnf\"";
-// const DRAT: &str = "expected DRAT instruction";
+/// Check if a character is a decimal digit.
+fn is_digit(value: u8) -> bool {
+    value >= b'0' && value <= b'9'
+}
 
-// fn parse_literal(input: &mut impl Input) -> Result<Literal> {
+/// Check if a character is a decimal digit or a dash.
+fn is_digit_or_dash(value: u8) -> bool {
+    is_digit(value) || value == b'-'
+}
+
+// Error messages.
+/// A numeric overflow. This should only happen for user input.
+const OVERFLOW: &str = "overflow while parsing number";
+/// Parser error ("unexpected EOF")
+const EOF: &str = "premature end of file";
+/// Parser error (`expected ...`)
+const NUMBER: &str = "expected number";
+/// Parser error (`expected ...`)
+const SPACE: &str = "expected space";
+/// Parser error (`expected ...`)
+const NUMBER_OR_SPACE: &str = "expected number or space";
+/// Parser error (`expected ...`)
+const NUMBER_OR_MINUS: &str = "expected number or \"-\"";
+/// Parser error (`expected ...`)
+const P_CNF: &str = "expected \"p cnf\"";
+/// Parser error (`expected ...`)
+const DRAT: &str = "expected DRAT instruction";
+/// Parser error (`expected ...`)
+const NEWLINE: &str = "expected newline";
+
+// fn parse_literal(input: &mut Input) -> Result<Literal> {
 //     match input.peek() {
 //         None => Err(input.error(EOF)),
 //         Some(c) if is_digit_or_dash(c) => {
@@ -743,47 +841,55 @@ impl Parser {
 //     }
 // }
 
-// fn parse_comment(input: &mut impl Input) -> Option<()> {
-//     match input.peek() {
-//         Some(b'c') => {
-//             input.next();
-//             while let Some(c) = input.next() {
-//                 if c == b'\n' {
-//                     return Some(());
-//                 }
-//             }
-//             None
-//         }
-//         _ => None,
-//     }
-// }
+fn parse_comment(input: &mut Input) -> Option<()> {
+    match input.peek_unchecked() {
+        Some(b'c') => {
+            input.next().unwrap();
+            while let Some(c) = input.next().unwrap() {
+                if c == b'\n' {
+                    return Some(());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
 
-// fn parse_formula_header(input: &mut impl Input) -> Result<(u64, u64)> {
-//     while let Some(()) = parse_comment(input) {}
-//     for &expected in b"p cnf" {
-//         if input.peek().map_or(true, |c| c != expected) {
-//             return Err(input.error(P_CNF));
-//         }
-//         input.next();
-//     }
-//     let maxvar = input.parse_u64()?;
-//     let num_clauses = input.parse_u64()?;
-//     Ok((maxvar, num_clauses))
-// }
+fn parse_formula_header(input: &mut Input) -> Result<(u64, u64)> {
+    while let Some(()) = parse_comment(input) {}
+    for &expected in b"p cnf" {
+        if input.peek_unchecked().map_or(true, |c| c != expected) {
+            return Err(RuntimeError::ParsingMissingHeader(
+                input.filename(),
+                input.line(),
+            ));
+        }
+        input.next()?;
+    }
+    let maxvar = input.parse_u64()?;
+    let num_clauses = input.parse_u64()?;
+    Ok((maxvar, num_clauses))
+}
 
-// fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
-//     let clause = clause_db().open_clause();
-//     if parser.is_pr() && state != ProofParserState::Deletion {
-//         let witness = witness_db().open_witness();
-//         invariant!(clause == witness);
-//     }
-//     clause
-// }
+/// Returns true if the character is one of the whitespace characters we allow.
+fn is_space(c: u8) -> bool {
+    [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
+}
+
+fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
+    let clause = clause_db().open_clause();
+    if parser.syntax.dpr() && state != ProofParserState::Deletion {
+        let witness = witness_db().open_witness();
+        invariant!(clause == witness);
+    }
+    clause
+}
 
 // fn parse_formula(
 //     parser: &mut Parser,
 //     clause_ids: &mut impl HashTable,
-//     mut input: impl Input,
+//     mut input: Input,
 // ) -> Result<()> {
 //     parse_formula_header(&mut input)?;
 //     let mut clause_head = true;
@@ -796,10 +902,10 @@ impl Parser {
 //             parse_comment(&mut input);
 //             continue;
 //         }
-//         let literal = parse_literal(&mut input)?;
+//         let literal = input.parse_literal()?;
 //         if clause_head {
 //             open_clause(parser, ProofParserState::Clause);
-//             parser.clause_pivot.push(Literal::NEVER_READ);
+//             parser.info.proof.pivots.push(Literal::NEVER_READ);
 //         }
 //         add_literal(parser, clause_ids, ProofParserState::Clause, literal);
 //         clause_head = literal.is_zero();
@@ -807,86 +913,95 @@ impl Parser {
 //     Ok(())
 // }
 
-// // See drat-trim
-// pub fn is_binary_drat(buffer: impl Iterator<Item = u8>) -> bool {
-//     for c in buffer {
-//         if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
-//         {
-//             return true;
-//         }
-//     }
-//     false
-// }
+/// Returns true if the file is in binary (compressed) DRAT.
+///
+/// Read the first ten characters of the given file to determine
+/// that, just like `drat-trim`. This works fine on real proofs.
+pub fn is_binary_drat(filename: &str) -> bool {
+    is_binary_drat_impl(read_compressed_file_impl(filename))
+}
+/// Implementation of `is_binary_drat`.
+fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
+    for c in buffer {
+        if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
+        {
+            return true;
+        }
+    }
+    false
+}
 
-// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-// pub enum ProofParserState {
-//     Start,
-//     Clause,
-//     Witness,
-//     Deletion,
-// }
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ProofParserState {
+    Start,
+    Clause,
+    Witness,
+    Deletion,
+}
 
-// pub fn parse_proof_step(
-//     parser: &mut Parser,
-//     clause_ids: &mut impl HashTable,
-//     input: &mut impl Input,
-//     binary: bool,
-//     state: &mut ProofParserState,
-// ) -> Result<Option<()>> {
-//     let literal_parser = if binary {
-//         parse_literal_binary
-//     } else {
-//         parse_literal
-//     };
-//     let mut lemma_head = true;
-//     let mut first_literal = None;
-//     while let Some(c) = input.peek() {
-//         if !binary && is_space(c) {
-//             input.next();
-//             continue;
-//         }
-//         if *state == ProofParserState::Start {
-//             *state = match c {
-//                 b'd' => {
-//                     input.next();
-//                     open_clause(parser, ProofParserState::Deletion);
-//                     ProofParserState::Deletion
-//                 }
-//                 b'c' => {
-//                     parse_comment(input);
-//                     ProofParserState::Start
-//                 }
-//                 c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
-//                     if binary {
-//                         input.next();
-//                     }
-//                     lemma_head = true;
-//                     let clause = open_clause(parser, ProofParserState::Clause);
-//                     parser.proof.push(ProofStep::lemma(clause));
-//                     ProofParserState::Clause
-//                 }
-//                 _ => return Err(input.error(DRAT)),
-//             };
-//             continue;
-//         }
-//         let literal = literal_parser(input)?;
-//         if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
-//             *state = ProofParserState::Witness;
-//         }
-//         if *state == ProofParserState::Clause && lemma_head {
-//             parser.clause_pivot.push(literal);
-//             first_literal = Some(literal);
-//             lemma_head = false;
-//         }
-//         invariant!(*state != ProofParserState::Start);
-//         add_literal(parser, clause_ids, *state, literal);
-//         if literal.is_zero() {
-//             *state = ProofParserState::Start;
-//             return Ok(Some(()));
-//         }
-//     }
-//     Ok(None)
-// }
+pub fn parse_proof_step(
+    parser: &mut Parser,
+    clause_ids: &mut impl HashTable,
+    input: &mut Input,
+    binary: bool,
+    state: &mut ProofParserState,
+) -> Result<Option<()>> {
+    let mut lemma_head = true;
+    let mut first_literal = None;
+    while let Some(c) = input.peek_unchecked() {
+        if !binary && is_space(c) {
+            input.next()?;
+            continue;
+        }
+        if *state == ProofParserState::Start {
+            *state = match c {
+                b'd' => {
+                    input.next()?;
+                    open_clause(parser, ProofParserState::Deletion);
+                    ProofParserState::Deletion
+                }
+                b'c' => {
+                    parse_comment(input);
+                    ProofParserState::Start
+                }
+                c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
+                    if binary {
+                        input.next()?;
+                    }
+                    lemma_head = true;
+                    let clause = open_clause(parser, ProofParserState::Clause);
+                    parser.info.proof.proof.push(ProofStep::lemma(clause));
+                    ProofParserState::Clause
+                }
+                _ => return Err(input.throw_invalid_syntax()),
+            };
+            continue;
+        }
+        let literal = if binary {
+            input.parse_literal_binary()?
+        } else {
+            input.parse_literal()?
+        };
+        if parser.syntax.dpr()
+            && *state == ProofParserState::Clause
+            && first_literal == Some(literal)
+        {
+            *state = ProofParserState::Witness;
+        }
+        if *state == ProofParserState::Clause && lemma_head {
+            parser.info.proof.pivots.push(literal);
+            first_literal = Some(literal);
+            lemma_head = false;
+        }
+        invariant!(*state != ProofParserState::Start);
+        add_literal(parser, clause_ids, *state, literal);
+        if literal.is_zero() {
+            *state = ProofParserState::Start;
+            return Ok(Some(()));
+        }
+    }
+    Ok(None)
+}
 
 // pub fn finish_proof(
 //     parser: &mut Parser,
@@ -916,7 +1031,7 @@ impl Parser {
 // fn parse_proof(
 //     parser: &mut Parser,
 //     clause_ids: &mut impl HashTable,
-//     mut input: impl Input,
+//     mut input: Input,
 //     binary: bool,
 // ) -> Result<()> {
 //     parser.proof_start = Clause::new(clause_db().number_of_clauses());
@@ -945,12 +1060,12 @@ impl Parser {
 // pub fn print_db() {
 //     let clause_db = &clause_db();
 //     let witness_db = &witness_db();
-//     let is_pr = !witness_db.empty();
+//     let dpr = !witness_db.empty();
 //     for clause in Clause::range(0, clause_db.last_clause() + 1) {
 //         write_to_stdout!(
 //             "{}{} fields: {:?}\n",
 //             clause_db.clause_to_string(clause),
-//             if is_pr {
+//             if dpr {
 //                 format!(", {}", witness_db.witness_to_string(clause))
 //             } else {
 //                 "".into()
@@ -1035,7 +1150,7 @@ impl Parser {
 //             Parser {
 //                 redundancy_property: RedundancyProperty::RAT,
 //                 maxvar: Variable::new(3),
-//                 clause_pivot: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
+//                 pivots: stack!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
 //                 proof_start: Clause::new(2),
 //                 proof: stack!(
 //                     ProofStep::lemma(Clause::new(2)),
@@ -1054,7 +1169,7 @@ impl Parser {
 //     fn heap_space(&self) -> usize {
 //         clause_db().heap_space()
 //             + witness_db().heap_space()
-//             + self.clause_pivot.heap_space()
+//             + self.pivots.heap_space()
 //             + self.proof.heap_space()
 //     }
 // }

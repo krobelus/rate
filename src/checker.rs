@@ -8,6 +8,7 @@ use crate::{
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{self, Timer},
+    parser::open_file_for_writing,
     proof::Proof,
     sick::{Sick, Witness},
 };

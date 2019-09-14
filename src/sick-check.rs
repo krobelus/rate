@@ -29,17 +29,19 @@ use toml;
 
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
-    clause::{Clause, Reason},
-    hashtable::FixedSizeHashTable,
+    clause::Reason,
+    clausedatabase::{clause_db, witness_db},
+    config::ProofFormat,
+    hashtable::HashTable,
     literal::Literal,
     memory::{Array, Vector},
-    output::solution,
-    parser::Parser,
+    output::{solution, RuntimeError},
+    parser::{open_file, proof_format_by_extension, BinaryMode, Parser, ParsingInfo, SyntaxFormat},
     sick::Sick,
 };
 
 #[allow(clippy::cognitive_complexity)]
-fn main() -> Result<(), ()> {
+fn main() -> Result<(), RuntimeError> {
     crate::config::signals();
     let app = clap::App::new("sick-check")
         .version(env!("CARGO_PKG_VERSION"))
@@ -63,7 +65,7 @@ fn main() -> Result<(), ()> {
     let formula_filename = matches.value_of("INPUT").unwrap();
     let proof_filename = matches.value_of("PROOF").unwrap();
     let sick_filename = matches.value_of("CERTIFICATE").unwrap();
-    let proof_file_redundancy_property = proof_format_by_extension(proof_filename);
+    let proof_file_proof_format = proof_format_by_extension(proof_filename);
 
     let mut toml_str = String::new();
     let mut sick_file = open_file(sick_filename);
@@ -72,32 +74,46 @@ fn main() -> Result<(), ()> {
         .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));
     let sick: Sick =
         toml::from_str(&toml_str).unwrap_or_else(|err| die!("Failed to parse SICK file: {}", err));
-    let redundancy_property = match sick.proof_format.as_ref() {
-        "DRAT-arbitrary-pivot" => RedundancyProperty::RAT,
-        "DRAT-pivot-is-first-literal" => RedundancyProperty::RAT,
-        "PR" => RedundancyProperty::PR,
+    let proof_format = match sick.proof_format.as_ref() {
+        "DRAT-arbitrary-pivot" => ProofFormat::DratAnyPivot,
+        "DRAT-pivot-is-first-literal" => ProofFormat::DratFirstPivot,
+        "PR" => ProofFormat::DprFirstPivot,
         format => die!("Unsupported proof format: {}", format),
     };
-    requires!(redundancy_property == proof_file_redundancy_property);
-    let mut clause_ids = FixedSizeHashTable::new();
-    let mut parser = Parser::new();
-    parser.max_proof_steps = Some(sick.proof_step);
-    run_parser(
-        &mut parser,
-        formula_filename,
-        proof_filename,
-        &mut clause_ids,
+    requires!(
+        proof_format.dpr() == proof_file_proof_format.dpr()
+            && proof_format.drat() == proof_file_proof_format.drat()
     );
+    let mut parse_info = ParsingInfo::new();
+    {
+        let parser = Parser::new(
+            parse_info,
+            formula_filename,
+            SyntaxFormat::Dimacs,
+            BinaryMode::Text,
+        )?;
+        parse_info = parser.parse()?;
+    }
+    {
+        let mut parser = Parser::new(
+            parse_info,
+            proof_filename,
+            SyntaxFormat::from(proof_format),
+            BinaryMode::DratTrimDetection,
+        )?;
+        parser.max_proof_steps = Some(sick.proof_step);
+        parse_info = parser.parse()?;
+    }
 
-    if sick.proof_step > parser.proof.len() {
+    if sick.proof_step > parse_info.proof.proof.len() {
         die!(
             "Specified proof step exceeds proof size: {}",
             sick.proof_step
         );
     }
-    let lemma = parser.proof[sick.proof_step - 1].clause();
+    let lemma = parse_info.proof.proof[sick.proof_step - 1].clause();
     requires!(lemma.index < clause_db().number_of_clauses());
-    let mut assignment = Assignment::new(parser.maxvar);
+    let mut assignment = Assignment::new(parse_info.proof.maxvar);
     for &literal in &sick.natural_model {
         if assignment[-literal] {
             die!(
@@ -120,8 +136,8 @@ fn main() -> Result<(), ()> {
         }
     }
     // Delete the lemma, so it is not considered to be part of the formula.
-    clause_ids.delete_clause(lemma);
-    for &clause in &clause_ids {
+    parse_info.table.delete_clause(lemma);
+    for &clause in &parse_info.table {
         if clause < lemma && !stable_under_unit_propagation(&assignment, clause_db().clause(clause))
         {
             die!(
@@ -132,7 +148,7 @@ fn main() -> Result<(), ()> {
     }
     let witnesses = sick.witness.unwrap_or_else(Vector::new);
     const PIVOT: &str = "RAT requires to specify a pivot for each witness";
-    if redundancy_property == RedundancyProperty::RAT {
+    if proof_format.drat() {
         let mut specified_pivots: Vec<Literal> = witnesses
             .iter()
             .map(|witness| witness.pivot.expect(PIVOT))
@@ -144,8 +160,8 @@ fn main() -> Result<(), ()> {
             .cloned()
             .collect();
         if !specified_pivots.is_empty() {
-            match sick.proof_format.as_ref() {
-                "DRAT-arbitrary-pivot" => {
+            match proof_format {
+                ProofFormat::DratAnyPivot => {
                     specified_pivots.sort();
                     expected_pivots.sort();
                     if specified_pivots != expected_pivots {
@@ -156,14 +172,14 @@ fn main() -> Result<(), ()> {
                         )
                     }
                 }
-                "DRAT-pivot-is-first-literal" => {
+                ProofFormat::DratFirstPivot => {
                     if specified_pivots.len() > 1 {
                         die!("Using proof_format = \"{}\", the first literal must be specified as pivot and nothing else",
                         sick.proof_format);
                     }
                 }
                 _ => unreachable!(),
-            };
+            }
         }
     }
     for witness in witnesses {
@@ -173,7 +189,8 @@ fn main() -> Result<(), ()> {
         }
         clause_db().push_literal(Literal::new(0));
         let failing_clause_tmp = clause_db().last_clause();
-        let failing_clause = clause_ids
+        let failing_clause = parse_info
+            .table
             .find_equal_clause(failing_clause_tmp, /*delete=*/ false)
             .unwrap_or_else(|| {
                 die!(
@@ -192,44 +209,42 @@ fn main() -> Result<(), ()> {
             }
             assignment.push(literal, Reason::assumed());
         }
-        let resolvent: Vec<Literal> = match redundancy_property {
-            RedundancyProperty::RAT => {
-                let pivot = witness.pivot.expect(PIVOT);
-                lemma_slice
-                    .iter()
-                    .chain(witness.failing_clause.iter())
-                    .filter(|&&lit| lit.variable() != pivot.variable())
-                    .cloned()
-                    .collect()
+        let resolvent: Vec<Literal> = if proof_format.drat() {
+            let pivot = witness.pivot.expect(PIVOT);
+            lemma_slice
+                .iter()
+                .chain(witness.failing_clause.iter())
+                .filter(|&&lit| lit.variable() != pivot.variable())
+                .cloned()
+                .collect()
+        } else {
+            requires!(proof_format.dpr());
+            let mut literal_is_in_witness =
+                Array::new(false, parse_info.proof.maxvar.array_size_for_literals());
+            for &literal in witness_db().witness(lemma) {
+                literal_is_in_witness[literal] = true;
             }
-            RedundancyProperty::PR => {
-                let mut literal_is_in_witness =
-                    Array::new(false, parser.maxvar.array_size_for_literals());
-                for &literal in witness_db().witness(lemma) {
-                    literal_is_in_witness[literal] = true;
-                }
-                if witness
-                    .failing_clause
-                    .iter()
-                    .any(|&lit| literal_is_in_witness[lit])
-                {
-                    die!(
-                        "Reduct of failing clause {} is satisified under witness {}",
-                        clause_db().clause_to_string(failing_clause),
-                        witness_db().witness_to_string(failing_clause)
-                    )
-                }
-                lemma_slice
-                    .iter()
-                    .chain(
-                        witness
-                            .failing_clause
-                            .iter()
-                            .filter(|&&lit| !literal_is_in_witness[-lit]),
-                    )
-                    .cloned()
-                    .collect()
+            if witness
+                .failing_clause
+                .iter()
+                .any(|&lit| literal_is_in_witness[lit])
+            {
+                die!(
+                    "Reduct of failing clause {} is satisified under witness {}",
+                    clause_db().clause_to_string(failing_clause),
+                    witness_db().witness_to_string(failing_clause)
+                )
             }
+            lemma_slice
+                .iter()
+                .chain(
+                    witness
+                        .failing_clause
+                        .iter()
+                        .filter(|&&lit| !literal_is_in_witness[-lit]),
+                )
+                .cloned()
+                .collect()
         };
         for &literal in &resolvent {
             if !assignment[-literal] {
@@ -239,7 +254,7 @@ fn main() -> Result<(), ()> {
                 );
             }
         }
-        for &clause in &clause_ids {
+        for &clause in &parse_info.table {
             if clause < lemma
                 && !stable_under_unit_propagation(&assignment, clause_db().clause(clause))
             {

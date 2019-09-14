@@ -15,15 +15,15 @@ mod features;
 mod literal;
 #[macro_use]
 mod memory;
+mod hashtable;
+mod input;
 mod parser;
-
-#[macro_use(Serialize, Deserialize)]
-extern crate serde_derive;
+mod proof;
 
 use clap::Arg;
 use std::io::{self, Result, Write};
 
-use crate::parser::{open_file_for_writing, parse_literal, read_compressed_file_or_stdin};
+use crate::parser::open_file_for_writing;
 
 fn write_number(output: &mut Write, number: i32) -> Result<()> {
     let mut encoding = number.abs() << 1;
@@ -54,25 +54,22 @@ fn main() -> Result<()> {
         .arg(Arg::with_name("OUTPUT").help("output file (omit for stdout)"))
         .get_matches();
     let stdout = io::stdout();
-    let stdin = io::stdin();
-    let mut input = read_compressed_file_or_stdin(
-        matches.value_of("INPUT").unwrap_or("-"),
-        /*binary=*/ false,
-        stdin.lock(),
-    );
+    let mut input =
+        crate::input::Input::from_file(matches.value_of("INPUT").unwrap(), /*binary*/ false)
+            .unwrap();
     let mut output: Box<Write> = match matches.value_of("OUTPUT") {
         None => Box::new(stdout.lock()),
         Some(filename) => Box::new(open_file_for_writing(filename)),
     };
-    while let Some(c) = input.peek() {
+    while let Some(c) = input.peek_unchecked() {
         output.write_all(&[if c == b'd' {
-            input.next();
+            input.next().unwrap();
             b'd'
         } else {
             b'a'
         }])?;
         loop {
-            let literal = parse_literal(&mut input)?;
+            let literal = input.parse_literal().unwrap();
             write_number(&mut output, literal.decode())?;
             if literal.is_zero() {
                 break;

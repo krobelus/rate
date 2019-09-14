@@ -155,7 +155,7 @@ impl Drop for Timer {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum RuntimeError {
     FileOpening(String),
     FileReading(String),

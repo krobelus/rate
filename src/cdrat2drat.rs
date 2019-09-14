@@ -15,15 +15,15 @@ mod features;
 mod literal;
 #[macro_use]
 mod memory;
+mod hashtable;
+mod input;
 mod parser;
-
-#[macro_use(Serialize, Deserialize)]
-extern crate serde_derive;
+mod proof;
 
 use clap::Arg;
 use std::io::{self, Result, Write};
 
-use crate::parser::{open_file_for_writing, parse_literal_binary, read_compressed_file_or_stdin};
+use crate::parser::open_file_for_writing;
 
 fn fail(offset: usize) -> ! {
     eprintln!("*** Fatal error: unexpected byte at position {}", offset);
@@ -41,23 +41,21 @@ fn main() -> Result<()> {
         )
         .arg(Arg::with_name("OUTPUT").help("output file (defaults to stdout)"))
         .get_matches();
-    let stdin = io::stdin();
     let stdout = io::stdout();
     let input_filename = matches.value_of("INPUT").unwrap_or("-");
-    let mut input =
-        read_compressed_file_or_stdin(input_filename, /*binary=*/ true, stdin.lock());
+    let mut input = crate::input::Input::from_file(input_filename, /*binary*/ true).unwrap();
     let mut output: Box<Write> = match matches.value_of("OUTPUT") {
         None => Box::new(stdout.lock()),
         Some(filename) => Box::new(open_file_for_writing(filename)),
     };
-    while let Some(byte) = input.next() {
+    while let Some(byte) = input.next().unwrap() {
         match byte {
             b'a' => (),
             b'd' => output.write_all(b"d ")?,
-            _ => return Err(input.error("expected \"a\" or \"d\"")),
+            _ => panic!("expected \"a\" or \"d\""),
         }
         loop {
-            let literal = parse_literal_binary(&mut input)?;
+            let literal = input.parse_literal_binary().unwrap();
             if literal.is_zero() {
                 writeln!(output, "0")?;
                 break;

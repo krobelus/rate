@@ -1,9 +1,8 @@
 //! Compile time and run time configuration
 
-use crate::{input::Input, output::RuntimeResult, parser::BinaryMode};
+use crate::parser::BinaryMode;
 use clap::ArgMatches;
 use libc::{self, signal};
-use std::fmt;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ProofFormat {
@@ -131,21 +130,21 @@ impl Config {
         let mut respect_unit_deletions = matches.is_present("RESPECT_UNIT_DELETIONS");
         let mut drat_system = matches.is_present("DRAT_SYSTEM");
         let mut dpr_system = matches.is_present("DPR_SYSTEM");
-        let mut dsr_system = matches.is_present("DSR_SYSTEM");
-        let mut text_format = matches.is_present("TEXT_FORMAT");
-        let mut binary_format = matches.is_present("BINARY_FORMAT");
+        let dsr_system = matches.is_present("DSR_SYSTEM");
+        let text_format = matches.is_present("TEXT_FORMAT");
+        let binary_format = matches.is_present("BINARY_FORMAT");
         let mut drat_trim_format = matches.is_present("DRAT_TRIM_FORMAT");
-        let mut prefix_format = matches.is_present("PREFIX_FORMAT");
+        let prefix_format = matches.is_present("PREFIX_FORMAT");
         let mut unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
-        let mut no_terminating_empty_clause = matches.is_present("NO_TERMINATING_EMPTY_CLAUSE");
-        let mut forward = matches.is_present("FORWARD");
-        let mut drat_trim = matches.is_present("DRAT_TRIM");
-        let mut rupee = matches.is_present("RUPEE");
-        let mut memory_usage_breakdown = matches.is_present("MEMORY_USAGE_BREAKDOWN");
-        let mut lemmas = matches.is_present("LEMMAS_FILE");
-        let mut lrat = matches.is_present("LRAT_FILE");
-        let mut grat = matches.is_present("GRAT_FILE");
-        let mut sick = matches.is_present("SICK_FILE");
+        let no_terminating_empty_clause = matches.is_present("NO_TERMINATING_EMPTY_CLAUSE");
+        let forward = matches.is_present("FORWARD");
+        let drat_trim = matches.is_present("DRAT_TRIM");
+        let rupee = matches.is_present("RUPEE");
+        let memory_usage_breakdown = matches.is_present("MEMORY_USAGE_BREAKDOWN");
+        let lemmas = matches.is_present("LEMMAS_FILE");
+        let lrat = matches.is_present("LRAT_FILE");
+        let grat = matches.is_present("GRAT_FILE");
+        let sick = matches.is_present("SICK_FILE");
 
         if Self::check_incompatible(&[drat_trim, rupee]) {
             incompatible_options("--drat-trim , --rupee");

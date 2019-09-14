@@ -1,5 +1,4 @@
 use crate::{
-    config::unreachable,
     literal::Literal,
     output::{RuntimeError, RuntimeResult},
 };
@@ -48,12 +47,12 @@ impl MaybeCompressedFile {
     pub fn from_file(filename: &str) -> RuntimeResult<MaybeCompressedFile> {
         let format = CompressionFormat::detect_compression(filename);
         let file =
-            File::open(filename).map_err(|e| RuntimeError::FileOpening(filename.to_string()))?;
+            File::open(filename).map_err(|_e| RuntimeError::FileOpening(filename.to_string()))?;
         let name = filename.to_string();
         let it: FileIterator = match format {
             CompressionFormat::ZSTD => Box::new(
                 zstd::stream::read::Decoder::new(file)
-                    .map_err(|e| RuntimeError::FileDecompression(filename.to_string()))?
+                    .map_err(|_e| RuntimeError::FileDecompression(filename.to_string()))?
                     .bytes(),
             ),
             CompressionFormat::GZIP => Box::new(flate2::read::GzDecoder::new(file).bytes()),
@@ -61,7 +60,7 @@ impl MaybeCompressedFile {
             CompressionFormat::XZ => Box::new(xz2::read::XzDecoder::new(file).bytes()),
             CompressionFormat::LZ4 => Box::new(
                 lz4::Decoder::new(file)
-                    .map_err(|e| RuntimeError::FileDecompression(filename.to_string()))?
+                    .map_err(|_e| RuntimeError::FileDecompression(filename.to_string()))?
                     .bytes(),
             ),
             CompressionFormat::NoCompression => Box::new(std::io::BufReader::new(file).bytes()),
@@ -75,14 +74,14 @@ impl MaybeCompressedFile {
     pub fn next(&mut self) -> RuntimeResult<Option<u8>> {
         match self.iterator.next() {
             Some(Ok(x)) => Ok(Some(x)),
-            Some(Err(e)) => Err(self.throw_reading_error()),
+            Some(Err(_e)) => Err(self.throw_reading_error()),
             None => Ok(None),
         }
     }
     pub fn peek(&mut self) -> RuntimeResult<Option<u8>> {
         match self.iterator.peek() {
             Some(Ok(x)) => Ok(Some(x.clone())),
-            Some(Err(e)) => Err(self.throw_reading_error()),
+            Some(Err(_e)) => Err(self.throw_reading_error()),
             None => Ok(None),
         }
     }
@@ -122,6 +121,9 @@ impl Input {
     }
     pub fn peek(&mut self) -> RuntimeResult<Option<u8>> {
         self.source.peek()
+    }
+    pub fn peek_unchecked(&mut self) -> Option<u8> {
+        self.peek().unwrap()
     }
     pub fn line(&self) -> Option<usize> {
         if self.binary {
@@ -191,7 +193,7 @@ impl Input {
                 self.next()?;
                 Ok(Literal::new(self.parse_u32()? as i32))
             }
-            _ => Err((self.throw_invalid_syntax())),
+            _ => Err(self.throw_invalid_syntax()),
         }
     }
     pub fn parse_atom(&mut self) -> RuntimeResult<Literal> {

@@ -6,16 +6,9 @@ use crate::{
 };
 
 use std::{
-    cmp,
     collections::HashMap,
-    convert::TryInto,
-    fs::File,
     hash::{Hash, Hasher},
-    io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
-    iter::Peekable,
-    panic,
-    ptr::NonNull,
-    slice,
+    panic, slice,
 };
 
 /// A hash table that maps clauses (sets of literals) to clause identifiers.
