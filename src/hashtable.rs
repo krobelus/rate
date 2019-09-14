@@ -1,14 +1,14 @@
-use std::{
-    alloc::{alloc , dealloc , realloc , Layout} ,
-    mem::{align_of , size_of} ,
-    ptr::{self} ,
-} ;
 use crate::{
-    clause::{Clause} ,
-    clausedatabase::{clause_db},
-    memory::{HeapSpace , Stack , Offset} ,
-    literal::{Literal} ,
-} ;
+    clause::Clause,
+    clausedatabase::clause_db,
+    literal::Literal,
+    memory::{HeapSpace, Offset, Stack},
+};
+use std::{
+    alloc::{alloc, dealloc, realloc, Layout},
+    mem::{align_of, size_of},
+    ptr,
+};
 
 pub trait HashTable {
     fn add_clause(&mut self, clause: Clause);

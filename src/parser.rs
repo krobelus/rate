@@ -2,18 +2,18 @@
 
 use crate::{
     clause::{Clause, ProofStep},
-    clausedatabase::{ClauseDatabase, WitnessDatabase, clause_db , witness_db},
-    config::{unreachable , ProofFormat},
-    hashtable::{FixedSizeHashTable, HashTable} ,
-    input::{SimpleInput} ,
+    clausedatabase::{clause_db, witness_db, ClauseDatabase, WitnessDatabase},
+    config::{unreachable, ProofFormat},
+    hashtable::{FixedSizeHashTable, HashTable},
+    input::SimpleInput,
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, SmallStack, Stack},
-    output::{self, Timer, RuntimeError , RuntimeResult},
-    proof::{Proof} ,
+    output::{self, RuntimeError, RuntimeResult, Timer},
+    proof::Proof,
 };
 use std::{
     cmp,
-    collections::{HashMap},
+    collections::HashMap,
     convert::TryInto,
     fs::File,
     hash::{Hash, Hasher},
@@ -24,101 +24,114 @@ use std::{
     slice,
 };
 
-#[derive(Debug, PartialEq , Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SyntaxFormat {
-    Dimacs ,
-    DratFirstPivot ,
-    DratAnyPivot ,
-    DprFirstPivot ,
-    DprAnyPivot ,
-    Dsr ,
+    Dimacs,
+    DratFirstPivot,
+    DratAnyPivot,
+    DprFirstPivot,
+    DprAnyPivot,
+    Dsr,
 }
 impl SyntaxFormat {
-    pub fn from(p : ProofFormat) -> SyntaxFormat {
+    pub fn from(p: ProofFormat) -> SyntaxFormat {
         match p {
-            ProofFormat::DratFirstPivot => SyntaxFormat::DratFirstPivot ,
-            ProofFormat::DratAnyPivot => SyntaxFormat::DratAnyPivot ,
-            ProofFormat::DprFirstPivot => SyntaxFormat::DprFirstPivot ,
-            ProofFormat::DprAnyPivot => SyntaxFormat::DprAnyPivot ,
-            ProofFormat::Dsr => SyntaxFormat::Dsr ,
+            ProofFormat::DratFirstPivot => SyntaxFormat::DratFirstPivot,
+            ProofFormat::DratAnyPivot => SyntaxFormat::DratAnyPivot,
+            ProofFormat::DprFirstPivot => SyntaxFormat::DprFirstPivot,
+            ProofFormat::DprAnyPivot => SyntaxFormat::DprAnyPivot,
+            ProofFormat::Dsr => SyntaxFormat::Dsr,
         }
     }
     pub fn rat_first_pivot(&self) -> bool {
         match self {
-            SyntaxFormat::DratFirstPivot | SyntaxFormat::DprFirstPivot => true ,
-            _ => false
+            SyntaxFormat::DratFirstPivot | SyntaxFormat::DprFirstPivot => true,
+            _ => false,
         }
     }
     pub fn rat_any_pivot(&self) -> bool {
         match self {
-            SyntaxFormat::DratAnyPivot | SyntaxFormat::DprAnyPivot => true ,
-            _ => false ,
+            SyntaxFormat::DratAnyPivot | SyntaxFormat::DprAnyPivot => true,
+            _ => false,
         }
     }
     pub fn drat(&self) -> bool {
         match self {
-            SyntaxFormat::DratFirstPivot | SyntaxFormat::DratAnyPivot => true ,
-            _ => false ,
+            SyntaxFormat::DratFirstPivot | SyntaxFormat::DratAnyPivot => true,
+            _ => false,
         }
     }
     pub fn dpr(&self) -> bool {
         match self {
-            SyntaxFormat::DprFirstPivot | SyntaxFormat::DprAnyPivot => true ,
-            _ => false ,
+            SyntaxFormat::DprFirstPivot | SyntaxFormat::DprAnyPivot => true,
+            _ => false,
         }
     }
     pub fn dsr(&self) -> bool {
         match self {
-            SyntaxFormat::Dsr => true ,
-            _ => false ,
+            SyntaxFormat::Dsr => true,
+            _ => false,
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryMode {
-    Binary ,
-    Text ,
-    DratTrimDetection ,
-    PrefixDetection ,
+    Binary,
+    Text,
+    DratTrimDetection,
+    PrefixDetection,
 }
 impl BinaryMode {
-    pub fn detect(&self , filename : &str) -> RuntimeResult<bool> {
+    pub fn detect(&self, filename: &str) -> RuntimeResult<bool> {
         match self {
-            BinaryMode::Binary => Ok(true) ,
-            BinaryMode::Text => Ok(false) ,
-            BinaryMode::DratTrimDetection => self.drat_trim_detection(filename) ,
-            BinaryMode::PrefixDetection => self.prefix_detection(filename) ,
+            BinaryMode::Binary => Ok(true),
+            BinaryMode::Text => Ok(false),
+            BinaryMode::DratTrimDetection => self.drat_trim_detection(filename),
+            BinaryMode::PrefixDetection => self.prefix_detection(filename),
         }
     }
-    fn drat_trim_detection(&self , filename : &str) -> RuntimeResult<bool> {
-        let mut input = SimpleInput::from_file(filename, false)? ;
+    fn drat_trim_detection(&self, filename: &str) -> RuntimeResult<bool> {
+        let mut input = SimpleInput::from_file(filename, false)?;
         for i in 0..10 {
-            match input.next().map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))? {
-                None => return Ok(false) ,
-                Some(c) => if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57)) {
-                    return Ok(true) ;
+            match input
+                .next()
+                .map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))?
+            {
+                None => return Ok(false),
+                Some(c) => {
+                    if (c != 100)
+                        && (c != 10)
+                        && (c != 13)
+                        && (c != 32)
+                        && (c != 45)
+                        && ((c < 48) || (c > 57))
+                    {
+                        return Ok(true);
+                    }
                 }
             }
         }
         Ok(false)
     }
-    fn prefix_detection(&self , filename : &str) -> RuntimeResult<bool> {
-        let mut input = SimpleInput::from_file(filename, false)? ;
-        let b = input.peek().map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))? ;
+    fn prefix_detection(&self, filename: &str) -> RuntimeResult<bool> {
+        let mut input = SimpleInput::from_file(filename, false)?;
+        let b = input
+            .peek()
+            .map_err(|e| RuntimeError::FileBinaryDetection(filename.to_string()))?;
         Ok(b == Some(0x7F))
     }
 }
 
 pub struct ParsingInfo {
-    proof : Proof ,
-    table : FixedSizeHashTable ,
+    proof: Proof,
+    table: FixedSizeHashTable,
 }
 impl ParsingInfo {
     pub fn new() -> ParsingInfo {
         ParsingInfo {
-            proof : Proof::new() ,
-            table : FixedSizeHashTable::new() ,
+            proof: Proof::new(),
+            table: FixedSizeHashTable::new(),
         }
     }
     pub fn extract(self) -> Proof {
@@ -127,255 +140,274 @@ impl ParsingInfo {
 }
 
 pub enum ParsingError {
-    OutOfBounds(usize) ,
-    InvalidSyntax(usize) ,
-    MissingHeader(usize) ,
-    UnmatchedClauses(usize) ,
+    OutOfBounds(usize),
+    InvalidSyntax(usize),
+    MissingHeader(usize),
+    UnmatchedClauses(usize),
 }
 
 pub struct Parser {
-    info : ParsingInfo ,
-    input : SimpleInput ,
-    syntax : SyntaxFormat ,
-    binary : bool ,
+    info: ParsingInfo,
+    input: SimpleInput,
+    syntax: SyntaxFormat,
+    binary: bool,
 }
 impl Parser {
-    pub fn new(info : ParsingInfo , filename : &str , syntax : SyntaxFormat , binary : BinaryMode) -> RuntimeResult<Parser> {
+    pub fn new(
+        info: ParsingInfo,
+        filename: &str,
+        syntax: SyntaxFormat,
+        binary: BinaryMode,
+    ) -> RuntimeResult<Parser> {
         // todo : terminating clause
         // todo : memory usage breakdown
         // todo : verbosity
         // todo : how to initialize witness_db ?
-        let mode = binary.detect(filename)? ;
-        let input = SimpleInput::from_file(filename, mode)? ;
+        let mode = binary.detect(filename)?;
+        let input = SimpleInput::from_file(filename, mode)?;
         Ok(Parser {
-            info : info ,
-            input : input ,
-            syntax : syntax ,
-            binary : mode ,
+            info: info,
+            input: input,
+            syntax: syntax,
+            binary: mode,
         })
     }
     pub fn parse(mut self) -> RuntimeResult<ParsingInfo> {
-        let mut _timer = self.timer() ;
+        let mut _timer = self.timer();
         if self.syntax != SyntaxFormat::Dimacs {
-            self.info.proof.proof_start = Clause::new(clause_db().number_of_clauses()) ;
+            self.info.proof.proof_start = Clause::new(clause_db().number_of_clauses());
         }
         if self.binary {
-            self.parse_binary()? ;
+            self.parse_binary()?;
         } else {
-            self.parse_text()? ;
+            self.parse_text()?;
         }
         Ok(self.info)
     }
     fn parse_binary(&mut self) -> RuntimeResult<()> {
-        let mut clauses : u64 = 0u64 ;
-        if self.input.peek()? == Some(0x7F) {        //Skipping prefix if necessary
-            self.input.next() ;
+        let mut clauses: u64 = 0u64;
+        if self.input.peek()? == Some(0x7F) {
+            //Skipping prefix if necessary
+            self.input.next();
         }
         while let Some(c) = self.input.next()? {
-            if c == 0x61u8 {                        // RUP/RAT/PR clause introduction
-                self.parse_introduction(false)? ;
-                clauses = clauses + 1 ;
-            } else if c == 0x64u8 && self.syntax != SyntaxFormat::Dimacs {                 // clause deletion
-                self.parse_deletion()? ;
-                self.info.proof.proof_deletions = self.info.proof.proof_deletions + 1 ;
-            } else if c == 0x72u8 && self.syntax == SyntaxFormat::Dsr {    // SR clause introduction
-                self.parse_introduction(true)? ;
-                self.info.proof.proof_srs = self.info.proof.proof_srs + 1 ;
+            if c == 0x61u8 {
+                // RUP/RAT/PR clause introduction
+                self.parse_introduction(false)?;
+                clauses = clauses + 1;
+            } else if c == 0x64u8 && self.syntax != SyntaxFormat::Dimacs {
+                // clause deletion
+                self.parse_deletion()?;
+                self.info.proof.proof_deletions = self.info.proof.proof_deletions + 1;
+            } else if c == 0x72u8 && self.syntax == SyntaxFormat::Dsr {
+                // SR clause introduction
+                self.parse_introduction(true)?;
+                self.info.proof.proof_srs = self.info.proof.proof_srs + 1;
             } else {
-                return Err(self.input.throw_invalid_syntax()) ;
+                return Err(self.input.throw_invalid_syntax());
             }
         }
         if self.syntax == SyntaxFormat::Dimacs {
-            self.info.proof.cnf_clauses = clauses ;
+            self.info.proof.cnf_clauses = clauses;
         } else {
-            self.info.proof.proof_introductions = clauses ;
+            self.info.proof.proof_introductions = clauses;
         }
         Ok(())
     }
     pub fn parse_text(&mut self) -> RuntimeResult<()> {
-        let mut clauses : u64 = 0u64 ;
-        let mut header : Option<usize> = None ;
-        if(self.syntax == SyntaxFormat::Dimacs) {
-            self.skip_comments()? ;
-            let (vars , clauses , line) = self.parse_header() ? ;
-            self.info.proof.maxvar = Variable::new(vars) ;
-            self.info.proof.cnf_clauses = clauses ;
-            header = line ;
+        let mut clauses: u64 = 0u64;
+        let mut header: Option<usize> = None;
+        if (self.syntax == SyntaxFormat::Dimacs) {
+            self.skip_comments()?;
+            let (vars, clauses, line) = self.parse_header()?;
+            self.info.proof.maxvar = Variable::new(vars);
+            self.info.proof.cnf_clauses = clauses;
+            header = line;
         }
-        while let Some(c) = self.input.peek()? {     //todo: check spaces and peeking
+        while let Some(c) = self.input.peek()? {
+            //todo: check spaces and peeking
             if SimpleInput::is_digit_or_dash(c) {
-                self.parse_introduction(false)? ;
-                clauses = clauses + 1 ;
+                self.parse_introduction(false)?;
+                clauses = clauses + 1;
             } else if c == b'd' && self.syntax != SyntaxFormat::Dimacs {
-                self.check_spacing()? ;
-                self.parse_deletion()? ;
-                self.info.proof.proof_deletions = self.info.proof.proof_deletions + 1 ;
+                self.check_spacing()?;
+                self.parse_deletion()?;
+                self.info.proof.proof_deletions = self.info.proof.proof_deletions + 1;
             } else if c == b'r' && self.syntax == SyntaxFormat::Dsr {
-                self.check_spacing()? ;
-                self.parse_introduction(true)? ;
-                self.info.proof.proof_srs = self.info.proof.proof_srs + 1 ;
+                self.check_spacing()?;
+                self.parse_introduction(true)?;
+                self.info.proof.proof_srs = self.info.proof.proof_srs + 1;
             } else {
-                return Err(self.input.throw_invalid_syntax()) ;
+                return Err(self.input.throw_invalid_syntax());
             }
-            self.check_spacing()? ;
+            self.check_spacing()?;
         }
         if self.syntax == SyntaxFormat::Dimacs {
             if clauses != self.info.proof.cnf_clauses {
-                return Err(RuntimeError::ParsingUnmatchedClauses(self.input.filename() , header)) ;
-            }            
+                return Err(RuntimeError::ParsingUnmatchedClauses(
+                    self.input.filename(),
+                    header,
+                ));
+            }
         } else {
-            self.info.proof.proof_introductions = clauses ;
+            self.info.proof.proof_introductions = clauses;
         }
         Ok(())
     }
-    pub fn parse_introduction(&mut self , sr : bool) -> RuntimeResult<()> {
+    pub fn parse_introduction(&mut self, sr: bool) -> RuntimeResult<()> {
         // todo : uniform treatment of drat / dpr / dsr
         // todo : are we taking care of tautological clauses?
         // todo : are we checking for repeated literals?
         // todo : patch missing zero terminators, why do we do this?
         // todo : terminating empty clause, why?
-        let clause = self.parse_clause(true)? ;
-        self.info.table.add_clause(clause_db().last_clause()) ;
+        let clause = self.parse_clause(true)?;
+        self.info.table.add_clause(clause_db().last_clause());
         if self.syntax == SyntaxFormat::Dsr && sr {
-            self.parse_dsr_witness()? ;
+            self.parse_dsr_witness()?;
         }
         if self.syntax != SyntaxFormat::Dimacs {
-            self.info.proof.proof.push(ProofStep::lemma(clause)) ;
+            self.info.proof.proof.push(ProofStep::lemma(clause));
         }
         Ok(())
     }
     pub fn parse_deletion(&mut self) -> RuntimeResult<()> {
-        let clause = self.parse_clause(false)? ;
-        let found_clause = match self.info.table.find_equal_clause(clause , true) {
+        let clause = self.parse_clause(false)?;
+        let found_clause = match self.info.table.find_equal_clause(clause, true) {
             None => {
                 // todo : warning
                 Clause::DOES_NOT_EXIST
-            } ,
-            Some(clause) => clause ,
-        } ;
-        self.info.proof.proof.push(ProofStep::deletion(found_clause)) ;
-        clause_db().pop_clause() ;
+            }
+            Some(clause) => clause,
+        };
+        self.info
+            .proof
+            .proof
+            .push(ProofStep::deletion(found_clause));
+        clause_db().pop_clause();
         Ok(())
     }
-    fn parse_header(&mut self) -> RuntimeResult<(u32 , u64 , Option<usize>)> {
+    fn parse_header(&mut self) -> RuntimeResult<(u32, u64, Option<usize>)> {
         for &expected in b"p cnf" {
-            if self.input.peek()?.map_or(true , |c| c != expected) {
-                return Err(RuntimeError::ParsingMissingHeader(self.input.filename() , self.input.line())) ;
+            if self.input.peek()?.map_or(true, |c| c != expected) {
+                return Err(RuntimeError::ParsingMissingHeader(
+                    self.input.filename(),
+                    self.input.line(),
+                ));
             }
-            self.input.next()? ;
+            self.input.next()?;
         }
-        let line = self.input.line() ;
-        self.check_spacing()? ;
-        let maxvar = self.input.parse_u32()? ;
-        self.check_spacing()? ;
-        let nclauses = self.input.parse_u64()? ;
-        self.check_spacing()? ;
-        Ok((maxvar , nclauses , line))
+        let line = self.input.line();
+        self.check_spacing()?;
+        let maxvar = self.input.parse_u32()?;
+        self.check_spacing()?;
+        let nclauses = self.input.parse_u64()?;
+        self.check_spacing()?;
+        Ok((maxvar, nclauses, line))
     }
-    pub fn parse_clause(&mut self , intro : bool) -> RuntimeResult<Clause> {
-        let clause = clause_db().open_clause() ;
+    pub fn parse_clause(&mut self, intro: bool) -> RuntimeResult<Clause> {
+        let clause = clause_db().open_clause();
         if self.syntax.dpr() {
-            let witness = witness_db().open_witness() ;
-            invariant!(clause == witness) ;
+            let witness = witness_db().open_witness();
+            invariant!(clause == witness);
         }
-        let check_repetition : bool = intro && self.syntax.dpr() ;
-        let mut first : Literal = Literal::new(0) ;
-        let mut head : bool = true ;
+        let check_repetition: bool = intro && self.syntax.dpr();
+        let mut first: Literal = Literal::new(0);
+        let mut head: bool = true;
         loop {
-            let literal = self.parse_literal()? ;
+            let literal = self.parse_literal()?;
             if literal.is_zero() {
                 if intro {
-                    clause_db().push_literal(literal) ;
+                    clause_db().push_literal(literal);
                     if self.syntax == SyntaxFormat::Dimacs {
-                        self.info.proof.pivots.push(Literal::NEVER_READ) ;
+                        self.info.proof.pivots.push(Literal::NEVER_READ);
                     } else {
                         if self.syntax.rat_first_pivot() {
-                            self.info.proof.pivots.push(first) ;
+                            self.info.proof.pivots.push(first);
                         }
                         if self.syntax.dpr() {
-                            witness_db().push_literal(Literal::new(0)) ;
+                            witness_db().push_literal(Literal::new(0));
                         }
                     }
                 }
-                return Ok(clause) ;
+                return Ok(clause);
             }
             if head && intro {
-                head = false ;
-                first = literal ;
+                head = false;
+                first = literal;
             }
             if check_repetition {
                 if literal == first {
-                    clause_db().push_literal(Literal::new(0)) ;
-                    self.parse_dpr_witness(literal) ;
-                    return Ok(clause) ;
+                    clause_db().push_literal(Literal::new(0));
+                    self.parse_dpr_witness(literal);
+                    return Ok(clause);
                 }
             }
-            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar , literal.variable()) ;
-            clause_db().push_literal(literal) ;
+            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar, literal.variable());
+            clause_db().push_literal(literal);
         }
     }
-    pub fn parse_dpr_witness(&mut self , literal : Literal) -> RuntimeResult<()> {
-        witness_db().push_literal(literal) ;
+    pub fn parse_dpr_witness(&mut self, literal: Literal) -> RuntimeResult<()> {
+        witness_db().push_literal(literal);
         loop {
-            let literal = self.parse_literal()? ;
-            witness_db().push_literal(literal) ;
+            let literal = self.parse_literal()?;
+            witness_db().push_literal(literal);
             if literal.is_zero() {
-                break ;
+                break;
             }
-            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar , literal.variable()) ;
+            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar, literal.variable());
         }
         Ok(())
     }
     pub fn parse_dsr_witness(&mut self) -> RuntimeResult<()> {
         loop {
-            let variable : Literal = self.parse_literal()? ;
+            let variable: Literal = self.parse_literal()?;
             if !variable.is_positive() {
                 if variable.is_zero() {
-                    witness_db().push_literal(Literal::new(0)) ;
-                    return Ok(())
+                    witness_db().push_literal(Literal::new(0));
+                    return Ok(());
                 } else {
-                    return Err(self.input.throw_invalid_syntax()) ;
+                    return Err(self.input.throw_invalid_syntax());
                 }
             }
-            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar , variable.variable()) ;
-            witness_db().push_literal(variable) ;
-            let atom : Literal = self.parse_atom()? ;
-            witness_db().push_literal(atom) ;
-            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar , atom.variable()) ;
+            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar, variable.variable());
+            witness_db().push_literal(variable);
+            let atom: Literal = self.parse_atom()?;
+            witness_db().push_literal(atom);
+            self.info.proof.maxvar = cmp::max(self.info.proof.maxvar, atom.variable());
         }
     }
     fn parse_literal(&mut self) -> RuntimeResult<Literal> {
         let literal = if self.binary {
-                self.input.parse_literal()?
-            } else {
-                self.input.parse_literal_binary()?
-            } ;
-        self.check_spacing()? ;
+            self.input.parse_literal()?
+        } else {
+            self.input.parse_literal_binary()?
+        };
+        self.check_spacing()?;
         Ok(literal)
     }
     fn parse_atom(&mut self) -> RuntimeResult<Literal> {
         let literal = if self.binary {
-                self.input.parse_atom()?
-            } else {
-                self.input.parse_atom_binary()?
-            } ;
-        self.check_spacing()? ;
+            self.input.parse_atom()?
+        } else {
+            self.input.parse_atom_binary()?
+        };
+        self.check_spacing()?;
         Ok(literal)
     }
     fn timer(&self) -> Timer {
-        let name : &str = if self.syntax == SyntaxFormat::Dimacs {
-                "parsing formula"
-            } else {
-                "parsing proof"   
-            } ;
+        let name: &str = if self.syntax == SyntaxFormat::Dimacs {
+            "parsing formula"
+        } else {
+            "parsing proof"
+        };
         Timer::name(name)
     }
     fn skip_comments(&mut self) -> RuntimeResult<()> {
         while let Some(c) = self.input.peek()? {
             if c == b'c' {
-                self.skip_line() ;
+                self.skip_line();
             } else {
-                break ;
+                break;
             }
         }
         Ok(())
@@ -383,16 +415,16 @@ impl Parser {
     fn skip_line(&mut self) -> RuntimeResult<()> {
         while let Some(c) = self.input.peek()? {
             if c == b'\n' {
-                break ;
+                break;
             } else {
-                self.input.next()? ;
+                self.input.next()?;
             }
         }
         Ok(())
     }
     fn check_spacing(&mut self) -> RuntimeResult<()> {
         if !self.input.skip_spaces()? {
-            return Err(self.input.throw_invalid_syntax()) ;
+            return Err(self.input.throw_invalid_syntax());
         }
         Ok(())
     }
@@ -572,7 +604,7 @@ impl Parser {
 //         }
 //     }
 // }
-// 
+//
 // pub fn read_file(filename: &str) -> Box<dyn Iterator<Item = u8>> {
 //     let file = open_file(filename);
 //     let (_basename, compression_format) = compression_format_by_extension(filename);
@@ -605,7 +637,7 @@ impl Parser {
 //         _ => unreachable(),
 //     }
 // }
-// 
+//
 // fn panic_on_error(result: io::Result<u8>) -> u8 {
 //     result.unwrap_or_else(|error| die!("read error: {}", error))
 // }
@@ -902,13 +934,13 @@ impl Parser {
 //     finish_proof(parser, clause_ids, &mut state);
 //     Ok(())
 // }
-// 
+//
 // impl Display for ParseError {
 //     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
 //         write!(f, "Parse error at line {}:  {}", self.line, self.why)
 //     }
 // }
-// 
+//
 // #[allow(dead_code)]
 // pub fn print_db() {
 //     let clause_db = &clause_db();

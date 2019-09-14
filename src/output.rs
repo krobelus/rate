@@ -157,36 +157,54 @@ impl Drop for Timer {
 
 #[derive(PartialEq, Eq)]
 pub enum RuntimeError {
-    FileOpening(String) ,
-    FileReading(String) ,
-    FileBinaryDetection(String) ,
-    FileDecompression(String) ,
-    ParsingOutOfBounds(String , Option<usize>) ,
-    ParsingInvalidSyntax(String , Option<usize>) ,
-    ParsingMissingHeader(String , Option<usize>) ,
-    ParsingUnmatchedClauses(String , Option<usize>) ,
+    FileOpening(String),
+    FileReading(String),
+    FileBinaryDetection(String),
+    FileDecompression(String),
+    ParsingOutOfBounds(String, Option<usize>),
+    ParsingInvalidSyntax(String, Option<usize>),
+    ParsingMissingHeader(String, Option<usize>),
+    ParsingUnmatchedClauses(String, Option<usize>),
 }
 
 impl RuntimeError {
     pub fn string(&self) -> String {
         match self {
-            RuntimeError::FileOpening(s) => format!("Failed at opening file {}" , s) ,
-            RuntimeError::FileReading(s) => format!("Failed at reading file {}" , s) ,
-            RuntimeError::FileBinaryDetection(s) => format!("Binary detection failed over file {}" , s) ,
-            RuntimeError::FileDecompression(s) => format!("Failed at decompressing file {}" , s) ,
-            RuntimeError::ParsingOutOfBounds(s , Some(l)) => format!("Out-of-bounds integer found at line {} in file {}" , l , s) ,
-            RuntimeError::ParsingOutOfBounds(s , None) => format!("Out-of-bounds integer found in file {} in binary mode" , s) ,
-            RuntimeError::ParsingInvalidSyntax(s , Some(l)) => format!("Invalid syntax at line {} in file {}" , l , s) ,
-            RuntimeError::ParsingInvalidSyntax(s , None) => format!("Invalid syntax in file {} in binary mode" , s) ,
-            RuntimeError::ParsingMissingHeader(s , Some(l)) => format!("Missing DIMACS header at line {} in file {}" , l , s) ,
-            RuntimeError::ParsingMissingHeader(s , None) => format!("Missing DIMACS header in file {} in binary mode" , s) ,
-            RuntimeError::ParsingUnmatchedClauses(s , Some(l)) => format!("Unmatched number of clauses at line {} in file {}" , l , s) ,
-            RuntimeError::ParsingUnmatchedClauses(s , None) => format!("Unmatched number of clauses in file {} in binary mode" , s) ,
+            RuntimeError::FileOpening(s) => format!("Failed at opening file {}", s),
+            RuntimeError::FileReading(s) => format!("Failed at reading file {}", s),
+            RuntimeError::FileBinaryDetection(s) => {
+                format!("Binary detection failed over file {}", s)
+            }
+            RuntimeError::FileDecompression(s) => format!("Failed at decompressing file {}", s),
+            RuntimeError::ParsingOutOfBounds(s, Some(l)) => {
+                format!("Out-of-bounds integer found at line {} in file {}", l, s)
+            }
+            RuntimeError::ParsingOutOfBounds(s, None) => {
+                format!("Out-of-bounds integer found in file {} in binary mode", s)
+            }
+            RuntimeError::ParsingInvalidSyntax(s, Some(l)) => {
+                format!("Invalid syntax at line {} in file {}", l, s)
+            }
+            RuntimeError::ParsingInvalidSyntax(s, None) => {
+                format!("Invalid syntax in file {} in binary mode", s)
+            }
+            RuntimeError::ParsingMissingHeader(s, Some(l)) => {
+                format!("Missing DIMACS header at line {} in file {}", l, s)
+            }
+            RuntimeError::ParsingMissingHeader(s, None) => {
+                format!("Missing DIMACS header in file {} in binary mode", s)
+            }
+            RuntimeError::ParsingUnmatchedClauses(s, Some(l)) => {
+                format!("Unmatched number of clauses at line {} in file {}", l, s)
+            }
+            RuntimeError::ParsingUnmatchedClauses(s, None) => {
+                format!("Unmatched number of clauses in file {} in binary mode", s)
+            }
         }
     }
     pub fn die(&self) {
-        die!("{}" , self.string())
+        die!("{}", self.string())
     }
 }
 
-pub type RuntimeResult<T> = Result<T , RuntimeError> ;
+pub type RuntimeResult<T> = Result<T, RuntimeError>;

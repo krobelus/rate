@@ -13,11 +13,11 @@ mod clause;
 mod clausedatabase;
 mod config;
 mod features;
-mod literal;
-mod proof ;
 mod hashtable;
 mod input;
+mod literal;
 mod parser;
+mod proof;
 mod sick;
 
 #[macro_use(Serialize, Deserialize)]
@@ -30,11 +30,11 @@ use toml;
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{Clause, Reason},
+    hashtable::FixedSizeHashTable,
     literal::Literal,
     memory::{Array, Vector},
     output::solution,
-    hashtable::{FixedSizeHashTable},
-    parser::{Parser} ,
+    parser::Parser,
     sick::Sick,
 };
 

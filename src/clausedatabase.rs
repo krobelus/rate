@@ -11,7 +11,7 @@ use std::{
     convert::TryFrom,
     mem::size_of,
     ops::{Index, IndexMut, Range},
-    ptr::{self, NonNull} ,
+    ptr::{self, NonNull},
 };
 
 /// Size of metadata that precede the literals of a clause

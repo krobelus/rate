@@ -1,87 +1,89 @@
-use std::{
-    convert::{TryInto} ,
-    fs::{File} ,
-    iter::{Peekable} ,
-    io::{self, Read} ,
-} ;
 use crate::{
-    config::{unreachable} ,
-    literal::{Literal} ,
-    output::{RuntimeError , RuntimeResult} ,
+    config::unreachable,
+    literal::Literal,
+    output::{RuntimeError, RuntimeResult},
+};
+use std::{
+    convert::TryInto,
+    fs::File,
+    io::{self, Read},
+    iter::Peekable,
 };
 
 #[derive(Copy, Clone, Debug)]
 enum CompressionFormat {
-    ZSTD ,
-    GZIP ,
-    BZIP2 ,
-    XZ ,
-    LZ4 ,
-    NoCompression ,
+    ZSTD,
+    GZIP,
+    BZIP2,
+    XZ,
+    LZ4,
+    NoCompression,
 }
 impl CompressionFormat {
-    fn detect_compression(s : &str) -> CompressionFormat {
+    fn detect_compression(s: &str) -> CompressionFormat {
         let formats = [
-            (".zst" , CompressionFormat::ZSTD) ,
-            (".gzip" , CompressionFormat::GZIP) ,
-            (".bz2" , CompressionFormat::BZIP2) ,
-            (".lz4" , CompressionFormat::LZ4) ,
-            (".xz" , CompressionFormat::XZ) ] ;
-        for (extension , format) in &formats {
+            (".zst", CompressionFormat::ZSTD),
+            (".gzip", CompressionFormat::GZIP),
+            (".bz2", CompressionFormat::BZIP2),
+            (".lz4", CompressionFormat::LZ4),
+            (".xz", CompressionFormat::XZ),
+        ];
+        for (extension, format) in &formats {
             if s.ends_with(extension) {
-                return *format ;
+                return *format;
             }
         }
         CompressionFormat::NoCompression
     }
 }
 
-type FileIterator = Box<dyn Iterator<Item = io::Result<u8>>> ;
+type FileIterator = Box<dyn Iterator<Item = io::Result<u8>>>;
 
 struct MaybeCompressedFile {
-    name : String ,
-    compression : CompressionFormat ,
-    iterator : Peekable<FileIterator> ,
+    name: String,
+    compression: CompressionFormat,
+    iterator: Peekable<FileIterator>,
 }
 impl MaybeCompressedFile {
-    pub fn from_file(filename : &str) -> RuntimeResult<MaybeCompressedFile> {
-        let format = CompressionFormat::detect_compression(filename) ;
-        let file = File::open(filename).map_err(|e| RuntimeError::FileOpening(filename.to_string()))? ;
-        let name = filename.to_string() ;
-        let it : FileIterator = match format {
-            CompressionFormat::ZSTD => Box::new(zstd::stream::read::Decoder::new(file)
-                .map_err(|e| RuntimeError::FileDecompression(filename.to_string()))?
-                .bytes()) ,
-            CompressionFormat::GZIP => Box::new(flate2::read::GzDecoder::new(file)
-                .bytes()) ,
-            CompressionFormat::BZIP2 => Box::new(bzip2::read::BzDecoder::new(file)
-                .bytes()) ,
-            CompressionFormat::XZ => Box::new(xz2::read::XzDecoder::new(file)
-                .bytes()) ,
-            CompressionFormat::LZ4 => Box::new(lz4::Decoder::new(file)
-                .map_err(|e| RuntimeError::FileDecompression(filename.to_string()))?
-                .bytes()) ,
-            CompressionFormat::NoCompression => Box::new(std::io::BufReader::new(file)
-                .bytes()) ,
-        } ;
+    pub fn from_file(filename: &str) -> RuntimeResult<MaybeCompressedFile> {
+        let format = CompressionFormat::detect_compression(filename);
+        let file =
+            File::open(filename).map_err(|e| RuntimeError::FileOpening(filename.to_string()))?;
+        let name = filename.to_string();
+        let it: FileIterator = match format {
+            CompressionFormat::ZSTD => Box::new(
+                zstd::stream::read::Decoder::new(file)
+                    .map_err(|e| RuntimeError::FileDecompression(filename.to_string()))?
+                    .bytes(),
+            ),
+            CompressionFormat::GZIP => Box::new(flate2::read::GzDecoder::new(file).bytes()),
+            CompressionFormat::BZIP2 => Box::new(bzip2::read::BzDecoder::new(file).bytes()),
+            CompressionFormat::XZ => Box::new(xz2::read::XzDecoder::new(file).bytes()),
+            CompressionFormat::LZ4 => Box::new(
+                lz4::Decoder::new(file)
+                    .map_err(|e| RuntimeError::FileDecompression(filename.to_string()))?
+                    .bytes(),
+            ),
+            CompressionFormat::NoCompression => Box::new(std::io::BufReader::new(file).bytes()),
+        };
         Ok(MaybeCompressedFile {
-            name : name ,
-            compression : format ,
-            iterator : it.peekable() ,
+            name: name,
+            compression: format,
+            iterator: it.peekable(),
         })
     }
     pub fn next(&mut self) -> RuntimeResult<Option<u8>> {
         match self.iterator.next() {
-            Some(Ok(x)) => Ok(Some(x)) ,
-            Some(Err(e)) => Err(self.throw_reading_error()) ,
-            None => Ok(None) ,
+            Some(Ok(x)) => Ok(Some(x)),
+            Some(Err(e)) => Err(self.throw_reading_error()),
+            None => Ok(None),
         }
     }
     pub fn peek(&mut self) -> RuntimeResult<Option<u8>> {
         match self.iterator.peek() {
-            Some(Ok(x)) => Ok(Some(x.clone())) ,
-            Some(Err(e)) => Err(self.throw_reading_error()) ,
-            None => Ok(None) ,
+            Some(Ok(x)) => Ok(Some(x.clone())),
+            Some(Err(e)) => Err(self.throw_reading_error()),
+            None => Ok(None),
         }
     }
     fn throw_reading_error(&self) -> RuntimeError {
@@ -89,25 +91,24 @@ impl MaybeCompressedFile {
     }
 }
 
-
 pub struct SimpleInput {
-    source: MaybeCompressedFile ,
-    binary : bool ,
-    line: usize ,
+    source: MaybeCompressedFile,
+    binary: bool,
+    line: usize,
 }
 impl SimpleInput {
-    pub fn from_file(filename : &str , binary : bool) -> RuntimeResult<SimpleInput> {
+    pub fn from_file(filename: &str, binary: bool) -> RuntimeResult<SimpleInput> {
         Ok(SimpleInput {
-            source : MaybeCompressedFile::from_file(filename)? ,
-            binary : binary ,
-            line : 0 ,
+            source: MaybeCompressedFile::from_file(filename)?,
+            binary: binary,
+            line: 0,
         })
     }
     pub fn throw_out_of_bounds(&self) -> RuntimeError {
-        RuntimeError::ParsingOutOfBounds(self.source.name.clone() , self.line())
+        RuntimeError::ParsingOutOfBounds(self.source.name.clone(), self.line())
     }
     pub fn throw_invalid_syntax(&self) -> RuntimeError {
-        RuntimeError::ParsingInvalidSyntax(self.source.name.clone() , self.line())
+        RuntimeError::ParsingInvalidSyntax(self.source.name.clone(), self.line())
     }
     pub fn filename(&self) -> String {
         self.source.name.clone()
@@ -115,7 +116,7 @@ impl SimpleInput {
     pub fn next(&mut self) -> RuntimeResult<Option<u8>> {
         let r = self.source.next();
         if r == Ok(Some(b'\n')) {
-            self.line = self.line + 1 ;
+            self.line = self.line + 1;
         }
         r
     }
@@ -123,18 +124,22 @@ impl SimpleInput {
         self.source.peek()
     }
     pub fn line(&self) -> Option<usize> {
-        if self.binary { None } else { Some(self.line) }
+        if self.binary {
+            None
+        } else {
+            Some(self.line)
+        }
     }
     pub fn skip_spaces(&mut self) -> RuntimeResult<bool> {
-        let mut found : bool = false ;
+        let mut found: bool = false;
         loop {
             match self.peek()? {
                 Some(c) if Self::is_space(c) => {
-                    self.next()? ;
-                    found = true ;
-                } ,
-                None => return Ok(true) ,
-                _ => return Ok(found) ,
+                    self.next()?;
+                    found = true;
+                }
+                None => return Ok(true),
+                _ => return Ok(found),
             }
         }
     }
@@ -149,15 +154,15 @@ impl SimpleInput {
     pub fn parse_u64(&mut self) -> RuntimeResult<u64> {
         let mut value: u64 = 0u64;
         match self.peek()? {
-            Some(c) if !Self::is_space(c) => () ,
-            _ => return Err(self.throw_invalid_syntax()) ,
+            Some(c) if !Self::is_space(c) => (),
+            _ => return Err(self.throw_invalid_syntax()),
         }
         while let Some(c) = self.next()? {
             if Self::is_space(c) {
                 break;
             }
             if !Self::is_digit(c) {
-                return Err(self.throw_invalid_syntax()) ;
+                return Err(self.throw_invalid_syntax());
             }
             value = value
                 .checked_mul(10)
@@ -174,44 +179,44 @@ impl SimpleInput {
         Self::is_digit(value) || value == b'-'
     }
     fn is_space(c: u8) -> bool {
-        [b' ', b'\n', b'\r' , b'\t'].iter().any(|&s| s == c)
+        [b' ', b'\n', b'\r', b'\t'].iter().any(|&s| s == c)
     }
     pub fn parse_literal(&mut self) -> RuntimeResult<Literal> {
         match self.peek()? {
             Some(b'-') => {
-                self.next()? ;
+                self.next()?;
                 Ok(Literal::new(-(self.parse_u32()? as i32)))
-            } ,
+            }
             Some(c) if Self::is_digit(c) => {
-                self.next()? ;
+                self.next()?;
                 Ok(Literal::new(self.parse_u32()? as i32))
-            } ,
-            _ => Err((self.throw_invalid_syntax())) ,
+            }
+            _ => Err((self.throw_invalid_syntax())),
         }
     }
     pub fn parse_atom(&mut self) -> RuntimeResult<Literal> {
         match self.peek()? {
-            Some(b't') => Ok(Literal::TOP) ,
-            Some(b'f') => Ok(Literal::BOTTOM) ,
-            _ => self.parse_literal() ,
+            Some(b't') => Ok(Literal::TOP),
+            Some(b'f') => Ok(Literal::BOTTOM),
+            _ => self.parse_literal(),
         }
     }
     pub fn parse_literal_binary(&mut self) -> RuntimeResult<Literal> {
-        let mut i = 0 ;
-        let mut result = 0 ;
+        let mut i = 0;
+        let mut result = 0;
         while let Some(value) = self.next()? {
             result |= u32::from(value & 0x7f) << (7 * i);
             i += 1;
             if (value & 0x80) == 0 {
-                return Ok(Literal::from_raw(result))
+                return Ok(Literal::from_raw(result));
             }
         }
         Err(self.throw_invalid_syntax())
     }
     pub fn parse_atom_binary(&mut self) -> RuntimeResult<Literal> {
         match self.peek()? {
-            Some(0x7f) => Ok(Literal::BOTTOM) ,
-            _ => self.parse_literal_binary() ,
+            Some(0x7f) => Ok(Literal::BOTTOM),
+            _ => self.parse_literal_binary(),
         }
     }
 }

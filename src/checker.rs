@@ -3,12 +3,12 @@
 use crate::{
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
-    clausedatabase::{clause_db , witness_db} ,
-    config::{unreachable , Config , ProofFormat},
+    clausedatabase::{clause_db, witness_db},
+    config::{unreachable, Config, ProofFormat},
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{self, Timer},
-    proof::{Proof},
+    proof::Proof,
     sick::{Sick, Witness},
 };
 use ansi_term::Colour;
@@ -177,7 +177,7 @@ impl Checker {
         let assignment = Assignment::new(maxvar);
         let lrat = config.lrat_filename.is_some();
         let grat = config.grat_filename.is_some();
-        let proof_format = config.proof_format ;
+        let proof_format = config.proof_format;
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
@@ -189,7 +189,7 @@ impl Checker {
             clause_pivot: Array::from(proof.pivots),
             dependencies: Stack::new(),
             config,
-            proof_format ,
+            proof_format,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,
@@ -740,7 +740,7 @@ fn check_inference(checker: &mut Checker) -> bool {
     //     RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
     //     RedundancyProperty::PR => pr(checker),
     // };
-    let ok = preserve_assignment!(checker , rup_or_rat(checker)) ;
+    let ok = preserve_assignment!(checker, rup_or_rat(checker));
     if checker.config.grat_filename.is_some() {
         if !checker.grat_pending_deletions.is_empty() {
             if !checker.grat_in_deletion {
@@ -1982,7 +1982,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     //     }
     //     RedundancyProperty::PR => "PR",
     // };
-    let proof_format = checker.proof_format.sick_id() ;
+    let proof_format = checker.proof_format.sick_id();
     let proof_step = checker.rejection.proof_step;
 
     write!(file, "# Failed to prove lemma")?;
