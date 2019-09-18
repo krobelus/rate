@@ -1,37 +1,23 @@
 //! Apply a clausal proof up to a given line number and output the accumulated
 //! formula and the remaining proof.
 
-#![allow(dead_code)]
-#![allow(unused_macros)]
-#![allow(clippy::collapsible_if)]
-
-#[macro_use]
-mod output;
-#[macro_use]
-mod memory;
-mod clause;
-mod clausedatabase;
-mod config;
-mod features;
-mod literal;
-mod parser;
-
-#[macro_use(Serialize, Deserialize)]
-extern crate serde_derive;
-
+use ansi_term;
 use clap::Arg;
 use std::io::{Result, Write};
 
-use crate::{
+use rate_common::{
     clause::{write_clause, Clause},
+    die,
+    output::install_signal_handler,
     parser::{
         clause_db, is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
         run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
     },
+    write_to_stdout,
 };
 
 fn main() -> Result<()> {
-    crate::config::signals();
+    install_signal_handler();
     let matches = clap::App::new("apply-proof")
         .version(env!("CARGO_PKG_VERSION"))
         .about(

@@ -85,6 +85,7 @@ impl Literal {
     /// DIMACS representation.
     /// # Examples
     /// ```
+    /// use rate_common::literal::Literal;
     /// assert_eq!(Literal::new(-1).decode(), -1);
     /// ```
     pub fn decode(self) -> i32 {
@@ -97,6 +98,7 @@ impl Literal {
     }
     /// # Examples
     /// ```
+    /// use rate_common::literal::{Literal, Variable};
     /// assert_eq!(Literal::new(-3).variable(), Variable(3));
     /// ```
     pub const fn variable(self) -> Variable {
@@ -106,6 +108,7 @@ impl Literal {
     ///
     /// # Examples
     /// ```
+    /// use rate_common::literal::Literal;
     /// assert!(Literal::TOP.is_constant());
     /// assert!(!Literal::new(-3).is_constant());
     /// ```
@@ -117,7 +120,8 @@ impl Literal {
     /// # Examples
     ///
     /// ```
-    /// assert_eq!(Literal::all(Variable(2)).collect(),
+    /// use rate_common::literal::{Literal, Variable};
+    /// assert_eq!(Literal::all(Variable(2)).collect::<Vec<_>>(),
     ///           vec!(Literal::new(1), Literal::new(-1), Literal::new(2), Literal::new(-2)));
     /// ```
     pub fn all(maxvar: Variable) -> impl Iterator<Item = Literal> {
@@ -128,6 +132,7 @@ impl Literal {
     /// # Examples
     ///
     /// ```
+    /// use rate_common::literal::Literal;
     /// assert!(Literal::new(0).is_zero());
     /// assert!(!Literal::new(1).is_zero());
     /// ```
@@ -150,6 +155,7 @@ impl Offset for Literal {
 /// # Examples
 ///
 /// ```
+/// use rate_common::literal::Literal;
 /// assert!(-Literal::TOP == Literal::BOTTOM);
 /// ```
 impl ops::Neg for Literal {
@@ -164,6 +170,7 @@ impl ops::Neg for Literal {
 /// # Examples
 ///
 /// ```
+/// use rate_common::literal::Literal;
 /// assert_eq!(format!("{}", Literal::TOP), "+0");
 /// assert_eq!(format!("{}", Literal::BOTTOM), "-0");
 /// assert_eq!(format!("{}", Literal::new(11)), "11");

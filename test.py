@@ -145,7 +145,7 @@ def gratchk_accepts(grat_checker, name):
 @timed
 def sick_checker_accepts(checker, name):
     stdout, _ = process_expansion(checker)
-    ok = b's ACCEPTED\n' in stdout
+    ok = b's VERIFIED\n' in stdout
     if not ok:
         print(str(stdout, 'utf8'))
     return ok
@@ -358,18 +358,18 @@ def test_acceptance_dpr_trim():
             instances=pr_inputs())
 
 
-def test_drat2cdrat_cdrat2drat():
+def test_drat2bdrat_bdrat2drat():
     build_release()
-    drat2cdrat = './target/release/drat2cdrat'
-    cdrat2drat = './target/release/cdrat2drat'
+    drat2bdrat = './target/release/drat2bdrat'
+    bdrat2drat = './target/release/bdrat2drat'
     for benchmark in ('crafted/example1b', ):
         filename = f'benchmarks/{benchmark}.drat'
         print(filename)
         with open(filename) as f:
             content = f.read().encode()
-        stdout1, stderr1 = process_expansion([cdrat2drat], input=content)
+        stdout1, stderr1 = process_expansion([bdrat2drat], input=content)
         assert stderr1 == b''
-        stdout2, stderr2 = process_expansion([drat2cdrat], input=stdout1)
+        stdout2, stderr2 = process_expansion([drat2bdrat], input=stdout1)
         assert stderr2 == b''
         assert content == stdout2
     for benchmark in (
@@ -382,8 +382,8 @@ def test_drat2cdrat_cdrat2drat():
         print(filename)
         with open(filename) as f:
             content = f.read().encode()
-        stdout1, stderr1 = process_expansion([drat2cdrat], input=content)
+        stdout1, stderr1 = process_expansion([drat2bdrat], input=content)
         assert stderr1 == b''
-        stdout2, stderr2 = process_expansion([cdrat2drat], input=stdout1)
+        stdout2, stderr2 = process_expansion([bdrat2drat], input=stdout1)
         assert stderr2 == b''
         assert content == stdout2

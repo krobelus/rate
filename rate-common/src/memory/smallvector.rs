@@ -3,8 +3,8 @@
 //! does not allocate if it contains one ore no element.
 
 use crate::{
-    config::unreachable,
     memory::{assert_in_bounds, Vector},
+    output::unreachable,
 };
 use std::{
     iter::FromIterator,
@@ -89,7 +89,7 @@ impl<T: Copy + Default> SmallVector<T> {
         } else if let SmallVector::Many(vector) = self {
             vector.swap_remove(0)
         } else {
-            unreachable!()
+            unreachable()
         }
     }
 }
@@ -104,7 +104,7 @@ impl<T> Index<usize> for SmallVector<T> {
     fn index(&self, index: usize) -> &Self::Output {
         assert_in_bounds(0..self.len(), index);
         match self {
-            SmallVector::Empty => unreachable!(),
+            SmallVector::Empty => unreachable(),
             SmallVector::One(value) => value,
             SmallVector::Many(vector) => &vector[index],
         }
@@ -115,7 +115,7 @@ impl<T> IndexMut<usize> for SmallVector<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         assert_in_bounds(0..self.len(), index);
         match self {
-            SmallVector::Empty => unreachable!(),
+            SmallVector::Empty => unreachable(),
             SmallVector::One(value) => value,
             SmallVector::Many(vector) => &mut vector[index],
         }

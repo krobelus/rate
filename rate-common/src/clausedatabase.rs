@@ -3,7 +3,7 @@
 use crate::{
     clause::{Clause, ClauseIdentifierType},
     literal::Literal,
-    memory::{Offset, Vector},
+    memory::{HeapSpace, Offset, Vector},
 };
 
 use rate_macros::HeapSpace;

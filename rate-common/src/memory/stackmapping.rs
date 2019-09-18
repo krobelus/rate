@@ -1,6 +1,6 @@
 //! `StackMapping` combines a `BoundedVector` and an `Array`, providing fast look-up and iteration.
 
-use crate::memory::{Array, BoundedVector, Offset};
+use crate::memory::{Array, BoundedVector, HeapSpace, Offset};
 use rate_macros::HeapSpace;
 use std::{fmt::Debug, iter::IntoIterator, ops::Index, slice};
 

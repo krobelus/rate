@@ -2,6 +2,7 @@
 
 use crate::memory::Offset;
 use derive_more::Add;
+use serde_derive::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::{
     convert::{TryFrom, TryInto},
@@ -99,6 +100,7 @@ impl fmt::Display for Clause {
 ///
 /// This is essentially this enum, but we pack everything into 32 bits.
 /// ```
+/// # use rate_common::clause::Clause;
 /// enum ProofStep {
 ///     Lemma(Clause),
 ///     Deletion(Clause),
@@ -194,6 +196,7 @@ impl fmt::Display for Reason {
 ///
 /// This is essentially this enum, but we pack everything into 32 bits.
 /// ```
+/// # use rate_common::clause::Clause;
 /// enum LRATDependency {
 ///     Unit(Clause),
 ///     ForcedUnit(Clause),
@@ -242,6 +245,7 @@ impl LRATDependency {
 ///
 /// This is essentially this enum, but we pack everything into 32 bits.
 /// ```
+/// # use rate_common::clause::Clause;
 /// enum LRATLiteral {
 ///     ResolutionCandidate(Clause),
 ///     Hint(Clause),
@@ -378,6 +382,26 @@ impl TaggedUSize {
     }
     pub fn bit2(self) -> bool {
         self.0 & TaggedUSize::MASK2 != 0
+    }
+}
+
+/// The redundancy property to use for inference checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RedundancyProperty {
+    RAT,
+    PR,
+}
+
+impl fmt::Display for RedundancyProperty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RedundancyProperty::RAT => "RAT",
+                RedundancyProperty::PR => "PR",
+            }
+        )
     }
 }
 

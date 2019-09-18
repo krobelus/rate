@@ -3,5 +3,5 @@
 cd "$(dirname "$0")"/..
 
 cargo fmt
-autopep8 --in-place --aggressive --aggressive *.py scripts/*.py
+git ls-files | grep '\.py$' | xargs autopep8 --in-place --aggressive --aggressive
 checkbashisms scripts/*.sh

@@ -1,30 +1,16 @@
-//! Convert DRAT to compressed (binary) DRAT
+//! Convert DRAT to binary DRAT
 //!
 //! This shares little code with the other files but it duplicates some of the parsing logic.
-
-#![allow(dead_code)]
-#![allow(unused_macros)]
-
-#[macro_use]
-mod output;
-mod clause;
-mod clausedatabase;
-#[macro_use]
-mod config;
-mod features;
-mod literal;
-#[macro_use]
-mod memory;
-mod parser;
-
-#[macro_use(Serialize, Deserialize)]
-extern crate serde_derive;
 
 use clap::Arg;
 use std::io::{self, Result, Write};
 
-use crate::parser::{open_file_for_writing, parse_literal, read_compressed_file_or_stdin};
+use rate_common::{
+    output,
+    parser::{open_file_for_writing, parse_literal, read_compressed_file_or_stdin},
+};
 
+/// Write a number in signed little-endian binary (SLEB) encoding.
 fn write_number(output: &mut Write, number: i32) -> Result<()> {
     let mut encoding = number.abs() << 1;
     if number < 0 {
@@ -43,9 +29,10 @@ fn write_number(output: &mut Write, number: i32) -> Result<()> {
     }
 }
 
+/// Run `drat2bdrat`.
 fn main() -> Result<()> {
-    crate::config::signals();
-    let matches = clap::App::new("drat2cdrat")
+    output::install_signal_handler();
+    let matches = clap::App::new("drat2bdrat")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Read a textual proof from stdin and write its binary version to stdout")
         .arg(

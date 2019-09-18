@@ -1,14 +1,7 @@
-//! Output routines
-
-use atty::{self, Stream};
-use std::{fmt::Display, time::SystemTime};
-
-/// Check whether we are writing to a terminal.
-pub fn is_a_tty() -> bool {
-    atty::is(Stream::Stdout)
-}
+//! Macros and other utility code.
 
 /// This should be used for every write to stdout.
+#[macro_export]
 macro_rules! write_to_stdout {
     ($($arg:tt)*) => ({
         use std::io::Write;
@@ -22,28 +15,31 @@ macro_rules! write_to_stdout {
 }
 
 /// implementation of log.
+#[macro_export]
 macro_rules! _log {
     ($verbosity:expr, $level:expr, $($arg:tt)*) => {
-        if crate::config::ENABLE_LOGGING && $level <= $verbosity
+        if $crate::config::ENABLE_LOGGING && $level <= $verbosity
         {
             write_to_stdout!($($arg)*);
             write_to_stdout!("\n");
         }
-    };
+    }
 }
 
 /// Print a formatted message based on verbosity level
+#[macro_export]
 macro_rules! log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
-        _log!($checker.config.verbosity, $level, $($arg)*)
+        _log!($checker.flags.verbosity, $level, $($arg)*)
     };
 }
 
 // Print upon scope exit.
 // We need this macro to avoid borrowing $checker.
+#[macro_export]
 macro_rules! defer_log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
-        let verbosity = $checker.config.verbosity;
+        let verbosity = $checker.flags.verbosity;
         defer!(
             _log!(verbosity, $level, $($arg)*)
             );
@@ -51,9 +47,11 @@ macro_rules! defer_log {
 }
 
 // Print in red.
+#[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => ({
-        let style = if crate::output::is_a_tty() {
+        use ansi_term;
+        let style = if $crate::output::is_a_tty() {
             ansi_term::Colour::Yellow.normal()
         } else {
             ansi_term::Style::default()
@@ -64,9 +62,11 @@ macro_rules! warn {
 }
 
 // Report a fatal error and exit.
+#[macro_export]
 macro_rules! die {
     ($($arg:tt)*) => ({
-        let style = if crate::output::is_a_tty() {
+        use ansi_term;
+        let style = if $crate::output::is_a_tty() {
             ansi_term::Colour::Red.normal()
         } else {
             ansi_term::Style::default()
@@ -79,78 +79,31 @@ macro_rules! die {
 
 // Native assertions cannot be disabled, that's why why prefer to use this
 // macro.
+#[macro_export]
 macro_rules! invariant {
     ($($arg:tt)*) => ({
-        if crate::config::CHECK_INVARIANTS {
+        if $crate::config::CHECK_INVARIANTS {
             assert!($($arg)*);
         }
     })
 }
 
 // Preconditions should use this instead of an invariant.
+#[macro_export]
 macro_rules! requires {
     ($($arg:tt)*) => ({
-        if crate::config::CHECK_PRECONDITIONS {
+        if $crate::config::CHECK_PRECONDITIONS {
             assert!($($arg)*);
         }
     })
 }
 
 // Print to stdout.
+#[macro_export]
 macro_rules! comment {
     ($($arg:tt)*) => ({
         write_to_stdout!("c ");
         write_to_stdout!($($arg)*);
         write_to_stdout!("\n");
     })
-}
-
-/// Write a solution line (`"s ..."`) to stdout.
-pub fn solution(verdict: &str) {
-    write_to_stdout!("s {}\n", verdict);
-}
-
-/// Write a key-value pair to stdout.
-pub fn value(key: &str, value: impl Display) {
-    requires!(key.len() < 35);
-    comment!("{:<35} {:>15}", format!("{}:", key), value);
-}
-
-/// A RAII object that prints a timing message when it is destroyed.
-pub struct Timer {
-    /// The name of the thing that is being timed
-    name: &'static str,
-    /// The start time, set at construction time
-    start: SystemTime,
-    /// Whether this timer should be silenced
-    pub disabled: bool,
-}
-
-impl Timer {
-    /// Create a timer with a given name.
-    pub fn name(name: &'static str) -> Timer {
-        Timer {
-            name,
-            start: SystemTime::now(),
-            disabled: false,
-        }
-    }
-}
-
-impl Drop for Timer {
-    /// Write the elapsed time as comment.
-    fn drop(&mut self) {
-        if self.disabled {
-            return;
-        }
-        let elapsed_time = self.start.elapsed().expect("failed to get time");
-        value(
-            &format!("{} (s)", self.name),
-            format!(
-                "{}.{:03}",
-                elapsed_time.as_secs(),
-                elapsed_time.subsec_millis()
-            ),
-        );
-    }
 }

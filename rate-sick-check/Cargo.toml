@@ -1,0 +1,19 @@
+[package]
+name = "rate-sick-check"
+version = "0.1.0"
+authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
+edition = "2018"
+description = "Verify SICK certificates of proof incorrectness produced by rate"
+repository = "https://github.com/krobelus/rate"
+license = "MIT"
+readme = "README.md"
+
+[[bin]]
+name = "sick-check"
+path = "sick-check.rs"
+
+[dependencies]
+rate-common = { path = "../rate-common", version = "0.1.0" }
+clap = "2.32"
+toml = "0.5"
+ansi_term = "0.11"

@@ -1,0 +1,28 @@
+[package]
+name = "rate-proof-utils"
+version = "0.1.0"
+authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
+edition = "2018"
+description = "Utilities for clausal proofs (DRAT, DPR)"
+repository = "https://github.com/krobelus/rate"
+license = "MIT"
+readme = "README.md"
+
+# TODO rename
+
+[[bin]]
+name = "apply-proof"
+path = "apply-proof.rs"
+
+[[bin]]
+name = "drat2bdrat"
+path = "drat2bdrat.rs"
+
+[[bin]]
+name = "bdrat2drat"
+path = "bdrat2drat.rs"
+
+[dependencies]
+rate-common = { path = "../rate-common", version = "0.1.0" }
+clap = "2.32"
+ansi_term = "0.11"

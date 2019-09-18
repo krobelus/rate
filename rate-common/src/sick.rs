@@ -4,6 +4,7 @@ use crate::{
     literal::Literal,
     memory::{HeapSpace, Vector},
 };
+use serde_derive::{Deserialize, Serialize};
 
 /// A SICK certificate.
 #[derive(Serialize, Deserialize, Debug, Default)]

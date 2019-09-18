@@ -1,12 +1,11 @@
 //! DIMACS and DRAT/DPR parser
 
 use crate::{
-    clause::{Clause, ProofStep},
+    clause::{Clause, ProofStep, RedundancyProperty},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
-    config::{unreachable, RedundancyProperty},
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
-    output::{self, Timer},
+    output::{print_key_value, unreachable, Timer},
 };
 use std::{
     cmp,
@@ -315,9 +314,9 @@ fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
         ("rest", parser.clause_pivot.heap_space()),
     ];
     let total = usages.iter().map(|pair| pair.1).sum();
-    output::value("parser memory (MB)", format_memory_usage(total));
+    print_key_value("parser memory (MB)", format_memory_usage(total));
     for (name, usage) in usages {
-        output::value(&format!("memory-{}", name), format_memory_usage(usage));
+        print_key_value(&format!("memory-{}", name), format_memory_usage(usage));
     }
 }
 

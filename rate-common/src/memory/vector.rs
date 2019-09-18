@@ -1,8 +1,7 @@
 //! `Vector` is a thin wrapper around
 //! [std::vec::Vec](https://doc.rust-lang.org/std/vec/struct.Vec.html)
 
-use crate::memory::HeapSpace;
-use crate::{config::ENABLE_BOUNDS_CHECKING, features::RangeContainsExt};
+use crate::{config, features::RangeContainsExt, memory::HeapSpace};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use static_assertions::const_assert;
 use std::{
@@ -234,7 +233,7 @@ impl<T> AsMut<[T]> for Vector<T> {
 /// # Panics
 /// Panic if bounds checking is enabled and the index is out of the given bounds.
 pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
-    if ENABLE_BOUNDS_CHECKING {
+    if config::ENABLE_BOUNDS_CHECKING {
         assert!(
             bounds.contains_item(&offset),
             format!(

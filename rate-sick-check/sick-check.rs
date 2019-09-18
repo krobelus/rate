@@ -1,46 +1,28 @@
-//! Verify a SICK certificate
-
-#![allow(dead_code)]
-#![allow(unused_macros)]
-#![allow(clippy::collapsible_if)]
-
-#[macro_use]
-mod output;
-#[macro_use]
-mod memory;
-mod assignment;
-mod clause;
-mod clausedatabase;
-mod config;
-mod features;
-mod literal;
-mod parser;
-mod sick;
-
-#[macro_use(Serialize, Deserialize)]
-extern crate serde_derive;
+//! Verify SICK certificates of proof incorrectness produced by rate
 
 use clap::Arg;
 use std::io::Read;
 use toml;
 
-use crate::{
+use rate_common::{
     assignment::{stable_under_unit_propagation, Assignment},
-    clause::Reason,
-    config::RedundancyProperty,
+    clause::{Reason, RedundancyProperty},
+    comment, die,
     literal::Literal,
     memory::{Array, Vector},
-    output::solution,
+    output::{install_signal_handler, print_solution},
     parser::{
         clause_db, open_file, proof_format_by_extension, run_parser, witness_db,
         FixedSizeHashTable, HashTable, Parser,
     },
+    requires,
     sick::Sick,
+    write_to_stdout,
 };
 
 #[allow(clippy::cognitive_complexity)]
 fn main() -> Result<(), ()> {
-    crate::config::signals();
+    install_signal_handler();
     let app = clap::App::new("sick-check")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Verify SICK certificates stating why a DRAT proof is incorrect")
@@ -109,7 +91,7 @@ fn main() -> Result<(), ()> {
     }
     if clause_db().clause(lemma).is_empty() {
         comment!("Tried to introduce empty clause but natural model is consistent");
-        solution("ACCEPTED");
+        print_solution("VERIFIED");
         return Ok(());
     }
     let natural_model_length = assignment.len();
@@ -253,6 +235,6 @@ fn main() -> Result<(), ()> {
             assignment.pop();
         }
     }
-    solution("ACCEPTED");
+    print_solution("VERIFIED");
     Ok(())
 }

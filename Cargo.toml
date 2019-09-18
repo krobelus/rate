@@ -1,48 +1,12 @@
-[package]
-name = "rate"
-version = "0.1.0"
-authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
-description = "DRAT proof checker for DIMACS formulas"
-edition = "2018"
-license = "MIT"
+[workspace]
+members = [
+	"rate-macros",
+	"rate-common",
+	"rate",
+	"rate-sick-check",
+	"rate-proof-utils",
+]
+exclude = ["checkouts"]
 
-[[bin]]
-name = "sick-check"
-path = "src/sick-check.rs"
-
-[[bin]]
-name = "apply-proof"
-path = "src/apply-proof.rs"
-
-[[bin]]
-name = "drat2cdrat"
-path = "src/drat2cdrat.rs"
-
-[[bin]]
-name = "cdrat2drat"
-path = "src/cdrat2drat.rs"
-
-[dependencies]
-rate-macros = { path = "rate-macros" }
-ansi_term = "0.11"
-derive_more = "0.15"
-clap = "2.32"
-scopeguard = "1.0"
-atty = "0.2"
-static_assertions = "0.3"
-bitfield = "0.13"
-toml = "0.5"
-serde = "1.0"
-serde_derive = "1.0"
-zstd = "0.4"
-flate2 = "1.0"
-bzip2 = "0.3"
-lz4 = "1.23"
-xz2 = "0.1"
-libc = "0.2"
-
-[features]
-default = []
-
-[profile.release]
-panic = "abort"
+# [profile.release]
+# panic = "abort"

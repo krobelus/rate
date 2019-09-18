@@ -1,26 +1,222 @@
-//! Proof checking logic
+//! Clausal proof checker (DRAT, DPR) for certifying SAT solvers' unsatisfiability results
 
-use crate::{
-    assignment::{stable_under_unit_propagation, Assignment},
-    clause::{write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason},
-    config::{unreachable, Config, RedundancyProperty},
-    literal::{Literal, Variable},
-    memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
-    output::{self, Timer},
-    parser::{clause_db, open_file_for_writing, witness_db, Parser},
-    sick::{Sick, Witness},
-};
 use ansi_term::Colour;
 use bitfield::bitfield;
-use rate_macros::HeapSpace;
+use clap::{Arg, ArgMatches};
+use rate_common::{
+    _log,
+    assignment::{stable_under_unit_propagation, Assignment},
+    clause::{
+        write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason,
+        RedundancyProperty,
+    },
+    comment, config, defer_log, die, invariant,
+    literal::{Literal, Variable},
+    log,
+    memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
+    output::{install_signal_handler, unreachable},
+    output::{print_key_value, print_solution, Timer},
+    parser::{clause_db, open_file_for_writing, witness_db, Parser},
+    parser::{free_clause_database, parse_files},
+    requires,
+    sick::{Sick, Witness},
+    warn, write_to_stdout,
+};
+use rate_macros::{self, HeapSpace};
+use scopeguard::defer;
 use std::{
-    cmp, fmt,
-    fs::File,
-    io,
-    io::{BufWriter, Write},
+    cmp, fmt, io,
+    io::Write,
     iter::FromIterator,
     ops::{self, Index},
 };
+
+/// Run `rate`.
+fn main() {
+    std::process::exit(run_frontend());
+}
+
+/// Run `rate`, returning its exit code.
+///
+/// This is a separate function because `std::process::exit` does not
+/// call destructors.
+fn run_frontend() -> i32 {
+    install_signal_handler();
+    let mut app = clap::App::new("rate")
+    .version(env!("CARGO_PKG_VERSION"))
+    .about(env!("CARGO_PKG_DESCRIPTION"))
+    .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
+    .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT format"))
+
+    .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
+         .help("Ignore deletion of unit clauses."))
+    .arg(Arg::with_name("UNMARKED_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
+         .help("Do not ignore RAT candidates that are not part of the core."))
+    .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
+         .help("When checking for RAT, only try the first literal as pivot."))
+    .arg(Arg::with_name("NO_TERMINATING_EMPTY_CLAUSE").long("--no-terminating-empty-clause")
+        .help("Do not assume an implied empty clause at the end of the proof"))
+    .arg(Arg::with_name("FORWARD").short("f").long("forward")
+         .help("Use naive forward checking."))
+
+    .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
+         .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions and --noncore-rat-candidates"))
+    .arg(Arg::with_name("RUPEE").long("--rupee")
+         .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
+    .arg(Arg::with_name("MEMORY_USAGE_BREAKDOWN").short("m").long("--memory-breakdown")
+         .help("Output detailled memory usage."))
+    .arg(Arg::with_name("LEMMAS_FILE").takes_value(true).short("l").long("lemmas")
+         .help("Write the core lemmas to this file."))
+    .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat")
+         .help("Write the core lemmas as LRAT certificate to this file."))
+    .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
+         .help("Write the GRAT certificate to this file."))
+    .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
+         .help("Write the recheck incorrectness witness."))
+    ;
+
+    if config::ENABLE_LOGGING {
+        app = app.arg(
+            Arg::with_name("v")
+                .short("v")
+                .multiple(true)
+                .help("Set the verbosity level (use up to four times)"),
+        );
+    }
+
+    let flags = Flags::new(app.get_matches());
+    let timer = Timer::name("total time");
+    let parser = parse_files(
+        &flags.formula_filename,
+        &flags.proof_filename,
+        flags.no_terminating_empty_clause,
+        flags.memory_usage_breakdown,
+    );
+    if parser.is_pr() {
+        if flags.lrat_filename.is_some() || flags.grat_filename.is_some() {
+            die!("LRAT and GRAT generation is not possible for PR")
+        }
+    }
+    let mut checker = Checker::new(parser, flags);
+    let result = checker.run();
+    print_key_value("premise clauses", checker.premise_length);
+    print_key_value("proof steps", checker.proof.len());
+    print_key_value("skipped tautologies", checker.satisfied_count);
+    print_key_value("RUP introductions", checker.rup_introductions);
+    print_key_value("RAT introductions", checker.rat_introductions);
+    print_key_value("deletions", checker.deletions);
+    print_key_value("skipped deletions", checker.skipped_deletions);
+    print_key_value("reason deletions", checker.reason_deletions);
+    print_key_value(
+        "reason deletions shrinking trail",
+        checker.reason_deletions_shrinking_trail,
+    );
+    drop(timer);
+    checker.print_memory_usage();
+    if result == Verdict::NoConflict {
+        warn!("all lemmas verified, but no conflict");
+    }
+    print_solution(if result == Verdict::Verified {
+        "VERIFIED"
+    } else {
+        "NOT VERIFIED"
+    });
+    free_clause_database();
+    if result == Verdict::Verified {
+        0
+    } else {
+        1
+    }
+}
+
+/// Parsed arguments. See `rate --help`.
+#[derive(Debug)]
+pub struct Flags {
+    pub skip_unit_deletions: bool,
+    pub unmarked_rat_candidates: bool,
+    pub pivot_is_first_literal: bool,
+    pub no_terminating_empty_clause: bool,
+    pub memory_usage_breakdown: bool,
+    pub forward: bool,
+    pub verbosity: u64,
+    pub formula_filename: String,
+    pub proof_filename: String,
+    pub lemmas_filename: Option<String>,
+    pub lrat_filename: Option<String>,
+    pub grat_filename: Option<String>,
+    pub sick_filename: Option<String>,
+}
+
+impl Flags {
+    /// Create a flags instance from commandline arguments.
+    pub fn new(matches: ArgMatches) -> Flags {
+        let drat_trim = matches.is_present("DRAT_TRIM");
+        let rupee = matches.is_present("RUPEE");
+        let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
+        let unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
+        let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
+        let forward = matches.is_present("FORWARD");
+        let lrat = matches.is_present("LRAT_FILE");
+        let grat = matches.is_present("GRAT_FILE");
+        let sick_filename = matches.value_of("SICK_FILE").map(String::from);
+
+        if forward {
+            if grat {
+                incompatible_options("--forward --grat");
+            }
+            if lrat {
+                incompatible_options("--forward --lrat");
+            }
+            if sick_filename.is_some() {
+                incompatible_options("--forward --recheck");
+            }
+        }
+        if skip_unit_deletions && sick_filename.is_some() {
+            warn!(
+                "--recheck can produce an incorrect SICK witness when used along --skip-unit-deletions."
+            );
+        }
+        if !skip_unit_deletions && grat {
+            warn!("GRAT does not support unit deletions, I might generated invalid certificates.");
+        }
+        if rupee && skip_unit_deletions {
+            incompatible_options("--rupee --skip-unit-deletions");
+        }
+        if rupee && unmarked_rat_candidates {
+            incompatible_options("--rupee --unmarked_rat_candidates");
+        }
+        if drat_trim && pivot_is_first_literal {
+            incompatible_options("--drat-trim --assume-pivot-is-first");
+        }
+        let proof_filename = matches.value_of("PROOF").unwrap().to_string();
+        Flags {
+            skip_unit_deletions: drat_trim || skip_unit_deletions,
+            unmarked_rat_candidates: rupee || unmarked_rat_candidates,
+            pivot_is_first_literal: rupee || pivot_is_first_literal,
+            no_terminating_empty_clause: matches.is_present("NO_TERMINATING_EMPTY_CLAUSE"),
+            memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
+            forward,
+            verbosity: match matches.occurrences_of("v") {
+                i if i > 4 => {
+                    warn!("verbosity can be at most 4");
+                    4
+                }
+                i => i,
+            },
+            formula_filename: matches.value_of("INPUT").unwrap().to_string(),
+            proof_filename,
+            lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
+            lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
+            grat_filename: matches.value_of("GRAT_FILE").map(String::from),
+            sick_filename,
+        }
+    }
+}
+
+/// Report an error due to invalid parameters.
+fn incompatible_options(what: &str) {
+    die!("incompatible options: {}", what);
+}
 
 /// The (intermediate) result of a proof checker
 #[derive(PartialEq, Eq, Debug)]
@@ -38,7 +234,7 @@ pub struct Checker {
     /// The input proof
     pub proof: Vector<ProofStep>,
     /// Flags
-    pub config: Config,
+    pub flags: Flags,
     /// Which redundancy property to use for inferences
     redundancy_property: RedundancyProperty,
 
@@ -172,14 +368,14 @@ struct Revision {
 impl Checker {
     /// Instantiate the checker, consuming a
     /// [Parser](../parser/struct.Parser.html) and a
-    /// [Config](../config/struct.Config.html)
-    pub fn new(parser: Parser, config: Config) -> Checker {
+    /// [Flags](struct.Flags.html)
+    pub fn new(parser: Parser, flags: Flags) -> Checker {
         let num_clauses = clause_db().number_of_clauses() as usize;
         let num_lemmas = parser.proof.len();
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
-        let lrat = config.lrat_filename.is_some();
-        let grat = config.grat_filename.is_some();
+        let lrat = flags.lrat_filename.is_some();
+        let grat = flags.grat_filename.is_some();
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
@@ -190,7 +386,7 @@ impl Checker {
             },
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Vector::new(),
-            config,
+            flags,
             redundancy_property: parser.redundancy_property,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
@@ -266,7 +462,7 @@ impl Checker {
                 checker.clause_lrat_id[clause] = checker.lrat_id;
             }
         }
-        if checker.config.sick_filename.is_some() {
+        if checker.flags.sick_filename.is_some() {
             checker.rejection.witness = Some(Vector::new())
         }
         checker
@@ -372,7 +568,7 @@ impl Checker {
 
 /// Run the checker.
 fn run(checker: &mut Checker) -> Verdict {
-    let verdict = if checker.config.forward {
+    let verdict = if checker.flags.forward {
         forward_check(checker)
     } else {
         let mut verdict = preprocess(checker);
@@ -443,7 +639,7 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
     if checker.fields(clause).is_reason() {
         checker.reason_deletions += 1;
     }
-    if checker.config.skip_unit_deletions {
+    if checker.flags.skip_unit_deletions {
         let is_unit = checker
             .clause(clause)
             .iter()
@@ -453,7 +649,7 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
         if is_unit {
             checker.fields_mut(clause).set_deletion_ignored(true);
             checker.skipped_deletions += 1;
-            if checker.config.verbosity > 0 {
+            if checker.flags.verbosity > 0 {
                 warn!(
                     "Ignoring deletion of (pseudo) unit clause {}",
                     checker.clause_to_string(clause)
@@ -492,7 +688,7 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
 fn forward_preadd(checker: &mut Checker, step: usize, clause: Clause) -> bool {
     invariant!(clause == checker.lemma);
     if checker.clause(clause).is_empty() {
-        if checker.config.sick_filename.is_some() {
+        if checker.flags.sick_filename.is_some() {
             checker.rejection.proof_step = step;
         }
         extract_natural_model(checker, checker.assignment.len());
@@ -531,10 +727,10 @@ const NO_CONFLICT: MaybeConflict = MaybeConflict(false);
 /// Add the clause to the core / schedule it for verification.
 fn schedule(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.fields(clause).is_scheduled() {
-        if checker.config.lrat_filename.is_some() {
+        if checker.flags.lrat_filename.is_some() {
             checker.optimized_proof.push(ProofStep::deletion(clause));
         }
-        if checker.config.grat_filename.is_some() {
+        if checker.flags.grat_filename.is_some() {
             checker.grat_pending_deletions.push(clause);
         }
     }
@@ -742,7 +938,7 @@ fn check_inference(checker: &mut Checker) -> bool {
         RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
         RedundancyProperty::PR => pr(checker),
     };
-    if checker.config.grat_filename.is_some() {
+    if checker.flags.grat_filename.is_some() {
         if !checker.grat_pending_deletions.is_empty() {
             if !checker.grat_in_deletion {
                 checker.grat.push(GRATLiteral::DELETION);
@@ -842,7 +1038,7 @@ fn pr(checker: &mut Checker) -> bool {
 /// Adds the clause that was found to be falsified by the literals in
 /// the trail to the GRAT output.
 fn add_rup_conflict_for_grat(checker: &mut Checker) {
-    requires!(checker.config.grat_filename.is_some());
+    requires!(checker.flags.grat_filename.is_some());
     let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
     let reason = if conflict_literal_reason.is_assumed() {
         checker
@@ -867,19 +1063,19 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     if rup(checker, lemma, None) == CONFLICT {
         checker.rup_introductions += 1;
-        if checker.config.grat_filename.is_some() {
+        if checker.flags.grat_filename.is_some() {
             checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
             checker.grat_pending.push(GRATLiteral::from_clause(lemma));
         }
         extract_dependencies(checker, trail_length_forced, None);
-        if checker.config.grat_filename.is_some() {
+        if checker.flags.grat_filename.is_some() {
             add_rup_conflict_for_grat(checker);
         }
         write_dependencies_for_lrat(checker, lemma, false);
         return true;
     }
     let trail_length_after_rup = checker.assignment.len();
-    if checker.config.grat_filename.is_some() {
+    if checker.flags.grat_filename.is_some() {
         checker.grat_pending_prerat.push(GRATLiteral::RAT_LEMMA);
         checker
             .grat_pending_prerat
@@ -890,11 +1086,11 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             // Make pivot the first literal in the LRAT proof.
             let head = checker.clause_range(lemma).start;
             let pivot = clause_db()[head + pivot_index];
-            if checker.config.grat_filename.is_some() {
+            if checker.flags.grat_filename.is_some() {
                 checker.grat_rat_counts[pivot] += 1;
             }
             clause_db().swap(head, head + pivot_index);
-            if checker.config.grat_filename.is_some() {
+            if checker.flags.grat_filename.is_some() {
                 for position in trail_length_forced..trail_length_after_rup {
                     let reason = checker.assignment.trail_at(position).1;
                     if !reason.is_assumed() {
@@ -978,13 +1174,13 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
             .unwrap();
         return Some(pivot_index);
     }
-    if checker.config.pivot_is_first_literal {
+    if checker.flags.pivot_is_first_literal {
         return None;
     }
     checker.clause_range(lemma).position(|offset| {
         let fallback_pivot = clause_db()[offset];
         fallback_pivot != Literal::BOTTOM && fallback_pivot != pivot && {
-            if checker.config.grat_filename.is_some() {
+            if checker.flags.grat_filename.is_some() {
                 checker.grat_pending.truncate(grat_pending_length);
                 checker
                     .grat_pending_deletions
@@ -1034,7 +1230,7 @@ fn rat(
     resolution_candidates.iter().all(|&resolution_candidate| {
         preserve_assignment!(
             checker,
-            (!checker.config.unmarked_rat_candidates
+            (!checker.flags.unmarked_rat_candidates
                 && !checker.fields(resolution_candidate).is_scheduled())
                 || {
                     watch_invariants(checker);
@@ -1045,7 +1241,7 @@ fn rat(
                         checker.clause_to_string(resolution_candidate)
                     );
                     if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
-                        if checker.config.sick_filename.is_some() {
+                        if checker.flags.sick_filename.is_some() {
                             let failing_clause = Vector::from_iter(
                                 checker
                                     .clause(resolution_candidate)
@@ -1070,7 +1266,7 @@ fn rat(
                         }
                         false
                     } else {
-                        if checker.config.lrat_filename.is_some() {
+                        if checker.flags.lrat_filename.is_some() {
                             checker
                                 .dependencies
                                 .push(LRATDependency::resolution_candidate(resolution_candidate));
@@ -1082,7 +1278,7 @@ fn rat(
                                 .trail_at(checker.assignment.position_in_trail(-conflict_literal))
                                 .1
                                 .is_assumed();
-                        if checker.config.grat_filename.is_some() {
+                        if checker.flags.grat_filename.is_some() {
                             if !resolvent_is_tautological {
                                 checker
                                     .grat_pending
@@ -1094,7 +1290,7 @@ fn rat(
                             trail_length_before_rup,
                             Some((trail_length_before_rat, resolvent_is_tautological)),
                         );
-                        if checker.config.grat_filename.is_some() {
+                        if checker.flags.grat_filename.is_some() {
                             if !resolvent_is_tautological {
                                 add_rup_conflict_for_grat(checker);
                             }
@@ -1173,7 +1369,7 @@ fn extract_dependencies(
             }
         }
     }
-    if checker.config.grat_filename.is_some() {
+    if checker.flags.grat_filename.is_some() {
         let resolvent_is_tautological = trail_length_before_rat.map_or(false, |tuple| tuple.1);
         if !resolvent_is_tautological {
             if let Some((trail_length, _resolvent_is_tautological)) = trail_length_before_rat {
@@ -1197,7 +1393,7 @@ fn extract_dependencies(
             checker.grat_pending.push(GRATLiteral::ZERO);
         }
     }
-    if checker.config.lrat_filename.is_some() {
+    if checker.flags.lrat_filename.is_some() {
         for position in 1..checker.assignment.len() {
             let (_literal, reason) = checker.assignment.trail_at(position);
             if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
@@ -1236,7 +1432,7 @@ fn extract_dependencies(
 
 /// Write a line of LRAT (justyfing a single inference.
 fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, rat_inference: bool) {
-    if !checker.config.lrat_filename.is_some() {
+    if !checker.flags.lrat_filename.is_some() {
         return;
     }
     write_dependencies_for_lrat_aux(checker, clause, rat_inference);
@@ -1297,7 +1493,7 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_in
 /// After failing to find a conflict in an inference check, copy the natural
 /// model before the check.
 fn extract_natural_model(checker: &mut Checker, trail_length: usize) {
-    if checker.config.sick_filename.is_some() {
+    if checker.flags.sick_filename.is_some() {
         checker.rejection.natural_model = checker
             .assignment
             .iter()
@@ -1385,7 +1581,7 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
                 let conflict = assign(checker, w1, Reason::forced(head));
                 invariant!(conflict == NO_CONFLICT);
             }
-            if !checker.config.skip_unit_deletions {
+            if !checker.flags.skip_unit_deletions {
                 checker.fields_mut(clause).set_in_watchlist(true);
                 clause_db().swap(head, i1);
                 watch_add(checker, mode, w1, head);
@@ -1425,7 +1621,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
         "[preprocess] add {}",
         checker.clause_to_string(clause)
     );
-    let already_satisfied = if checker.config.skip_unit_deletions {
+    let already_satisfied = if checker.flags.skip_unit_deletions {
         clause_is_satisfied(checker, clause)
     } else {
         false
@@ -1457,10 +1653,10 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
     write_dependencies_for_lrat(checker, empty_clause, false);
     schedule(checker, empty_clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::lemma(empty_clause);
-    if checker.config.lrat_filename.is_some() {
+    if checker.flags.lrat_filename.is_some() {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
-    if checker.config.grat_filename.is_some() {
+    if checker.flags.grat_filename.is_some() {
         let reason = checker.assignment.pop().unwrap().1;
         // let reason = checker.assignment.peek().1;
         if reason.is_assumed() {
@@ -1532,7 +1728,7 @@ fn verify(checker: &mut Checker) -> bool {
                 "[verify] del {}",
                 checker.clause_to_string(clause)
             );
-            if checker.config.skip_unit_deletions {
+            if checker.flags.skip_unit_deletions {
                 if !checker.fields(clause).is_reason() {
                     // not actually deleted otherwise!
                     invariant!(checker.clause_mode(clause) == Mode::NonCore);
@@ -1545,7 +1741,7 @@ fn verify(checker: &mut Checker) -> bool {
                 }
                 watches_add(checker, Stage::Verification, clause);
             }
-            if checker.config.grat_filename.is_some() {
+            if checker.flags.grat_filename.is_some() {
                 if !checker.grat_in_deletion {
                     checker.grat.push(GRATLiteral::DELETION);
                 }
@@ -1579,16 +1775,16 @@ fn verify(checker: &mut Checker) -> bool {
             }
         };
         if !accepted {
-            if checker.config.sick_filename.is_some() {
+            if checker.flags.sick_filename.is_some() {
                 checker.rejection.proof_step = i;
             }
             return false;
         }
-        if checker.config.lrat_filename.is_some() {
+        if checker.flags.lrat_filename.is_some() {
             checker.optimized_proof.push(proof_step)
         }
     }
-    if checker.config.grat_filename.is_some() {
+    if checker.flags.grat_filename.is_some() {
         if checker.grat_in_deletion {
             checker.grat.push(GRATLiteral::ZERO);
         }
@@ -1620,7 +1816,7 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
         let unit = clause_db()[offset];
         let trail_length = checker.assignment.position_in_trail(unit);
         invariant!(trail_length < checker.assignment.len());
-        if checker.config.grat_filename.is_some() {
+        if checker.flags.grat_filename.is_some() {
             if checker.grat_in_deletion {
                 checker.grat_in_deletion = false;
                 checker.grat.push(GRATLiteral::ZERO);
@@ -1653,17 +1849,17 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
 fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
-    if checker.config.sick_filename.is_some() {
+    if checker.flags.sick_filename.is_some() {
         checker.rejection_lemma.clear();
     }
     for offset in checker.clause_range(clause) {
         let literal = clause_db()[offset];
         // The SICK witness would be incorrect when discarding falsified
         // literals like here. Copy the lemma to checker.rejection_lemma.
-        if checker.config.sick_filename.is_some() {
+        if checker.flags.sick_filename.is_some() {
             checker.rejection_lemma.push(literal);
         }
-        if checker.config.skip_unit_deletions {
+        if checker.flags.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
         }
         if !checker.assignment[-literal] {
@@ -1683,7 +1879,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
 
 /// Write core lemmas to a file.
 fn write_lemmas(checker: &Checker) -> io::Result<()> {
-    let mut file = match &checker.config.lemmas_filename {
+    let mut file = match &checker.flags.lemmas_filename {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
@@ -1698,7 +1894,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
 
 /// Write the GRAT certificate to a file.
 fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
-    let mut file = match &checker.config.grat_filename {
+    let mut file = match &checker.flags.grat_filename {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
@@ -1852,7 +2048,7 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
 
 /// Write the LRAT certificate to a file.
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
-    let mut file = match &checker.config.lrat_filename {
+    let mut file = match &checker.flags.lrat_filename {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
@@ -1974,13 +2170,13 @@ fn write_lrat_deletion(
 
 /// Write the SICK incorrectness witness to a file.
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
-    let mut file = match &checker.config.sick_filename {
+    let mut file = match &checker.flags.sick_filename {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
     let proof_format = match checker.redundancy_property {
         RedundancyProperty::RAT => {
-            if checker.config.pivot_is_first_literal {
+            if checker.flags.pivot_is_first_literal {
                 "DRAT-pivot-is-first-literal"
             } else {
                 "DRAT-arbitrary-pivot"
@@ -2030,7 +2226,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
 
 /// Check invariants on the trail (expensive).
 fn assignment_invariants(checker: &Checker) {
-    if !crate::config::CHECK_TRAIL_INVARIANTS {
+    if !config::CHECK_TRAIL_INVARIANTS {
         return;
     }
     for &(literal, reason) in &checker.assignment {
@@ -2066,7 +2262,7 @@ enum Mode {
 
 /// Check watch invariants (expensive).
 fn watch_invariants(checker: &Checker) {
-    if crate::config::CHECK_WATCH_INVARIANTS {
+    if config::CHECK_WATCH_INVARIANTS {
         // each watch points to a clause that is neither falsified nor satisfied
         for &mode in &[Mode::Core, Mode::NonCore] {
             for lit in Literal::all(checker.maxvar) {
@@ -2142,7 +2338,7 @@ fn watches_remove(checker: &mut Checker, mode: Mode, clause: Clause) {
 /// Remove the entries for a clause in the watchlist of a literal.
 fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) -> bool {
     requires!(lit != Literal::TOP);
-    if crate::config::CHECK_WATCH_INVARIANTS {
+    if config::CHECK_WATCH_INVARIANTS {
         invariant!(
             watchlist(checker, mode)[lit]
                 .iter()
@@ -2215,7 +2411,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         invariant!(checker.literal_is_in_cone_preprocess[literal]);
         checker.literal_is_in_cone_preprocess[literal] = false;
     }
-    if !checker.config.forward {
+    if !checker.flags.forward {
         checker.revisions.push(revision);
     }
     assignment_invariants(checker);
@@ -2501,12 +2697,12 @@ fn print_memory_usage(checker: &Checker) {
         ),
     ];
     let total = usages.iter().fold(0, |sum, pair| sum + pair.1);
-    output::value("memory (MB)", format_memory_usage(total));
-    if !checker.config.memory_usage_breakdown {
+    print_key_value("memory (MB)", format_memory_usage(total));
+    if !checker.flags.memory_usage_breakdown {
         return;
     }
     for pair in usages {
-        output::value(
+        print_key_value(
             &format!("memory-{}", pair.0.replace("_", "-")),
             format_memory_usage(pair.1),
         );
