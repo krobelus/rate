@@ -42,7 +42,7 @@ fn main() {
 fn run() -> i32 {
     crate::config::signals();
     let mut app = clap::App::new("rate")
-    .version(concat!(env!("CARGO_PKG_VERSION"), " (git commit ", env!("GIT_COMMIT"), ")"))
+    .version(env!("CARGO_PKG_VERSION"))
     .about(env!("CARGO_PKG_DESCRIPTION"))
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
     .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT format"))
@@ -84,7 +84,6 @@ fn run() -> i32 {
     }
 
     let config = Config::new(app.get_matches());
-    comment!("rate version: {}", env!("GIT_COMMIT"));
     let timer = Timer::name("total time");
     let parser = parse_files(
         &config.formula_filename,

@@ -5,7 +5,6 @@ authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
 description = "DRAT proof checker for DIMACS formulas"
 edition = "2018"
 license = "MIT"
-build = "build.rs"
 
 [[bin]]
 name = "sick-check"
