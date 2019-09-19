@@ -236,19 +236,22 @@ def double_check(drat_checker,
             args += [f'{name}.dpr']
         else:
             args += [proof]
-            if lrat: args += ['-L', f'{name}.lrat']
-            if grat: args += ['-G', f'{name}.grat']
-            if sick: args += ['--recheck', f'{name}.sick']
+            if lrat:
+                args += ['-L', f'{name}.lrat']
+            if grat:
+                args += ['-G', f'{name}.grat']
+            if sick:
+                args += ['--recheck', f'{name}.sick']
         if pr:
             assert accepts(drat_checker + args, name)
             return
         if accepts(drat_checker + args, name):
             if lrat and (lrat_checker is not None and
-                    name not in {f'benchmarks/crafted/{x}' for x in (
-                        'tautological',
-                        'duplicate-literals',
-                        'bottom',
-                    )}):
+                         name not in {f'benchmarks/crafted/{x}' for x in (
+                             'tautological',
+                             'duplicate-literals',
+                             'bottom',
+                         )}):
                 assert 'lrat-check' in lrat_checker[0]
                 assert lrat_checker_accepts(
                     lrat_checker + [args[0], args[3], 'nil', 't'], name)
