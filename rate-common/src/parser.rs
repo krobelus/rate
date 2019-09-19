@@ -29,22 +29,18 @@ pub enum ProofSyntax {
     Dsr,
 }
 impl ProofSyntax {
-    #[inline]
     fn has_header(self) -> bool {
         self == ProofSyntax::Dimacs
     }
-    #[inline]
     fn has_deletion(self) -> bool {
         match self {
             ProofSyntax::Dimacs | ProofSyntax::Rup => false,
             _ => true,
         }
     }
-    #[inline]
     fn has_pr(self) -> bool {
         self == ProofSyntax::Dpr
     }
-    #[inline]
     fn has_sr(self) -> bool {
         self == ProofSyntax::Dsr
     }
