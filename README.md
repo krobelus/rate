@@ -1,8 +1,6 @@
 # rate
 
-[![crates.io](https://img.shields.io/crates/r/rate.svg)](https://crates.io/crates/rate)
-[![docs.rs](https://docs.rs/rate/badge.svg)](https://docs.rs/rate)
-[![codecov](https://img.shields.io/codecov/c/gh/krobelus/rate/master.svg)](https://codecov.io/gh/krobelus/rate)
+[![crates.io](https://img.shields.io/crates/v/rate.svg)](https://crates.io/crates/rate)
 ![](https://img.shields.io/crates/l/rate.svg)
 
 This is a DRAT/DPR proof checker written in Rust, similar to
