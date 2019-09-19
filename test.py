@@ -223,6 +223,9 @@ def double_check(drat_checker,
     if lrat_checker is not None:
         if not executable(lrat_checker[0]):
             lrat_checker = None
+    if grat_checker is not None:
+        if not executable(grat_checker[0]):
+            grat_checker = None
     skip_unit_deletions = any(
         '--skip-unit-deletions' in arg for arg in drat_checker)
     forward = any('--forward' in arg for arg in drat_checker)
@@ -321,12 +324,12 @@ def test_forward():
 #         ['lratcheck'])
 
 
-def test_acceptance_initial_commit():
-    build_release(INITIAL_COMMIT)
-    compare_acceptance(
-        rate(flags=['--noncore-rat-candidates']),
-        rate(INITIAL_COMMIT),
-        instances=small_drat_inputs())
+# def test_acceptance_initial_commit():
+#     build_release(INITIAL_COMMIT)
+#     compare_acceptance(
+#         rate(flags=['--noncore-rat-candidates']),
+#         rate(INITIAL_COMMIT),
+#         instances=small_drat_inputs())
 
 
 def test_acceptance_drat_trim():

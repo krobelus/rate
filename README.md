@@ -1,6 +1,7 @@
 # rate
 
 [![crates.io](https://img.shields.io/crates/v/rate.svg)](https://crates.io/crates/rate)
+[![CircleCI branch](https://img.shields.io/circleci/project/github/krobelus/rate/master.svg)](https://circleci.com/gh/krobelus/rate/tree/master)
 ![](https://img.shields.io/crates/l/rate.svg)
 
 This is a DRAT/DPR proof checker written in Rust, similar to
@@ -131,6 +132,7 @@ Above tests require
 - optionally any of the following executables:
   - [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat)
     to validate the produced LRAT proofs.
+  - `gratchk` is used to validate produced GRAT proofs.
   - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
     run on the benchmarks and their results will be compared to the output of
     `rate` in the respective compatibility mode.
