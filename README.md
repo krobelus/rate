@@ -56,7 +56,8 @@ Run the proof checker like this:
 $ rate formula.cnf proof.drat
 ```
 
-See `rate --help` for more options.
+Whenever the proof is accepted, this will exit with code 0 after printing
+`s VERIFIED` and some metrics. See `rate --help` for more options.
 
 ## SICK certificates
 
@@ -151,10 +152,13 @@ built on top of this. If this is desired we recommend to integrate that
 in this repository since we do not guarantee stability of the library
 modules crates (only the binaries are considered an API).
 
-Possible future features include:
+# Roadmap
+
+Some things that might be useful.
 
 - expose a subset of the library modules as Rust (and possibly C) API
 - support other clausal proof formats
-- compute other features about clausal proofs (e.g. lifespan of clauses)
+- compute other features about clausal proofs (e.g. the lifespan of clauses)
 - speed up handling of reason clauses that do not shrink the trail
 - speed up RAT checks by caching resolution candidates
+- improve compilation times
