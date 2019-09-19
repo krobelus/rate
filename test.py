@@ -224,7 +224,10 @@ def double_check(drat_checker,
         ensure_executable(lrat_checker)
     skip_unit_deletions = any(
         '--skip-unit-deletions' in arg for arg in drat_checker)
-    sick = not skip_unit_deletions
+    forward = any('--forward' in arg for arg in drat_checker)
+    sick = not skip_unit_deletions and not forward
+    grat = not forward
+    lrat = not forward
     for cnf, proof in instances:
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = os.path.exists(f'{name}.dpr')
@@ -232,15 +235,15 @@ def double_check(drat_checker,
         if pr:
             args += [f'{name}.dpr']
         else:
-            args += [proof, '-L',
-                     f'{name}.lrat', '-G', f'{name}.grat']
-            if sick:
-                args += ['--recheck', f'{name}.sick']
+            args += [proof]
+            if lrat: args += ['-L', f'{name}.lrat']
+            if grat: args += ['-G', f'{name}.grat']
+            if sick: args += ['--recheck', f'{name}.sick']
         if pr:
             assert accepts(drat_checker + args, name)
             return
         if accepts(drat_checker + args, name):
-            if (lrat_checker is not None and
+            if lrat and (lrat_checker is not None and
                     name not in {f'benchmarks/crafted/{x}' for x in (
                         'tautological',
                         'duplicate-literals',
@@ -249,7 +252,7 @@ def double_check(drat_checker,
                 assert 'lrat-check' in lrat_checker[0]
                 assert lrat_checker_accepts(
                     lrat_checker + [args[0], args[3], 'nil', 't'], name)
-            if (grat_checker is not None and (
+            if grat and (grat_checker is not None and (
                 ('rate' not in drat_checker[0]) or skip_unit_deletions or
                 (name not in {f'benchmarks/rupee/{x}' for x in (
                     'tricky-2',  # looks like gratchk cannot delete units
@@ -299,9 +302,9 @@ def test_full():
 
 
 # TODO
-# def test_forward():
-#     # double_check(rate(flags=['--forward']), instances=set(drat_inputs()) | set(pr_inputs()))
-#     double_check(rate(flags=['--forward']), instances=drat_inputs())
+def test_forward():
+    # double_check(rate(flags=['--forward']), instances=set(drat_inputs()) | set(pr_inputs()))
+    double_check(rate(flags=['--forward']), instances=drat_inputs())
 
 # def test_with_lrat_check():
 #     double_check(rate(
