@@ -22,11 +22,11 @@ use std::{
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ProofSyntax {
-    Dimacs ,
-    Rup ,
-    Drat ,
-    Dpr ,
-    Dsr
+    Dimacs,
+    Rup,
+    Drat,
+    Dpr,
+    Dsr,
 }
 impl ProofSyntax {
     #[inline]
@@ -36,8 +36,8 @@ impl ProofSyntax {
     #[inline]
     fn has_deletion(self) -> bool {
         match self {
-            ProofSyntax::Dimacs | ProofSyntax::Rup => false ,
-            _ => true ,
+            ProofSyntax::Dimacs | ProofSyntax::Rup => false,
+            _ => true,
         }
     }
     #[inline]
