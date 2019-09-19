@@ -16,32 +16,41 @@ use rate_common::{
     write_to_stdout,
 };
 
+/// Run `apply-proof`.
 fn main() -> Result<()> {
     install_signal_handler();
     let matches = clap::App::new("apply-proof")
         .version(env!("CARGO_PKG_VERSION"))
         .about(
             "
-Apply a clausal proof up to a given line number and
-output the accumulated formula to <OUTPUT>.cnf and the
-remaining proof to <OUTPUT>.drat "
+Apply a clausal proof up to a given line number and output the accumulated
+formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
                 .trim(),
         )
         .arg(
             Arg::with_name("INPUT")
                 .required(true)
-                .help("input file in DIMACS format"),
+                .help("input formula file in DIMACS format"),
         )
-        .arg(Arg::with_name("PROOF").required(true).help("proof file"))
+        .arg(
+            Arg::with_name("PROOF")
+                .required(true)
+                .help("input proof file in DRAT/DPR format"),
+        )
         .arg(
             Arg::with_name("LINE NUMBER")
                 .required(true)
                 .help("number of proof steps to apply"),
         )
         .arg(
-            Arg::with_name("OUTPUT")
+            Arg::with_name("FORMULA_OUTPUT")
                 .required(true)
-                .help("name for output formula and proof"),
+                .help("name for output formula"),
+        )
+        .arg(
+            Arg::with_name("PROOF_OUTPUT")
+                .required(true)
+                .help("name for output proof"),
         )
         .get_matches();
     let formula_filename = matches.value_of("INPUT").unwrap();
@@ -51,7 +60,6 @@ remaining proof to <OUTPUT>.drat "
         .unwrap()
         .parse()
         .unwrap_or_else(|err| die!("Line number must be an integer: {}", err));
-    let output_name = matches.value_of("OUTPUT").unwrap();
     let mut parser = Parser::new();
     parser.verbose = false;
     let mut clause_ids = FixedSizeHashTable::new();
@@ -64,8 +72,8 @@ remaining proof to <OUTPUT>.drat "
     let mut state = ProofParserState::Start;
     let binary = is_binary_drat(proof_filename);
     let mut proof_input = read_compressed_file(&proof_filename, binary);
-    let mut formula_output = open_file_for_writing(&format!("{}.cnf", output_name));
-    let mut proof_output = open_file_for_writing(&format!("{}.drat", output_name));
+    let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
+    let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
     for _ in 0..line_number {
         let _result = parse_proof_step(
             &mut parser,
