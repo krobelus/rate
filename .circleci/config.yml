@@ -1,0 +1,11 @@
+version: 2
+jobs:
+    build:
+        docker:
+            - image: circleci/rust:1.37-buster
+        steps:
+            - checkout
+            - run: |
+                cargo test
+                sudo apt install python3-pytest
+                pytest-3 test.py
