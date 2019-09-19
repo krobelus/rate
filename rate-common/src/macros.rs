@@ -14,7 +14,7 @@ macro_rules! write_to_stdout {
     })
 }
 
-/// implementation of log.
+/// Implementation of log.
 #[macro_export]
 macro_rules! _log {
     ($verbosity:expr, $level:expr, $($arg:tt)*) => {
@@ -34,8 +34,8 @@ macro_rules! log {
     };
 }
 
-// Print upon scope exit.
-// We need this macro to avoid borrowing $checker.
+/// Print something upon scope exit.
+// We need this to be a macro to avoid borrowing $checker.
 #[macro_export]
 macro_rules! defer_log {
     ($checker:expr, $level:expr, $($arg:tt)*) => {
@@ -46,7 +46,7 @@ macro_rules! defer_log {
     }
 }
 
-// Print in red.
+/// Print to stdout with red font color.
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => ({
@@ -61,7 +61,7 @@ macro_rules! warn {
     })
 }
 
-// Report a fatal error and exit.
+/// Report a fatal error and exit.
 #[macro_export]
 macro_rules! die {
     ($($arg:tt)*) => ({
@@ -77,8 +77,8 @@ macro_rules! die {
     })
 }
 
-// Native assertions cannot be disabled, that's why why prefer to use this
-// macro.
+/// Native assertions cannot be disabled, that's why why prefer to use this
+/// macro.
 #[macro_export]
 macro_rules! invariant {
     ($($arg:tt)*) => ({
@@ -88,7 +88,7 @@ macro_rules! invariant {
     })
 }
 
-// Preconditions should use this instead of an invariant.
+/// Like invariant, but for preconditions.
 #[macro_export]
 macro_rules! requires {
     ($($arg:tt)*) => ({
@@ -98,7 +98,7 @@ macro_rules! requires {
     })
 }
 
-// Print to stdout.
+/// Print to stdout, prefixed by "c ".
 #[macro_export]
 macro_rules! comment {
     ($($arg:tt)*) => ({
