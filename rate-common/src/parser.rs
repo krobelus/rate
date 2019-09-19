@@ -259,7 +259,7 @@ impl HashTable for DynamicHashTable {
         let key = ClauseHashEq(clause);
         self.0
             .entry(key)
-            .or_insert_with(SmallVector::new)
+            .or_insert_with(SmallVector::default)
             .push(clause)
     }
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {

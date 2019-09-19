@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     let input_filename = matches.value_of("INPUT").unwrap_or("-");
     let mut input =
         read_compressed_file_or_stdin(input_filename, /*binary=*/ true, stdin.lock());
-    let mut output: Box<Write> = match matches.value_of("OUTPUT") {
+    let mut output: Box<dyn Write> = match matches.value_of("OUTPUT") {
         None => Box::new(stdout.lock()),
         Some(filename) => Box::new(open_file_for_writing(filename)),
     };

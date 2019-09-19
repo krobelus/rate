@@ -92,10 +92,8 @@ fn run_frontend() -> i32 {
         flags.no_terminating_empty_clause,
         flags.memory_usage_breakdown,
     );
-    if parser.is_pr() {
-        if flags.lrat_filename.is_some() || flags.grat_filename.is_some() {
+    if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
             die!("LRAT and GRAT generation is not possible for PR")
-        }
     }
     let mut checker = Checker::new(parser, flags);
     let result = checker.run();
@@ -771,6 +769,7 @@ fn assign(checker: &mut Checker, literal: Literal, reason: Reason) -> MaybeConfl
 /// This is heavily inspired by `gratgen`.
 ///
 /// Returns a conflict if it can be found by unit propagation.
+#[allow(clippy::cognitive_complexity)]
 fn propagate(checker: &mut Checker) -> MaybeConflict {
     let mut processed_core = checker.processed;
     let mut core_mode = true;
@@ -1002,7 +1001,7 @@ fn reduct(
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
-    let mut tmp = Vector::from_vec(checker.clause(lemma).iter().cloned().collect());
+    let mut tmp = Vector::from_vec(checker.clause(lemma).to_vec());
     let lemma_length = tmp.len();
     for clause in Clause::range(0, lemma) {
         for offset in checker.witness_range(lemma) {
@@ -1138,10 +1137,9 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
 /// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
 fn slice_rup(checker: &mut Checker, clause: &[Literal]) -> MaybeConflict {
     for &unit in clause {
-        if !checker.assignment[-unit] {
-            if assign(checker, -unit, Reason::assumed()) == CONFLICT {
+        if !checker.assignment[-unit] 
+            &&assign(checker, -unit, Reason::assumed()) == CONFLICT {
                 return CONFLICT;
-            }
         }
     }
     propagate(checker)
@@ -1278,22 +1276,18 @@ fn rat(
                                 .trail_at(checker.assignment.position_in_trail(-conflict_literal))
                                 .1
                                 .is_assumed();
-                        if checker.flags.grat_filename.is_some() {
-                            if !resolvent_is_tautological {
+                        if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
                                 checker
                                     .grat_pending
                                     .push(GRATLiteral::from_clause(resolution_candidate));
-                            }
                         }
                         extract_dependencies(
                             checker,
                             trail_length_before_rup,
                             Some((trail_length_before_rat, resolvent_is_tautological)),
                         );
-                        if checker.flags.grat_filename.is_some() {
-                            if !resolvent_is_tautological {
+                        if checker.flags.grat_filename.is_some() and !resolvent_is_tautological {
                                 add_rup_conflict_for_grat(checker);
-                            }
                         }
                         true
                     }
@@ -1335,6 +1329,7 @@ fn add_cause_of_conflict(checker: &mut Checker, literal: Literal) {
 /// search in the conflict graph to add only a minimal number of clauses.
 ///
 /// The reasons for the conflict are recorded for the LRAT and GRAT outputs if applicable.
+#[allow(clippy::cognitive_complexity)]
 fn extract_dependencies(
     checker: &mut Checker,
     trail_length_before_rup: usize,
@@ -1628,10 +1623,8 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     };
     if already_satisfied {
         checker.satisfied_count += 1;
-    } else {
-        if watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
+    } else if watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
             return CONFLICT;
-        }
     }
     propagate(checker)
 }
@@ -1710,7 +1703,7 @@ fn preprocess(checker: &mut Checker) -> Verdict {
 }
 
 /// Check inferences (backward pass).
-#[allow(clippy::cyclomatic_complexity)]
+#[allow(clippy::cognitive_complexity)]
 fn verify(checker: &mut Checker) -> bool {
     log!(checker, 1, "[verify]");
     defer_log!(checker, 1, "[verify] done\n");
@@ -2617,24 +2610,23 @@ fn watches_reset_list_at(
         if offset + 1 == new_w2_offset {
             // Case A: nothing to do!
             return;
-        } else {
-            // Case B: clause will not be watched on w2, but on clause_db()[new_w2_offset] instead.
-            let _removed = watches_find_and_remove(checker, mode, w2, head);
-            clause_db().swap(offset + 1, new_w2_offset);
-            watch_add(checker, mode, clause_db()[offset + 1], head);
         }
-    } else {
-        // Cases C and D: clause will not be watched on w1, but on *new_w2_offset instead.
-        watch_remove_at(checker, mode, w1, *position_in_watchlist);
-        *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-        clause_db().swap(offset, new_w2_offset);
-        watch_add(checker, mode, clause_db()[offset], head); // Case C: additionally, clause will still be watched on w2
-        if offset + 1 != new_w1_offset {
-            // Case D: additionally, clause will not be watched on w2, but on clause_db()[offset + 1] instead.
-            let _removed = watches_find_and_remove(checker, mode, w2, head);
-            clause_db().swap(offset + 1, new_w1_offset);
-            watch_add(checker, mode, clause_db()[offset + 1], head);
-        }
+        // Case B: clause will not be watched on w2, but on clause_db()[new_w2_offset] instead.
+        let _removed = watches_find_and_remove(checker, mode, w2, head);
+        clause_db().swap(offset + 1, new_w2_offset);
+        watch_add(checker, mode, clause_db()[offset + 1], head);
+        return;
+    }
+    // Cases C and D: clause will not be watched on w1, but on *new_w2_offset instead.
+    watch_remove_at(checker, mode, w1, *position_in_watchlist);
+    *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
+    clause_db().swap(offset, new_w2_offset);
+    watch_add(checker, mode, clause_db()[offset], head); // Case C: additionally, clause will still be watched on w2
+    if offset + 1 != new_w1_offset {
+        // Case D: additionally, clause will not be watched on w2, but on clause_db()[offset + 1] instead.
+        let _removed = watches_find_and_remove(checker, mode, w2, head);
+        clause_db().swap(offset + 1, new_w1_offset);
+        watch_add(checker, mode, clause_db()[offset + 1], head);
     }
 }
 
