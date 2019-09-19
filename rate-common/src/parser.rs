@@ -20,8 +20,9 @@ use std::{
     slice,
 };
 
-#[derive(Copy)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ProofSyntax {
+    Dimacs ,
     Rup ,
     Drat ,
     Dpr ,
@@ -29,16 +30,23 @@ pub enum ProofSyntax {
 }
 impl ProofSyntax {
     #[inline]
-    fn has_deletion(&self) -> bool {
-        self != Rup
+    fn has_header(self) -> bool {
+        self == ProofSyntax::Dimacs
     }
     #[inline]
-    fn has_pr(&self) -> bool {
-        self == Dpr
+    fn has_deletion(self) -> bool {
+        match self {
+            ProofSyntax::Dimacs | ProofSyntax::Rup => false ,
+            _ => true ,
+        }
     }
     #[inline]
-    fn has_sr(&self) -> bool {
-        self == Dsr
+    fn has_pr(self) -> bool {
+        self == ProofSyntax::Dpr
+    }
+    #[inline]
+    fn has_sr(self) -> bool {
+        self == ProofSyntax::Dsr
     }
 }
 
