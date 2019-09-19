@@ -79,7 +79,7 @@ working with clausal proofs:
   accumulated formula as well as the rest of the proof. This can be very
   useful for delta-debugging a tool that works with proofs
 
-[Binary DRAT Format] https://github.com/marijnheule/drat-trim#binary-drat-format
+[Binary DRAT Format]: <https://github.com/marijnheule/drat-trim#binary-drat-format>
 
 # Caveats
 
