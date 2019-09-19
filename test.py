@@ -221,7 +221,8 @@ def double_check(drat_checker,
     build_release()
     ensure_executable(drat_checker)
     if lrat_checker is not None:
-        ensure_executable(lrat_checker)
+        if not executable(lrat_checker[0]):
+            lrat_checker = None
     skip_unit_deletions = any(
         '--skip-unit-deletions' in arg for arg in drat_checker)
     forward = any('--forward' in arg for arg in drat_checker)
