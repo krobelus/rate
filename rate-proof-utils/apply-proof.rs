@@ -45,12 +45,12 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         .arg(
             Arg::with_name("FORMULA_OUTPUT")
                 .required(true)
-                .help("name for output formula"),
+                .help("file for the output formula"),
         )
         .arg(
             Arg::with_name("PROOF_OUTPUT")
                 .required(true)
-                .help("name for output proof"),
+                .help("file for the output proof"),
         )
         .get_matches();
     let formula_filename = matches.value_of("INPUT").unwrap();
