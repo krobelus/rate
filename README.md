@@ -1,5 +1,10 @@
 # rate
 
+[![crates.io](https://img.shields.io/crates/r/rate.svg)](https://crates.io/crates/rate)
+[![docs.rs](https://docs.rs/rate/badge.svg)](https://docs.rs/rate)
+[![codecov](https://img.shields.io/codecov/c/gh/krobelus/rate/master.svg)](https://codecov.io/gh/krobelus/rate)
+![](https://img.shields.io/crates/l/rate.svg)
+
 This is a DRAT/DPR proof checker written in Rust, similar to
 [`drat-trim`](https://github.com/marijnheule/drat-trim) or `gratgen` from the
 [GRAT toolchain](http://www21.in.tum.de/~lammich/grat/). The notable
@@ -23,11 +28,15 @@ of stable Rust are supported (e.g. 1.36 or later).
 
 ## Stable version
 
-Use this command to install the `rate` binary to `~/.cargo/bin/`:
+Releases are hosted on [crates.io](https://crates.io/) and can be installed
+using `cargo`, Rust's package manager.
 
 ```sh
 $ cargo install rate --force
 ```
+
+After this has finished compiling, it will place the `rate` binary in
+`~/.cargo/bin/`.
 
 ## Building from source
 
@@ -128,7 +137,7 @@ with small input files.
 
 Find some background information and a performance evaluation in the [master's thesis].
 
-[master's thesis]: <https://github.com/krobelus/rate-experiments>
+[master's thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
 The source code includes an abundance of doc comments. They can be turned
 to developer documentation in `target/doc/rate*/index.html` like so:
