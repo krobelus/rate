@@ -834,6 +834,48 @@ fn parse_clause(
     }
 }
 
+fn parse_any_clause(
+    parser: &mut Parser,
+    clause_ids: &mut impl HashTable,
+    input: &mut Input,
+    syntax: ProofSyntax,
+    deletion: bool,
+) -> Result<()> {
+    open_clause(parser, ProofParserState::Clause);
+    let mut first : bool = false ;
+    let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal
+    let mut witness : bool = false ;
+    loop {
+        let literal = parse_literal(input)? ;
+        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
+        if literal.is_zero() {
+            clause_db().push_literal(Literal::new(0));
+            if deletion {
+                add_deletion(parser, clause_ids);
+            } else {
+                clause_ids.add_clause(clause_db().last_clause());
+                if syntax.has_pr() {
+                    witness_db().push_literal(Literal::new(0));
+                }
+            }
+            return Ok(()) ;
+        }
+        if !deletion && literal == initial {
+            witness = true ;
+        }
+        if first {
+            first = false ;
+            initial = literal ;
+            parser.clause_pivot.push(literal);
+        }
+        if witness {
+            clause_db().push_literal(literal);
+        } else {
+            witness_db().push_literal(literal);
+        }
+    }
+}
+
 /// Parse a DIMACS formula.
 fn parse_formula(
     parser: &mut Parser,
@@ -846,7 +888,7 @@ fn parse_formula(
             parse_comment(&mut input)?;
             continue;
         }
-        parse_clause(parser, clause_ids, &mut input)?;
+        parse_any_clause(parser, clause_ids, &mut input, ProofSyntax::Dimacs, false)?;
     }
     Ok(())
 }
