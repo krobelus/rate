@@ -115,22 +115,25 @@ Here are the transformations we do:
 [here]: <http://www21.in.tum.de/~lammich/grat/gratgen-doc/Unmarked_RAT_Candidates.html>
 
 # Tests
-There are some unit tests that can be run with `cargo test`.
 
-Additionally, there is a system test suite, that validates LRAT proofs and
-SICK certificates produced by `rate`. Additionally it compares the output of
-`rate` to previous versions of itself, and to other checkers.
-This can be run with `pytest test.py`. The requirements are:
+Run unit tests and the system test suite, respectively:
 
+```sh
+cargo test && pytest test.py
+```
+
+If you're in a hurry use `pytest test.py -k quick` to only run the system
+tests with small input files.
+
+Above tests require
 - `python3` (version 3.6 or above)
 - `pytest`
-- [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat),
-
-Comparison to checkers `drat-trim`, `rupee`, and `gratgen` will be run if
-they are executable on your system
-
-If you're in a hurry use `pytest test.py -k quick` to only run the tests
-with small input files.
+- optionally any of the following executables:
+  - [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat)
+    to validate the produced LRAT proofs.
+  - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
+    run on the benchmarks and their results will be compared to the output of
+    `rate` in the respective compatibility mode.
 
 # Documentation
 
