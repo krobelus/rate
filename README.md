@@ -124,22 +124,29 @@ they are executable on your system
 If you're in a hurry use `pytest test.py -k quick` to only run the tests
 with small input files.
 
-# Developer Documentation
+# Documentation
 
-You can use this to build documentation from doc comments in `target/doc/rate*/index.html`.
+Find some background information and a performance evaluation in the [master's thesis].
+
+[master's thesis]: <https://github.com/krobelus/rate-experiments>
+
+The source code includes an abundance of doc comments. They can be turned
+to developer documentation in `target/doc/rate*/index.html` like so:
 ```sh
 $ cargo doc --document-private-items
 ```
 
 # Contributing
 
-Please let us know if `rate` behaves in a way that is unexpected to you, or if
-you need some feature.  If you want to make changes to the code we encourage
-you to get these upstream as early as possible to avoid large merge conflicts.
+Please let us know if `rate` behaves in a way that is unexpected to you,
+or if you need some feature. Tools that work with clausal proofs can be
+built on top of this. If this is desired we recommend to integrate that
+in this repository since we do not guarantee stability of the library
+modules crates (only the binaries are considered an API).
 
 Possible future features include:
 
-- expose a proper Rust (and possibly C) API
+- expose a subset of the library modules as Rust (and possibly C) API
 - support other clausal proof formats
 - compute other features about clausal proofs (e.g. lifespan of clauses)
 - speed up handling of reason clauses that do not shrink the trail
