@@ -22,29 +22,25 @@ use std::{
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ProofSyntax {
-    Dimacs ,
-    Rup ,
-    Drat ,
-    Dpr ,
-    Dsr
+    Dimacs,
+    Rup,
+    Drat,
+    Dpr,
+    Dsr,
 }
 impl ProofSyntax {
-    #[inline]
     fn has_header(self) -> bool {
         self == ProofSyntax::Dimacs
     }
-    #[inline]
     fn has_deletion(self) -> bool {
         match self {
-            ProofSyntax::Dimacs | ProofSyntax::Rup => false ,
-            _ => true ,
+            ProofSyntax::Dimacs | ProofSyntax::Rup => false,
+            _ => true,
         }
     }
-    #[inline]
     fn has_pr(self) -> bool {
         self == ProofSyntax::Dpr
     }
-    #[inline]
     fn has_sr(self) -> bool {
         self == ProofSyntax::Dsr
     }
@@ -263,7 +259,7 @@ impl HashTable for DynamicHashTable {
         let key = ClauseHashEq(clause);
         self.0
             .entry(key)
-            .or_insert_with(SmallVector::new)
+            .or_insert_with(SmallVector::default)
             .push(clause)
     }
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {

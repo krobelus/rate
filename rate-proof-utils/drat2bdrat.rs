@@ -11,7 +11,7 @@ use rate_common::{
 };
 
 /// Write a number in signed little-endian binary (SLEB) encoding.
-fn write_number(output: &mut Write, number: i32) -> Result<()> {
+fn write_number(output: &mut dyn Write, number: i32) -> Result<()> {
     let mut encoding = number.abs() << 1;
     if number < 0 {
         encoding += 1;
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
         /*binary=*/ false,
         stdin.lock(),
     );
-    let mut output: Box<Write> = match matches.value_of("OUTPUT") {
+    let mut output: Box<dyn Write> = match matches.value_of("OUTPUT") {
         None => Box::new(stdout.lock()),
         Some(filename) => Box::new(open_file_for_writing(filename)),
     };

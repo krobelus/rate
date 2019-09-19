@@ -31,13 +31,18 @@ impl<T> SmallVector<T> {
             SmallVector::Many(vector) => vector.len(),
         }
     }
+    pub fn is_empty() -> bool {
+        self.len() == 0
+    }
+}
+
+impl<T: Copy + Default> Default for SmallVector<T> {
+    fn default() -> SmallVector<T> {
+        SmallVector::Empty
+    }
 }
 
 impl<T: Copy + Default> SmallVector<T> {
-    /// Constructs a new empty `SmallVector`.
-    pub fn new() -> SmallVector<T> {
-        SmallVector::Empty
-    }
     /// Constructs a new `SmallVector` containing a single element.
     #[allow(dead_code)]
     pub fn singleton(value: T) -> SmallVector<T> {
