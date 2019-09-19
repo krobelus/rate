@@ -8,5 +8,6 @@ members = [
 ]
 exclude = ["checkouts"]
 
-# [profile.release]
-# panic = "abort"
+[profile.release]
+panic = "abort"
+lto = "thin"
