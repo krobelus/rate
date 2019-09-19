@@ -20,6 +20,28 @@ use std::{
     slice,
 };
 
+#[derive(Copy)]
+pub enum ProofSyntax {
+    Rup ,
+    Drat ,
+    Dpr ,
+    Dsr
+}
+impl ProofSyntax {
+    #[inline]
+    fn has_deletion(&self) -> bool {
+        self != Rup
+    }
+    #[inline]
+    fn has_pr(&self) -> bool {
+        self == Dpr
+    }
+    #[inline]
+    fn has_sr(&self) -> bool {
+        self == Dsr
+    }
+}
+
 /// The static singleton instance of the clause database.
 ///
 /// It needs to be static so that hash and equality functions can access it.
