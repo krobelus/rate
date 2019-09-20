@@ -40,10 +40,10 @@ impl ProofSyntax {
             _ => true,
         }
     }
-    fn has_pr(self) -> bool {
+    fn has_repetition_witness(self) -> bool {
         self == ProofSyntax::Dpr
     }
-    fn has_sr(self) -> bool {
+    fn has_post_witness(self) -> bool {
         self == ProofSyntax::Dsr
     }
 }
@@ -830,10 +830,12 @@ fn parse_clause(
 }
 
 enum ParsedClause {
-    Tautology,
-    Clause,
+    Clause(Literal),
     Repetition(Literal),
 }
+
+// todo: eventually, parse_clause and parse_dpr_witness should be unified.
+// That will require unifying the underlying types of ClauseDatabase and WitnessDatabase...
 
 fn parse_any_clause(
     parser: &mut Parser,
@@ -841,39 +843,33 @@ fn parse_any_clause(
     input: &mut Input,
     syntax: ProofSyntax,
     deletion: bool,
-) -> Result<()> {
-    parser.clause_pivot.push(Literal::NEVER_READ);      // todo: This should be changed to the -0 literal too
+) -> Result<ParsedClause> {
     let mut first : bool = false ;
-    let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal
-    let mut witness : bool = false ;
+    let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal.
+                                                        // When doing that, make sure to take into account the case for the empty clause!
     loop {
         let literal = parse_literal(input)? ;
         parser.maxvar = cmp::max(parser.maxvar, literal.variable());
         if literal.is_zero() {
-            clause_db().push_literal(Literal::new(0));
-            if deletion {
-                add_deletion(parser, clause_ids);
-            } else {
-                clause_ids.add_clause(clause_db().last_clause());
-                if syntax.has_pr() {
-                    witness_db().push_literal(Literal::new(0));
-                }
-            }
-            return Ok(()) ;
-        }
-        if !deletion && literal == initial {
-            witness = true ;
-        }
-        if first {
+            return Ok(ParsedClause::Clause(initial)) ;
+            // clause_db().push_literal(Literal::new(0));
+            // if deletion {
+            //     add_deletion(parser, clause_ids);
+            // } else {
+            //     clause_ids.add_clause(clause_db().last_clause());
+            //     if syntax.has_pr() {
+            //         witness_db().push_literal(Literal::new(0));
+            //     }
+            // }
+            // return Ok(()) ;
+        } else if syntax.has_repetition_witness() && literal == initial {
+            return Ok(ParsedClause::Repetition(literal)) ;
+        } else if first {
             first = false ;
             initial = literal ;
-            parser.clause_pivot.push(literal);
+            // parser.clause_pivot.push(literal) ;
         }
-        if witness {
-            witness_db().push_literal(literal);
-        } else {
-            clause_db().push_literal(literal);
-        }
+        clause_db().push_literal(literal);
     }
 }
 
@@ -891,7 +887,14 @@ fn parse_formula(
             continue;
         }
         open_clause(parser, ProofParserState::Clause);
-        parse_any_clause(parser, clause_ids, &mut input, ProofSyntax::Dimacs, false)? ;
+        match parse_any_clause(parser, clause_ids, &mut input, ProofSyntax::Dimacs, false)? {
+            ParsedClause::Clause(_) => {
+                clause_db().push_literal(Literal::new(0)) ;
+                parser.clause_pivot.push(Literal::NEVER_READ);
+                clause_ids.add_clause(clause_db().last_clause()) ;
+            } ,
+            _ => unreachable() ,
+        }
     }
     Ok(())
 }
