@@ -7,6 +7,7 @@ use toml;
 use rate_common::{
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{Reason, RedundancyProperty},
+    clausedatabase::ClauseStorage,
     comment, die,
     literal::Literal,
     memory::{Array, Vector},

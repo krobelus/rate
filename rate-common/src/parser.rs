@@ -2,7 +2,7 @@
 
 use crate::{
     clause::{puts_clause, Clause, ProofStep, RedundancyProperty},
-    clausedatabase::{ClauseDatabase, WitnessDatabase},
+    clausedatabase::{ClauseDatabase, ClauseStorage, WitnessDatabase},
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, Vector},
     output::{print_key_value, unreachable, Timer},
@@ -688,7 +688,7 @@ fn is_space(c: u8) -> bool {
 fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     let clause = parser.clause_db.open_clause();
     if parser.is_pr() && state != ProofParserState::Deletion {
-        let witness = parser.witness_db.open_witness();
+        let witness = parser.witness_db.open_clause();
         invariant!(clause == witness);
     }
     clause

@@ -13,6 +13,20 @@ use std::{
     ops::{Index, IndexMut, Range},
 };
 
+pub trait ClauseStorage {
+    /// Initialze a new clause.
+    ///
+    /// This must be called before adding literals with
+    /// [`push_literal()`](#tymethod.push_literal).
+    fn open_clause(&mut self) -> Clause;
+    /// Add a literal to the current clause.
+    ///
+    /// If passed literal 0, the clause will be finished and
+    /// [`open_clause()`](#tymethod.open_clause) must be called before adding
+    /// literals to the next clause.
+    fn push_literal(&mut self, literal: Literal);
+}
+
 /// Size of metadata that precede the literals of a clause
 pub const PADDING_START: usize = 2;
 /// Location of the fields within the metadata.
@@ -33,6 +47,26 @@ pub struct ClauseDatabase {
     /// Used to assert that `offset` contains an extra value that points
     /// one beyond the last element of `data`.
     have_sentinel: bool,
+}
+
+impl ClauseStorage for ClauseDatabase {
+    fn open_clause(&mut self) -> Clause {
+        requires!(self.have_sentinel);
+        let id = self.number_of_clauses();
+        self.pop_sentinel();
+        let clause = Clause::new(id);
+        self.offset.push(self.data.len()); // clause
+        self.data.push(Literal::from_raw(id));
+        self.data.push(Literal::from_raw(0)); // fields
+        clause
+    }
+    fn push_literal(&mut self, literal: Literal) {
+        if literal.is_zero() {
+            self.close_clause()
+        } else {
+            self.data.push(literal)
+        }
+    }
 }
 
 impl ClauseDatabase {
@@ -88,28 +122,6 @@ impl ClauseDatabase {
         requires!(self.have_sentinel);
         self.offset.pop();
         self.have_sentinel = false;
-    }
-    /// Add a literal to the current clause. Finish the clause if the literal is 0.
-    ///
-    /// This must be called after a call to [`open_clause()`](#method.open_clause)
-    /// but before the call to [`close_clause()`](#method.close_clause).
-    pub fn push_literal(&mut self, literal: Literal) {
-        if literal.is_zero() {
-            self.close_clause()
-        } else {
-            self.data.push(literal)
-        }
-    }
-    /// Make a new clause.
-    pub fn open_clause(&mut self) -> Clause {
-        requires!(self.have_sentinel);
-        let id = self.number_of_clauses();
-        self.pop_sentinel();
-        let clause = Clause::new(id);
-        self.offset.push(self.data.len()); // clause
-        self.data.push(Literal::from_raw(id));
-        self.data.push(Literal::from_raw(0)); // fields
-        clause
     }
     /// Finish the current clause.
     fn close_clause(&mut self) {
@@ -255,6 +267,22 @@ pub struct WitnessDatabase {
     offset: Vector<usize>,
 }
 
+impl ClauseStorage for WitnessDatabase {
+    fn open_clause(&mut self) -> Clause {
+        self.offset.pop();
+        let witness = Clause::from_usize(self.offset.len());
+        self.offset.push(self.data.len());
+        witness
+    }
+    fn push_literal(&mut self, literal: Literal) {
+        if literal.is_zero() {
+            self.close_witness();
+        } else {
+            self.data.push(literal);
+        }
+    }
+}
+
 impl WitnessDatabase {
     /// Create an empty witness database.
     pub fn new() -> WitnessDatabase {
@@ -270,31 +298,10 @@ impl WitnessDatabase {
     pub fn from(data: Vector<Literal>, offset: Vector<usize>) -> WitnessDatabase {
         WitnessDatabase { data, offset }
     }
-    /// Make a new witness.
-    ///  Similar to [`open_clause()`](struct.ClauseDatabase.html#method.open_clause).
-    pub fn open_witness(&mut self) -> Clause {
-        self.offset.pop();
-        let witness = Clause::from_usize(self.offset.len());
-        self.offset.push(self.data.len());
-        witness
-    }
     /// Finish the current witness.
     /// Similar to [`close_clause()`](struct.ClauseDatabase.html#method.close_clause).
     fn close_witness(&mut self) {
         self.offset.push(self.data.len())
-    }
-    /// Add a literal to the current witness. Finish the witness if the literal is 0.
-    ///
-    /// This must be called after a call to [`open_witness()`](#method.open_witness)
-    /// but before the call to [`close_witness()`](#method.close_witness).
-    ///
-    /// Similar to [`push_literal()`](struct.ClauseDatabase.html#method.push_literal).
-    pub fn push_literal(&mut self, literal: Literal) {
-        if literal.is_zero() {
-            self.close_witness();
-        } else {
-            self.data.push(literal);
-        }
     }
     /// Give the DIMACS representation of a witness.
     ///
