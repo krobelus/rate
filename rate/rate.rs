@@ -1286,7 +1286,7 @@ fn rat(
                             trail_length_before_rup,
                             Some((trail_length_before_rat, resolvent_is_tautological)),
                         );
-                        if checker.flags.grat_filename.is_some() and !resolvent_is_tautological {
+                        if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
                                 add_rup_conflict_for_grat(checker);
                         }
                         true

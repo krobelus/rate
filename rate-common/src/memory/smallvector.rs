@@ -31,8 +31,13 @@ impl<T> SmallVector<T> {
             SmallVector::Many(vector) => vector.len(),
         }
     }
-    pub fn is_empty() -> bool {
-        self.len() == 0
+    /// See [`Vec::is_empty()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.is_empty).
+    pub fn is_empty(&self) -> bool {
+        match &self {
+            SmallVector::Empty => true,
+            SmallVector::One(_value) => false,
+            SmallVector::Many(vector) => vector.is_empty(),
+        }
     }
 }
 
@@ -58,14 +63,6 @@ impl<T: Copy + Default> SmallVector<T> {
             SmallVector::Empty => None,
             &SmallVector::One(value) => Some(value),
             SmallVector::Many(vector) => vector.get(0).cloned(),
-        }
-    }
-    /// See [`Vec::is_empty()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.is_empty).
-    pub fn is_empty(&self) -> bool {
-        match self {
-            SmallVector::Empty => true,
-            &SmallVector::One(_value) => false,
-            SmallVector::Many(vector) => vector.is_empty(),
         }
     }
     /// See [`Vec::push()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.push).
