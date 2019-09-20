@@ -829,6 +829,12 @@ fn parse_clause(
     }
 }
 
+enum ParsedClause {
+    Tautology,
+    Clause,
+    Repetition(Literal),
+}
+
 fn parse_any_clause(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
