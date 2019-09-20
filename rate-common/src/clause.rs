@@ -209,11 +209,11 @@ pub struct LRATDependency(Tagged32);
 impl LRATDependency {
     /// Create a hint stating that the given clause became unit during the
     /// redundancy check.
-    pub fn unit(clause: Clause) -> LRATDependency {
+    pub fn unit_in_inference(clause: Clause) -> LRATDependency {
         LRATDependency(Tagged32::new(clause.index as u32))
     }
-    /// Return true if this is a unit clause hint.
-    pub fn is_unit(self) -> bool {
+    /// Return true if this was a unit in the inference check.
+    pub fn is_unit_in_inference(self) -> bool {
         !self.0.bit1() && !self.0.bit2()
     }
     /// Create a hint stating that the given clause was unit even before

@@ -137,11 +137,17 @@ pub struct Flags {
     pub memory_usage_breakdown: bool,
     pub forward: bool,
     pub verbosity: u64,
+    /// Input formula
     pub formula_filename: String,
+    /// Input proof
     pub proof_filename: String,
+    /// Present when we want to write core lemmas
     pub lemmas_filename: Option<String>,
+    /// Present when we want to write an LRAT certificate
     pub lrat_filename: Option<String>,
+    /// Present when we want to write a GRAT certificate
     pub grat_filename: Option<String>,
+    /// Present when we want to write a SICK certificate
     pub sick_filename: Option<String>,
 }
 
@@ -338,11 +344,11 @@ bitfield! {
     pub struct ClauseFields(u32);
     impl Debug;
     /// Whether the clause is in the core (scheduled for verification).
-    is_scheduled, set_is_scheduled: 0;
+    is_in_core, set_is_in_core: 0;
     /// Whether the clause is a reason in the current trail.
     is_reason, set_is_reason: 1;
     /// Whether the clause is in some watchlist.
-    in_watchlist, set_in_watchlist: 2;
+    is_in_watchlist, set_in_watchlist: 2;
     /// Whether a deletion of this clause produced a revision.
     has_revision, set_has_revision: 3;
     /// Whether a deletion of this clause was ignored.
@@ -514,7 +520,7 @@ impl Checker {
     }
     /// Return whether this clause is in the core.
     fn clause_mode(&self, clause: Clause) -> Mode {
-        if self.fields(clause).is_scheduled() {
+        if self.fields(clause).is_in_core() {
             Mode::Core
         } else {
             Mode::NonCore
@@ -572,6 +578,11 @@ fn run(checker: &mut Checker) -> Verdict {
     } else {
         let mut verdict = preprocess(checker);
         if verdict == Verdict::Verified {
+            // so far so good
+            invariant!({
+                let last_step = checker.proof[checker.proof_steps_until_conflict];
+                !last_step.is_deletion() && checker.clause(last_step.clause()).is_empty()
+            });
             verdict = if verify(checker) {
                 Verdict::Verified
             } else {
@@ -723,9 +734,9 @@ const CONFLICT: MaybeConflict = MaybeConflict(true);
 /// No conflict has been found yet
 const NO_CONFLICT: MaybeConflict = MaybeConflict(false);
 
-/// Add the clause to the core / schedule it for verification.
-fn schedule(checker: &mut Checker, clause: Clause) {
-    if checker.soft_propagation && !checker.fields(clause).is_scheduled() {
+/// Add the clause to the core (schedule it for verification).
+fn add_to_core(checker: &mut Checker, clause: Clause) {
+    if checker.soft_propagation && !checker.fields(clause).is_in_core() {
         if checker.flags.lrat_filename.is_some() {
             checker.optimized_proof.push(ProofStep::deletion(clause));
         }
@@ -733,7 +744,7 @@ fn schedule(checker: &mut Checker, clause: Clause) {
             checker.grat_pending_deletions.push(clause);
         }
     }
-    checker.fields_mut(clause).set_is_scheduled(true);
+    checker.fields_mut(clause).set_is_in_core(true);
 }
 
 /// Change the reason flag for some clause.
@@ -878,11 +889,12 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
 }
 
 /// Move a clause from the non-core watchlists to the core ones.
-fn move_to_core(checker: &mut Checker, offset: usize) {
-    if checker.fields_from_offset(offset).is_scheduled() {
+fn move_to_core_watchlists(checker: &mut Checker, offset: usize) {
+    let clause_fields = checker.fields_from_offset(offset);
+    if clause_fields.is_in_core() {
         return;
     }
-    if !checker.fields_from_offset(offset).in_watchlist() {
+    if !clause_fields.is_in_watchlist() {
         return;
     }
 
@@ -916,7 +928,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Vector<Cl
         for i in 0..checker.watchlist_core[lit].len() {
             let head = checker.watchlist_core[lit][i];
             let clause = checker.offset2clause(head);
-            invariant!(checker.fields(clause).is_scheduled());
+            invariant!(checker.fields(clause).is_in_core());
             if checker.clause(clause)[0] == lit
                 && checker
                     .clause(clause)
@@ -1229,7 +1241,7 @@ fn rat(
         preserve_assignment!(
             checker,
             (!checker.flags.unmarked_rat_candidates
-                && !checker.fields(resolution_candidate).is_scheduled())
+                && !checker.fields(resolution_candidate).is_in_core())
                 || {
                     watch_invariants(checker);
                     log!(
@@ -1344,14 +1356,17 @@ fn extract_dependencies(
         add_cause_of_conflict(checker, conflict_literal);
         add_cause_of_conflict(checker, -conflict_literal);
     }
+    // Traverse the trail backwards, adding reason clauses to the conflict graph
+    // if they were necessary to trigger propagation in another clause which
+    // is already in the conflict graph.
     for position in (0..checker.assignment.len()).rev() {
         let (pivot, reason) = checker.assignment.trail_at(position);
         if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
             continue;
         }
         let clause = checker.offset2clause(reason.offset());
-        move_to_core(checker, reason.offset());
-        schedule(checker, clause);
+        move_to_core_watchlists(checker, reason.offset());
+        add_to_core(checker, clause);
         for lit_offset in checker.clause_range(clause) {
             let lit = clause_db()[lit_offset];
             if lit == pivot {
@@ -1401,10 +1416,10 @@ fn extract_dependencies(
                     if position < trail_length_before_rup {
                         LRATDependency::forced_unit(clause)
                     } else {
-                        LRATDependency::unit(clause)
+                        LRATDependency::unit_in_inference(clause)
                     }
                 } else {
-                    LRATDependency::unit(clause)
+                    LRATDependency::unit_in_inference(clause)
                 });
         }
     }
@@ -1425,7 +1440,7 @@ fn extract_dependencies(
     }
 }
 
-/// Write a line of LRAT (justyfing a single inference.
+/// Write a line of LRAT justifying a single inference.
 fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, rat_inference: bool) {
     if !checker.flags.lrat_filename.is_some() {
         return;
@@ -1434,30 +1449,26 @@ fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, rat_infere
     checker.lrat.push(LRATLiteral::zero());
 }
 
-/// Write a line of LRAT (justyfing a single inference (implementation).
+/// Write a line of LRAT justifying a single inference (implementation).
 fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_inference: bool) {
     checker.clause_lrat_offset[clause] = checker.lrat.len();
 
     if !rat_inference {
         for dependency in &checker.dependencies {
-            checker
-                .lrat
-                .push(if dependency.is_unit() || dependency.is_forced_unit() {
-                    LRATLiteral::hint(dependency.clause())
-                } else {
-                    unreachable()
-                })
+            // RUP has no resolution candidates
+            invariant!(dependency.is_forced_unit() || dependency.is_unit_in_inference());
+            checker.lrat.push(LRATLiteral::hint(dependency.clause()))
         }
         return;
     }
-
+    // Add forced units.
     for i in 0..checker.dependencies.len() {
-        if checker.dependencies[i].is_unit() {
+        if checker.dependencies[i].is_unit_in_inference() {
             continue;
         }
         for j in (0..=i).rev() {
             let dependency = checker.dependencies[j];
-            let clause = if dependency.is_unit() {
+            let clause = if dependency.is_unit_in_inference() {
                 continue;
             } else if dependency.is_forced_unit() {
                 dependency.clause()
@@ -1472,8 +1483,9 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_in
         }
     }
     checker.prerat_clauses.clear();
+    // Add units and resolution candidates from the inference check.
     for dependency in &checker.dependencies {
-        checker.lrat.push(if dependency.is_unit() {
+        checker.lrat.push(if dependency.is_unit_in_inference() {
             LRATLiteral::hint(dependency.clause())
         } else if dependency.is_forced_unit() {
             continue;
@@ -1485,15 +1497,15 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_in
     checker.lrat.push(LRATLiteral::zero());
 }
 
-/// After failing to find a conflict in an inference check, copy the natural
-/// model before the check.
-fn extract_natural_model(checker: &mut Checker, trail_length: usize) {
+/// After failing to find a conflict in an inference check, copy the state
+/// of the natural from immediately after the RUP check.
+fn extract_natural_model(checker: &mut Checker, trail_length_after_rup: usize) {
     if checker.flags.sick_filename.is_some() {
         checker.rejection.natural_model = checker
             .assignment
             .iter()
-            .skip(1)
-            .take(trail_length - 1)
+            .skip(1) // Literal::TOP
+            .take(trail_length_after_rup - 1)
             .map(|&(literal, _reason)| literal)
             .collect();
     }
@@ -1644,19 +1656,18 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
     extract_dependencies(checker, checker.assignment.len(), None);
     checker.grat_pending.truncate(grat_pending_length);
     write_dependencies_for_lrat(checker, empty_clause, false);
-    schedule(checker, empty_clause);
+    add_to_core(checker, empty_clause);
     checker.proof[checker.proof_steps_until_conflict] = ProofStep::lemma(empty_clause);
     if checker.flags.lrat_filename.is_some() {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
     if checker.flags.grat_filename.is_some() {
         let reason = checker.assignment.pop().unwrap().1;
-        // let reason = checker.assignment.peek().1;
         if reason.is_assumed() {
             let empty_clause_in_premise = Clause::range(0, checker.lemma)
                 .find(|&clause| checker.clause(clause).is_empty())
                 .unwrap();
-            schedule(checker, empty_clause_in_premise);
+            add_to_core(checker, empty_clause_in_premise);
             checker.grat_conflict_clause = empty_clause_in_premise;
         } else {
             checker.grat_conflict_clause = checker.offset2clause(reason.offset());
@@ -1667,8 +1678,8 @@ fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
 
 /// Preprocess the proof (forward pass).
 ///
-/// This propagates after each proof step and returns a conflict as soon
-/// as it arises.
+/// Propagate exhaustively after each proof step and return a conflict as
+/// soon as it arises.
 fn preprocess(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("preprocessing proof");
     log!(checker, 1, "[preprocess]");
@@ -1695,10 +1706,6 @@ fn preprocess(checker: &mut Checker) -> Verdict {
             }
         }
     }
-    invariant!({
-        let last_step = checker.proof[checker.proof_steps_until_conflict];
-        !last_step.is_deletion() && checker.clause(last_step.clause()).is_empty()
-    });
     unreachable()
 }
 
@@ -1721,9 +1728,14 @@ fn verify(checker: &mut Checker) -> bool {
                 "[verify] del {}",
                 checker.clause_to_string(clause)
             );
+            // Undo the deletion by adding the clause to the watchlists.
             if checker.flags.skip_unit_deletions {
+                // If the clause was a unit during the forward pass, then
+                // the deletion was ignored.  In that case, we do not need to
+                // add it to the watches because it was never deleted. Since
+                // adding watches for a unit (or reason) clause is basically
+                // a no-op, this condition can probably be removed.
                 if !checker.fields(clause).is_reason() {
-                    // not actually deleted otherwise!
                     invariant!(checker.clause_mode(clause) == Mode::NonCore);
                     watches_add(checker, Stage::Verification, clause);
                 }
@@ -1748,7 +1760,7 @@ fn verify(checker: &mut Checker) -> bool {
             invariant!(clause == lemma);
             watches_remove(checker, checker.clause_mode(lemma), lemma);
             unpropagate_unit(checker, lemma);
-            if checker.fields(lemma).is_scheduled() {
+            if checker.fields(lemma).is_in_core() {
                 move_falsified_literals_to_end(checker, lemma);
                 log!(
                     checker,
@@ -1788,7 +1800,7 @@ fn verify(checker: &mut Checker) -> bool {
                 continue;
             }
             let reason_clause = checker.offset2clause(reason.offset());
-            if checker.fields(reason_clause).is_scheduled() {
+            if checker.fields(reason_clause).is_in_core() {
                 checker.grat.push(GRATLiteral::from_clause(reason_clause));
             }
         }
@@ -1802,34 +1814,36 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
     if !checker.fields(clause).is_reason() {
         return;
     }
-    if let Some(offset) = checker
+    let offset = match checker
         .clause_range(clause)
         .find(|&offset| checker.assignment[clause_db()[offset]])
     {
-        let unit = clause_db()[offset];
-        let trail_length = checker.assignment.position_in_trail(unit);
-        invariant!(trail_length < checker.assignment.len());
-        if checker.flags.grat_filename.is_some() {
-            if checker.grat_in_deletion {
-                checker.grat_in_deletion = false;
-                checker.grat.push(GRATLiteral::ZERO);
-            }
-            checker.grat.push(GRATLiteral::UNIT_PROP);
-            for position in trail_length..checker.assignment.len() {
-                let reason = checker.assignment.trail_at(position).1;
-                let reason_clause = checker.offset2clause(reason.offset());
-                if checker.fields(reason_clause).is_scheduled() {
-                    checker.grat.push(GRATLiteral::from_clause(reason_clause));
-                }
-            }
+        Some(offset) => offset,
+        None => return,
+    };
+    let unit = clause_db()[offset];
+    let trail_length = checker.assignment.position_in_trail(unit);
+    invariant!(trail_length < checker.assignment.len());
+    if checker.flags.grat_filename.is_some() {
+        if checker.grat_in_deletion {
+            checker.grat_in_deletion = false;
             checker.grat.push(GRATLiteral::ZERO);
         }
-        while checker.assignment.len() > trail_length {
-            let reason = checker.assignment.pop().unwrap().1;
-            set_reason_flag(checker, reason, false);
+        checker.grat.push(GRATLiteral::UNIT_PROP);
+        for position in trail_length..checker.assignment.len() {
+            let reason = checker.assignment.trail_at(position).1;
+            let reason_clause = checker.offset2clause(reason.offset());
+            if checker.fields(reason_clause).is_in_core() {
+                checker.grat.push(GRATLiteral::from_clause(reason_clause));
+            }
         }
-        checker.processed = trail_length;
+        checker.grat.push(GRATLiteral::ZERO);
     }
+    while checker.assignment.len() > trail_length {
+        let reason = checker.assignment.pop().unwrap().1;
+        set_reason_flag(checker, reason, false);
+    }
+    checker.processed = trail_length;
 }
 
 /// Move falsified literals to the end of the clause.
@@ -1877,7 +1891,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         None => return Ok(()),
     };
     for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
-        if checker.fields(lemma).is_scheduled() {
+        if checker.fields(lemma).is_in_core() {
             write_clause(&mut file, checker.clause(lemma).iter())?;
             writeln!(file)?;
         }
@@ -2013,7 +2027,7 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
         write!(file, "{}", GRATLiteral::DELETION)?;
         // delete lemmas that were never used
         for clause in Clause::range(0, checker.lemma) {
-            if !checker.fields(clause).is_scheduled() {
+            if !checker.fields(clause).is_in_core() {
                 n += 1;
                 write!(file, " {}", GRATLiteral::from_clause(clause))?;
             }
@@ -2063,7 +2077,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     write!(file, "{} d ", checker.lrat_id)?;
     // delete lemmas that were never used
     for clause in Clause::range(0, checker.lemma) {
-        if !checker.fields(clause).is_scheduled() {
+        if !checker.fields(clause).is_in_core() {
             write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)?;
         }
     }
@@ -2100,7 +2114,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     Ok(())
 }
 
-/// Get the clause's LRAT id.
+/// Get the clause's LRAT identifier.
 fn lrat_id(checker: &Checker, clause: Clause) -> Clause {
     checker.clause_lrat_id[clause]
 }
@@ -2111,7 +2125,7 @@ fn write_lrat_lemma(
     file: &mut impl Write,
     clause: Clause,
 ) -> io::Result<()> {
-    invariant!(checker.fields(clause).is_scheduled());
+    invariant!(checker.fields(clause).is_in_core());
     checker.lrat_id += 1;
     checker.clause_lrat_id[clause] = checker.lrat_id;
     write!(file, "{} ", lrat_id(checker, clause))?;
@@ -2128,7 +2142,7 @@ fn write_lrat_lemma(
             write!(file, "-{} ", lrat_id(checker, hint))
         } else {
             invariant!(lrat_literal.is_hint());
-            invariant!(checker.fields(hint).is_scheduled());
+            invariant!(checker.fields(hint).is_in_core());
             invariant!(lrat_id(checker, hint) != Clause::UNINITIALIZED);
             write!(file, "{} ", lrat_id(checker, hint))
         }?;
@@ -2148,7 +2162,7 @@ fn write_lrat_deletion(
     invariant!(clause != Clause::UNINITIALIZED);
     invariant!(
         (lrat_id(checker, clause) == Clause::UNINITIALIZED)
-            == (clause >= checker.lemma && !checker.fields(clause).is_scheduled())
+            == (clause >= checker.lemma && !checker.fields(clause).is_in_core())
     );
     if lrat_id(checker, clause) != Clause::UNINITIALIZED
         && !clause_deleted[clause]
@@ -2314,7 +2328,7 @@ fn watch_remove_at(checker: &mut Checker, mode: Mode, lit: Literal, position_in_
     watchlist_mut(checker, mode)[lit].swap_remove(position_in_watchlist);
 }
 
-/// Add an etnry to a watchlist.
+/// Add an enty to a watchlist.
 fn watch_add(checker: &mut Checker, mode: Mode, lit: Literal, head: usize) {
     watchlist_mut(checker, mode)[lit].push(head)
 }
@@ -2350,7 +2364,7 @@ fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head
         .is_some()
 }
 
-// Revisions
+// Revision logic
 
 /// Returns true if the literal was unassigned after reason deletion.
 fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
@@ -2410,7 +2424,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
 }
 
-/// Fix watchlist of a literal that were unassigned after a reason deletion.
+/// Fix watchlist of a literal that was unassigned after a reason deletion.
 fn watchlist_revise(checker: &mut Checker, lit: Literal) {
     for &mode in &[Mode::Core, Mode::NonCore] {
         let mut i = 0;
@@ -2449,7 +2463,7 @@ fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Claus
     };
 }
 
-/// Add some, just unassigned literal to the revision.
+/// Add to the revision some literal that was just unassigned.
 fn add_to_revision(checker: &mut Checker, revision: &mut Revision, lit: Literal, reason: Reason) {
     revision.cone.push(lit);
     checker.literal_is_in_cone_preprocess[lit] = true;
@@ -2484,9 +2498,9 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
     // let mut left_position = checker.assignment.len();
     // ```
     // However, instead of popping and pushing later we do that implicitly by
-    // overwriting the latter part of the vector. For this we need a different
+    // overwriting the latter part of the trail. For this we need a different
     // value of `introductions` and `left_position`.
-    // This might be an unnecessesarily complex way of doing this without any benefit.
+    // This might be an unnecessesarily complex way of doing this without any real benefit.
     let mut introductions = 0;
     let mut literals_to_revise = revision.cone.len();
     for &literal in &revision.cone {
@@ -2630,13 +2644,13 @@ fn watches_reset_list_at(
     }
 }
 
-/// Scans a clause to find a non-falsified, or the most recently falsified literal.
+/// Scans a clause to find a non-falsified literal, or the most recently falsified one.
 ///
 /// Returns as soon as a non-falsified literal is found. Its location in
 /// the clause database is stored in `offset`.
 ///
-/// The location and position in trail of the most recently falsified is stored
-/// in `latest_falsified_offset` and `latest_falsified_position` respectively.
+/// The location and position in trail of the most recently falsified is written
+/// to `latest_falsified_offset` and `latest_falsified_position` respectively.
 fn find_nonfalsified_and_most_recently_falsified<'a>(
     checker: &Checker,
     clause: Clause,
