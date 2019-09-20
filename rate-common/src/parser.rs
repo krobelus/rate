@@ -891,7 +891,34 @@ fn parse_formula(
     Ok(())
 }
 
+<<<<<<< 5b164f93d741450fe098bf12d76c65711426edac
 /// Return true if the file is in binary (compressed) DRAT.
+=======
+/// Parse a proof given the hashtable.
+fn parse_proof(
+    parser: &mut Parser,
+    clause_ids: &mut impl HashTable,
+    mut input: Input,
+    binary: bool,
+) -> Result<()> {
+    parser.proof_start = Clause::new(clause_db().number_of_clauses());
+    let mut state = ProofParserState::Start;
+    if parser.max_proof_steps != Some(0) {
+        while let Some(()) = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)? {
+            if parser
+                .max_proof_steps
+                .map_or(false, |max_steps| parser.proof.len() == max_steps)
+            {
+                break;
+            }
+        }
+    }
+    finish_proof(parser, clause_ids, &mut state);
+    Ok(())
+}
+
+/// Returns true if the file is in binary (compressed) DRAT.
+>>>>>>> moved function parse_proof
 ///
 /// Read the first ten characters of the given file to determine
 /// that, just like `drat-trim`. This works fine on real proofs.
@@ -1012,29 +1039,6 @@ pub fn finish_proof(
             Literal::new(0),
         );
     }
-}
-
-/// Parse a proof given the hashtable.
-fn parse_proof(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    mut input: Input,
-    binary: bool,
-) -> Result<()> {
-    parser.proof_start = Clause::new(clause_db().number_of_clauses());
-    let mut state = ProofParserState::Start;
-    if parser.max_proof_steps != Some(0) {
-        while let Some(()) = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)? {
-            if parser
-                .max_proof_steps
-                .map_or(false, |max_steps| parser.proof.len() == max_steps)
-            {
-                break;
-            }
-        }
-    }
-    finish_proof(parser, clause_ids, &mut state);
-    Ok(())
 }
 
 /// Print the clause and witness databases, for debugging.
