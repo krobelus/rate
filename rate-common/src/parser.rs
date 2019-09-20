@@ -28,6 +28,8 @@ pub enum ProofSyntax {
     Dpr,
     Dsr,
 }
+
+#[allow(dead_code)]
 impl ProofSyntax {
     fn has_header(self) -> bool {
         self == ProofSyntax::Dimacs
