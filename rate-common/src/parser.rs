@@ -901,15 +901,11 @@ fn parse_proof(
 ) -> Result<()> {
     parser.proof_start = Clause::new(clause_db().number_of_clauses());
     let mut state = ProofParserState::Start;
-    if parser.max_proof_steps != Some(0) {
-        while let Some(()) = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)? {
-            if parser
-                .max_proof_steps
-                .map_or(false, |max_steps| parser.proof.len() == max_steps)
-            {
-                break;
-            }
-        }
+    let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
+    let mut result : Option<()> = Some(());
+    while instructions != 0usize && result.is_some() {
+        result = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)?;
+        instructions -= 1;
     }
     finish_proof(parser, clause_ids, &mut state);
     Ok(())
