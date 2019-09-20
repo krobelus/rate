@@ -843,7 +843,6 @@ fn parse_any_clause(
     syntax: ProofSyntax,
     deletion: bool,
 ) -> Result<()> {
-    open_clause(parser, ProofParserState::Clause);
     parser.clause_pivot.push(Literal::NEVER_READ);      // todo: This should be changed to the -0 literal too
     let mut first : bool = false ;
     let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal
@@ -892,8 +891,8 @@ fn parse_formula(
             parse_comment(&mut input)?;
             continue;
         }
+        open_clause(parser, ProofParserState::Clause);
         parse_any_clause(parser, clause_ids, &mut input, ProofSyntax::Dimacs, false)? ;
-        // parse_clause(parser, clause_ids, &mut input)?;
     }
     Ok(())
 }
