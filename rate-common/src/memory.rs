@@ -14,15 +14,11 @@
 //!   they never allocate after being constructed.
 //!
 //! - Bounds checking can be disabled for all these vectors.
-//!
-//! - `SmallVector` does not allocate anything when it contains only one or no elements.
-//!   This can save memory when there are lots of vectors of size one.
 
 mod array;
 mod boundedvector;
 #[macro_use]
 mod vector;
-mod smallvector;
 mod stackmapping;
 
 use std::convert::TryFrom;
@@ -30,7 +26,6 @@ use std::convert::TryFrom;
 pub use crate::memory::{
     array::Array,
     boundedvector::BoundedVector,
-    smallvector::SmallVector,
     stackmapping::StackMapping,
     vector::{assert_in_bounds, Vector},
 };

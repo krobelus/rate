@@ -9,8 +9,8 @@ use rate_common::{
     die,
     output::install_signal_handler,
     parser::{
-        clause_db, is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
-        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
+        is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
+        run_parser_on_formula, HashTable, Parser, ProofParserState,
     },
 };
 
@@ -61,7 +61,7 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     let mut parser = Parser::new();
     parser.verbose = false;
     let binary = is_binary_drat(proof_filename);
-    let mut clause_ids = FixedSizeHashTable::new();
+    let mut clause_ids = HashTable::new();
     run_parser_on_formula(
         &mut parser,
         formula_filename,
@@ -84,20 +84,20 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         assert!(_result == Some(()));
     }
     let mut write_formula = || {
-        let number_of_active_clauses = (0..clause_db().number_of_clauses())
+        let number_of_active_clauses = (0..parser.clause_db.number_of_clauses())
             .map(Clause::new)
-            .filter(|&clause| clause_ids.clause_is_active(clause))
+            .filter(|&clause| clause_ids.clause_is_active(&parser.clause_db, clause))
             .count();
         writeln!(
             &mut formula_output,
             "p cnf {} {}",
             parser.maxvar, number_of_active_clauses
         )?;
-        for clause in (0..clause_db().number_of_clauses()).map(Clause::new) {
-            if !clause_ids.clause_is_active(clause) {
+        for clause in (0..parser.clause_db.number_of_clauses()).map(Clause::new) {
+            if !clause_ids.clause_is_active(&parser.clause_db, clause) {
                 continue;
             }
-            write_clause(&mut formula_output, clause_db().clause(clause).iter())?;
+            write_clause(&mut formula_output, parser.clause_db.clause(clause).iter())?;
             writeln!(&mut formula_output)?;
         }
         let result: Result<()> = Ok(());

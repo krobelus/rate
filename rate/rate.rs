@@ -9,13 +9,14 @@ use rate_common::{
         puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral,
         ProofStep, Reason, RedundancyProperty,
     },
+    clausedatabase::{ClauseDatabase, WitnessDatabase},
     comment, config, die, invariant,
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{install_signal_handler, unreachable},
     output::{print_key_value, print_solution, Timer},
-    parser::{clause_db, open_file_for_writing, witness_db, Parser},
-    parser::{free_clause_database, parse_files},
+    parser::parse_files,
+    parser::{open_file_for_writing, Parser},
     puts, requires,
     sick::{Sick, Witness},
 };
@@ -122,7 +123,6 @@ fn run_frontend() -> i32 {
     } else {
         "NOT VERIFIED"
     });
-    free_clause_database();
     if result == Verdict::Verified {
         0
     } else {
@@ -259,8 +259,6 @@ pub enum Verdict {
 }
 
 /// The proof checker
-///
-/// Contains most everything but the clause and witness databases.
 #[derive(Debug)]
 pub struct Checker {
     /// The input proof
@@ -269,6 +267,10 @@ pub struct Checker {
     pub flags: Flags,
     /// Which redundancy property to use for inferences
     redundancy_property: RedundancyProperty,
+    /// Clause store
+    clause_db: ClauseDatabase,
+    /// Witness store
+    witness_db: WitnessDatabase,
 
     /// The highest variable that is used in the formula or proof
     maxvar: Variable,
@@ -404,7 +406,7 @@ impl Checker {
     /// [Flags](struct.Flags.html)
     pub fn new(parser: Parser, flags: Flags) -> Checker {
         // We will add one extra empty clause at the end of the proof.
-        let num_clauses = clause_db().number_of_clauses() as usize + 1;
+        let num_clauses = parser.clause_db.number_of_clauses() as usize + 1;
         let num_lemmas = parser.proof.len();
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
@@ -421,6 +423,8 @@ impl Checker {
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Vector::new(),
             flags,
+            clause_db: parser.clause_db,
+            witness_db: parser.witness_db,
             redundancy_property: parser.redundancy_property,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
@@ -507,32 +511,32 @@ impl Checker {
     }
     /// The literals in the the clause.
     fn clause(&self, clause: Clause) -> &[Literal] {
-        clause_db().clause(clause)
+        self.clause_db.clause(clause)
     }
     /// Access the witness by clause ID.
     #[allow(dead_code)]
     fn witness(&self, clause: Clause) -> &[Literal] {
-        witness_db().witness(clause)
+        self.witness_db.witness(clause)
     }
     /// The database offsets of the literals in the the clause.
     fn clause_range(&self, clause: Clause) -> ops::Range<usize> {
-        clause_db().clause_range(clause)
+        self.clause_db.clause_range(clause)
     }
     /// The database offsets of the literals in the the witness.
     fn witness_range(&self, clause: Clause) -> ops::Range<usize> {
-        witness_db().witness_range(clause)
+        self.witness_db.witness_range(clause)
     }
     /// The first two literals in the clause.
     fn watches(&self, head: usize) -> [Literal; 2] {
-        clause_db().watches(head)
+        self.clause_db.watches(head)
     }
     /// Convert a clause identifier to the offset of the clause.
     fn clause2offset(&self, clause: Clause) -> usize {
-        clause_db().clause2offset(clause)
+        self.clause_db.clause2offset(clause)
     }
     /// Convert a clause offset to the identifier of the clause.
     fn offset2clause(&self, head: usize) -> Clause {
-        clause_db().offset2clause(head)
+        self.clause_db.offset2clause(head)
     }
     /// Return whether this clause is in the core.
     fn clause_mode(&self, clause: Clause) -> Mode {
@@ -544,22 +548,24 @@ impl Checker {
     }
     /// Access the metadata for this clause.
     fn fields(&self, clause: Clause) -> &ClauseFields {
-        unsafe { &*(clause_db().fields(clause) as *const u32 as *const ClauseFields) }
+        unsafe { &*(self.clause_db.fields(clause) as *const u32 as *const ClauseFields) }
     }
     /// Access the mutable metadata for this clause.
     fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
-        unsafe { &mut *(clause_db().fields_mut(clause) as *mut u32 as *mut ClauseFields) }
+        unsafe { &mut *(self.clause_db.fields_mut(clause) as *mut u32 as *mut ClauseFields) }
     }
     /// Access the metadata for the clause with this offset.
     /// This is possibly more efficient than [`fields()`](#method.fields).
     fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
-        unsafe { &*(clause_db().fields_from_offset(offset) as *const u32 as *const ClauseFields) }
+        unsafe {
+            &*(self.clause_db.fields_from_offset(offset) as *const u32 as *const ClauseFields)
+        }
     }
     /// Access the mutable metadata for the clause with this offset.
     /// This is possibly more efficient than [`fields()`](#method.fields_mut).
     fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
         unsafe {
-            &mut *(clause_db().fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
+            &mut *(self.clause_db.fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
         }
     }
 }
@@ -786,25 +792,25 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                     continue;
                 }
                 if w1 == literal {
-                    clause_db()[head] = w2;
+                    checker.clause_db[head] = w2;
                     w1 = w2;
                     w2 = literal;
                 }
                 invariant!(w2 == literal);
                 invariant!(checker.assignment[-w2]);
-                invariant!(clause_db()[head] == w1);
+                invariant!(checker.clause_db[head] == w1);
 
                 if let Some(wo) = first_non_falsified_raw(checker, head + 2) {
                     checker.watchlist_core[literal].swap_remove(i);
-                    let w = clause_db()[wo];
+                    let w = checker.clause_db[wo];
                     invariant!(w != literal);
                     watch_add(checker, Mode::Core, w, head);
-                    clause_db()[head + 1] = w;
-                    clause_db()[wo] = w2;
+                    checker.clause_db[head + 1] = w;
+                    checker.clause_db[wo] = w2;
                     continue;
                 }
 
-                clause_db()[head + 1] = w2;
+                checker.clause_db[head + 1] = w2;
 
                 assign(checker, w1, Reason::forced(head));
                 if !checker.assignment[-w1] {
@@ -835,26 +841,26 @@ fn propagate(checker: &mut Checker) -> MaybeConflict {
                 }
 
                 if w1 == literal {
-                    clause_db()[head] = w2;
+                    checker.clause_db[head] = w2;
                     w1 = w2;
                     w2 = literal;
                 }
 
                 invariant!(w2 == literal);
                 invariant!(checker.assignment[-w2]);
-                invariant!(clause_db()[head] == w1);
+                invariant!(checker.clause_db[head] == w1);
 
                 if let Some(wo) = first_non_falsified_raw(checker, head + 2) {
                     checker.watchlist_noncore[literal].swap_remove(i);
-                    let w = clause_db()[wo];
+                    let w = checker.clause_db[wo];
                     invariant!(w != literal);
                     watch_add(checker, Mode::NonCore, w, head);
-                    clause_db()[head + 1] = w;
-                    clause_db()[wo] = w2;
+                    checker.clause_db[head + 1] = w;
+                    checker.clause_db[wo] = w2;
                     continue;
                 }
 
-                clause_db()[head + 1] = w2;
+                checker.clause_db[head + 1] = w2;
 
                 assign(checker, w1, Reason::forced(head));
                 if !checker.assignment[-w1] {
@@ -1022,7 +1028,7 @@ fn collect_active_clauses(checker: &Checker) -> Vector<Clause> {
         }
         for lit in Literal::all(checker.maxvar) {
             for &head in &watchlist(checker, mode)[lit] {
-                if clause_db()[head] == lit {
+                if checker.clause_db[head] == lit {
                     clauses.push(checker.offset2clause(head));
                 }
             }
@@ -1037,7 +1043,7 @@ fn pr(checker: &mut Checker) -> bool {
     // This can surely be improved
     let mut lemma_union_reduct = Vector::from_vec(checker.clause(lemma).to_vec());
     for offset in checker.witness_range(lemma) {
-        let literal = witness_db()[offset];
+        let literal = checker.witness_db[offset];
         invariant!(!checker.is_in_witness[literal]);
         checker.is_in_witness[literal] = true;
     }
@@ -1060,7 +1066,7 @@ fn pr(checker: &mut Checker) -> bool {
         }
     }
     for offset in checker.witness_range(lemma) {
-        let literal = witness_db()[offset];
+        let literal = checker.witness_db[offset];
         invariant!(checker.is_in_witness[literal]);
         checker.is_in_witness[literal] = false;
     }
@@ -1124,11 +1130,11 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         Some(pivot_index) => {
             // Make pivot the first literal in the LRAT proof.
             let head = checker.clause_range(lemma).start;
-            let pivot = clause_db()[head + pivot_index];
+            let pivot = checker.clause_db[head + pivot_index];
             if checker.flags.grat_filename.is_some() {
                 checker.grat_rat_counts[pivot] += 1;
             }
-            clause_db().swap(head, head + pivot_index);
+            checker.clause_db.swap(head, head + pivot_index);
             if checker.flags.verbose {
                 puts!("lemma RAT ");
                 checker.puts_clause_with_id(lemma);
@@ -1164,7 +1170,7 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
     // NOTE: rupee's lratcheck/sickcheck might require us to first assign all units before
     // returning.
     for offset in checker.clause_range(clause) {
-        let unit = clause_db()[offset];
+        let unit = checker.clause_db[offset];
         if pivot.map_or(false, |pivot| unit == -pivot) {
             continue;
         }
@@ -1214,7 +1220,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
         return None;
     }
     checker.clause_range(lemma).position(|offset| {
-        let fallback_pivot = clause_db()[offset];
+        let fallback_pivot = checker.clause_db[offset];
         fallback_pivot != Literal::BOTTOM && fallback_pivot != pivot && {
             if checker.flags.grat_filename.is_some() {
                 checker.grat_pending.truncate(grat_pending_length);
@@ -1375,7 +1381,7 @@ fn extract_dependencies(
         move_to_core_watchlists(checker, reason.offset());
         add_to_core(checker, clause);
         for lit_offset in checker.clause_range(clause) {
-            let lit = clause_db()[lit_offset];
+            let lit = checker.clause_db[lit_offset];
             if lit == pivot {
                 continue;
             }
@@ -1521,13 +1527,13 @@ enum Stage {
 
 /// Find the offset of the first non-falsified literal in the clause.
 fn first_non_falsified(checker: &Checker, clause: Clause, start: usize) -> Option<usize> {
-    (start..checker.clause_range(clause).end).find(|&i| !checker.assignment[-clause_db()[i]])
+    (start..checker.clause_range(clause).end).find(|&i| !checker.assignment[-checker.clause_db[i]])
 }
 
 /// Find the offset of the first non-falsified literal in the clause (slightly more efficient).
 fn first_non_falsified_raw(checker: &Checker, mut start: usize) -> Option<usize> {
-    while !clause_db()[start].is_zero() {
-        if !checker.assignment[-clause_db()[start]] {
+    while !checker.clause_db[start].is_zero() {
+        if !checker.assignment[-checker.clause_db[start]] {
             return Some(start);
         }
         start += 1;
@@ -1570,31 +1576,31 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
     match first_two_non_falsified(checker, clause) {
         NonFalsified::None => match stage {
             Stage::Preprocessing => {
-                assign(checker, clause_db()[head], Reason::forced(head));
+                assign(checker, checker.clause_db[head], Reason::forced(head));
                 CONFLICT
             }
             Stage::Verification => unreachable(),
         },
         NonFalsified::One(i1) => {
-            let w1 = clause_db()[i1];
+            let w1 = checker.clause_db[i1];
             if !checker.assignment[w1] {
                 let conflict = assign(checker, w1, Reason::forced(head));
                 invariant!(conflict == NO_CONFLICT);
             }
             if !checker.flags.skip_unit_deletions {
                 checker.fields_mut(clause).set_in_watchlist(true);
-                clause_db().swap(head, i1);
+                checker.clause_db.swap(head, i1);
                 watch_add(checker, mode, w1, head);
-                watch_add(checker, mode, clause_db()[head + 1], head);
+                watch_add(checker, mode, checker.clause_db[head + 1], head);
             }
             NO_CONFLICT
         }
         NonFalsified::Two(i1, i2) => {
-            let w1 = clause_db()[i1];
-            let w2 = clause_db()[i2];
+            let w1 = checker.clause_db[i1];
+            let w2 = checker.clause_db[i2];
             checker.fields_mut(clause).set_in_watchlist(true);
-            clause_db().swap(head, i1);
-            clause_db().swap(head + 1, i2);
+            checker.clause_db.swap(head, i1);
+            checker.clause_db.swap(head + 1, i2);
             watch_add(checker, mode, w1, head);
             watch_add(checker, mode, w2, head);
             NO_CONFLICT
@@ -1669,8 +1675,8 @@ fn close_proof_after_steps(checker: &mut Checker, steps_until_conflict: usize) {
 
 /// Add an empty clause to the proof (as it might be missing) and to the core.
 fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
-    let empty_clause = clause_db().open_clause();
-    clause_db().push_literal(Literal::new(0));
+    let empty_clause = checker.clause_db.open_clause();
+    checker.clause_db.push_literal(Literal::new(0));
     let grat_pending_length = checker.grat_pending.len();
     extract_dependencies(checker, checker.assignment.len(), None);
     checker.grat_pending.truncate(grat_pending_length);
@@ -1810,12 +1816,12 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
     }
     let offset = match checker
         .clause_range(clause)
-        .find(|&offset| checker.assignment[clause_db()[offset]])
+        .find(|&offset| checker.assignment[checker.clause_db[offset]])
     {
         Some(offset) => offset,
         None => return,
     };
-    let unit = clause_db()[offset];
+    let unit = checker.clause_db[offset];
     let trail_length = checker.assignment.position_in_trail(unit);
     invariant!(trail_length < checker.assignment.len());
     if checker.flags.grat_filename.is_some() {
@@ -1854,7 +1860,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
         checker.rejected_lemma.clear();
     }
     for offset in checker.clause_range(clause) {
-        let literal = clause_db()[offset];
+        let literal = checker.clause_db[offset];
         // The SICK witness would be incorrect when discarding falsified
         // literals like here. Copy the lemma to checker.rejected_lemma.
         if checker.flags.sick_filename.is_some() {
@@ -1865,15 +1871,15 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
         }
         if !checker.assignment[-literal] {
             // if not falsified
-            clause_db()[offset] = clause_db()[effective_end];
-            clause_db()[effective_end] = literal;
+            checker.clause_db[offset] = checker.clause_db[effective_end];
+            checker.clause_db[effective_end] = literal;
             effective_end += 1;
         }
     }
     // LRAT lemmas must not contain falsified literals according to the
     // verified checker, delete them.
     for offset in effective_end..checker.clause_range(clause).end {
-        clause_db()[offset] = Literal::BOTTOM;
+        checker.clause_db[offset] = Literal::BOTTOM;
     }
     effective_end - head
 }
@@ -2438,10 +2444,10 @@ fn watchlist_revise(checker: &mut Checker, lit: Literal) {
 /// Fix the watches of some clause whose watch was unassigned after a reason deletion.
 fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Clause) {
     let head = checker.clause_range(clause).start;
-    if clause_db()[head] == lit {
-        clause_db().swap(head, head + 1);
+    if checker.clause_db[head] == lit {
+        checker.clause_db.swap(head, head + 1);
     }
-    let other_literal = clause_db()[head];
+    let other_literal = checker.clause_db[head];
     if !checker.assignment[-other_literal] {
         return;
     }
@@ -2453,8 +2459,8 @@ fn watches_revise(checker: &mut Checker, mode: Mode, lit: Literal, clause: Claus
             }
         }
         Some(offset) => {
-            let new_literal = clause_db()[offset];
-            clause_db().swap(head, offset);
+            let new_literal = checker.clause_db[offset];
+            checker.clause_db.swap(head, offset);
             let _removed = watches_find_and_remove(checker, mode, other_literal, head);
             watch_add(checker, mode, new_literal, head);
         }
@@ -2577,7 +2583,7 @@ fn watches_reset_list_at(
     }
     if literal != w1 {
         requires!(literal == w2);
-        clause_db().swap(head, head + 1);
+        checker.clause_db.swap(head, head + 1);
     }
     let [w1, w2] = checker.watches(head);
     let offset = head;
@@ -2601,7 +2607,7 @@ fn watches_reset_list_at(
         &mut latest_falsified_position,
     );
     if !have_unassigned {
-        requires!(checker.assignment[clause_db()[new_w1_offset]]);
+        requires!(checker.assignment[checker.clause_db[new_w1_offset]]);
         if new_w1_offset > latest_falsified_offset {
             new_w2_offset = new_w1_offset;
             new_w1_offset = latest_falsified_offset;
@@ -2620,22 +2626,22 @@ fn watches_reset_list_at(
             // Case A: nothing to do!
             return;
         }
-        // Case B: clause will not be watched on w2, but on clause_db()[new_w2_offset] instead.
+        // Case B: clause will not be watched on w2, but on checker.clause_db[new_w2_offset] instead.
         let _removed = watches_find_and_remove(checker, mode, w2, head);
-        clause_db().swap(offset + 1, new_w2_offset);
-        watch_add(checker, mode, clause_db()[offset + 1], head);
+        checker.clause_db.swap(offset + 1, new_w2_offset);
+        watch_add(checker, mode, checker.clause_db[offset + 1], head);
         return;
     }
     // Cases C and D: clause will not be watched on w1, but on *new_w2_offset instead.
     watch_remove_at(checker, mode, w1, *position_in_watchlist);
     *position_in_watchlist = position_in_watchlist.wrapping_sub(1);
-    clause_db().swap(offset, new_w2_offset);
-    watch_add(checker, mode, clause_db()[offset], head); // Case C: additionally, clause will still be watched on w2
+    checker.clause_db.swap(offset, new_w2_offset);
+    watch_add(checker, mode, checker.clause_db[offset], head); // Case C: additionally, clause will still be watched on w2
     if offset + 1 != new_w1_offset {
-        // Case D: additionally, clause will not be watched on w2, but on clause_db()[offset + 1] instead.
+        // Case D: additionally, clause will not be watched on w2, but on checker.clause_db[offset + 1] instead.
         let _removed = watches_find_and_remove(checker, mode, w2, head);
-        clause_db().swap(offset + 1, new_w1_offset);
-        watch_add(checker, mode, clause_db()[offset + 1], head);
+        checker.clause_db.swap(offset + 1, new_w1_offset);
+        watch_add(checker, mode, checker.clause_db[offset + 1], head);
     }
 }
 
@@ -2655,7 +2661,7 @@ fn find_nonfalsified_and_most_recently_falsified<'a>(
 ) -> bool {
     let end = checker.clause_range(clause).end;
     while *offset < end {
-        let literal = clause_db()[*offset];
+        let literal = checker.clause_db[*offset];
         if checker.assignment[-literal] {
             let position_in_trail = checker.assignment.position_in_trail(-literal);
             if position_in_trail >= *latest_falsified_position {
@@ -2676,7 +2682,7 @@ fn print_memory_usage(checker: &Checker) {
         ($($x:expr,)*) => (vec!($(($x).heap_space()),*));
     }
     let usages = vec![
-        ("db", clause_db().heap_space()),
+        ("db", checker.clause_db.heap_space()),
         ("proof", checker.proof.heap_space()),
         ("optimized_proof", checker.optimized_proof.heap_space()),
         ("watchlist_core", checker.watchlist_core.heap_space()),

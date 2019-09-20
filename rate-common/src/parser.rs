@@ -4,20 +4,16 @@ use crate::{
     clause::{puts_clause, Clause, ProofStep, RedundancyProperty},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     literal::{Literal, Variable},
-    memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
+    memory::{format_memory_usage, HeapSpace, Offset, Vector},
     output::{print_key_value, unreachable, Timer},
 };
 use std::{
     cmp,
-    collections::HashMap,
     convert::TryInto,
     fs::File,
-    hash::{Hash, Hasher},
     io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, Seek, SeekFrom, StdinLock},
     iter::Peekable,
-    panic,
-    ptr::NonNull,
-    slice,
+    panic, slice,
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -48,33 +44,6 @@ impl ProofSyntax {
     }
 }
 
-/// The static singleton instance of the clause database.
-///
-/// It needs to be static so that hash and equality functions can access it.
-pub static mut CLAUSE_DATABASE: NonNull<ClauseDatabase> = NonNull::dangling();
-
-/// Static singleton instance of the witness database.
-///
-/// This should be made non-static.
-pub static mut WITNESS_DATABASE: NonNull<WitnessDatabase> = NonNull::dangling();
-
-/// Wrapper to access the clause database safely in a single-threaded context.
-pub fn clause_db() -> &'static mut ClauseDatabase {
-    unsafe { CLAUSE_DATABASE.as_mut() }
-}
-/// Wrapper to access the witness database safely in a single-threaded context.
-pub fn witness_db() -> &'static mut WitnessDatabase {
-    unsafe { WITNESS_DATABASE.as_mut() }
-}
-
-/// Release the memory by both clause and witness database.
-pub fn free_clause_database() {
-    unsafe {
-        Box::from_raw(CLAUSE_DATABASE.as_ptr());
-        Box::from_raw(WITNESS_DATABASE.as_ptr());
-    }
-}
-
 /// CNF and DRAT/DPR parser.
 #[derive(Debug, PartialEq)]
 pub struct Parser {
@@ -95,6 +64,10 @@ pub struct Parser {
     pub max_proof_steps: Option<usize>,
     /// Print diagnostics and timing information
     pub verbose: bool,
+    /// Clause store
+    pub clause_db: ClauseDatabase,
+    /// Witness store
+    pub witness_db: WitnessDatabase,
 }
 
 impl Parser {
@@ -102,12 +75,6 @@ impl Parser {
     ///
     /// *Note*: this allocates the static clause and witness databases, so this should only be called once.
     pub fn new() -> Parser {
-        unsafe {
-            CLAUSE_DATABASE =
-                NonNull::new_unchecked(Box::into_raw(Box::new(ClauseDatabase::new())));
-            WITNESS_DATABASE =
-                NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
-        }
         Parser {
             redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
@@ -116,6 +83,8 @@ impl Parser {
             proof: Vector::new(),
             max_proof_steps: None,
             verbose: true,
+            clause_db: ClauseDatabase::new(),
+            witness_db: WitnessDatabase::new(),
         }
     }
     /// Returns true if we are parsing a (D)PR proof.
@@ -124,34 +93,20 @@ impl Parser {
     }
 }
 
-/// A hash table that maps clauses (sets of literals) to clause identifiers.
-pub trait HashTable {
-    /// Add a new clause to the hashtable.
-    fn add_clause(&mut self, clause: Clause);
-    /// Find a clause that is equivalent to given clause.
-    ///
-    /// If delete is true, delete the found clause.
-    fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause>;
-    /// Return true if this exact clause is active.
-    fn clause_is_active(&self, needle: Clause) -> bool;
-    /// Delete this exact clause, return true if that succeeded.
-    fn delete_clause(&mut self, needle: Clause) -> bool;
-}
-
-/// A hash table with a fixed size
+/// A fixed-size hash table that maps clauses (sets of literals) to clause identifiers.
 ///
 /// This should work exactly like the one used in `drat-trim`.
 /// Given that we expect the number of clauses in the hash table
 /// not to exceed a couple million this should be faster and leaner than
 /// [DynamicHashTable](struct.DynamicHashTable.html).
-pub struct FixedSizeHashTable(Vector<Vector<Clause>>);
+pub struct HashTable(Vector<Vector<Clause>>);
 
 /// Return the hash bucket to which this clause belongs.
 fn bucket_index(clause: &[Literal]) -> usize {
-    clause_hash(clause) % FixedSizeHashTable::SIZE
+    clause_hash(clause) % HashTable::SIZE
 }
 
-impl FixedSizeHashTable {
+impl HashTable {
     /// The number of buckets in our hash table (`drat-trim` uses a million)
     const SIZE: usize = 2 * 1024 * 1024;
     /// The initial size of each bucket.
@@ -160,25 +115,64 @@ impl FixedSizeHashTable {
     const BUCKET_INITIAL_SIZE: u16 = 4;
     /// Allocate the hash table.
     #[allow(clippy::new_without_default)]
-    pub fn new() -> FixedSizeHashTable {
-        FixedSizeHashTable(Vector::from_vec(vec![
+    pub fn new() -> HashTable {
+        HashTable(Vector::from_vec(vec![
             Vector::with_capacity(
-                FixedSizeHashTable::BUCKET_INITIAL_SIZE.into()
+                HashTable::BUCKET_INITIAL_SIZE.into()
             );
-            FixedSizeHashTable::SIZE
+            HashTable::SIZE
         ]))
+    }
+    /// Add a new clause to the hashtable.
+    pub fn add_clause(&mut self, clause_db: &ClauseDatabase, clause: Clause) {
+        self.0[bucket_index(clause_db.clause(clause))].push(clause);
+    }
+    /// Find a clause that is equivalent to given clause.
+    ///
+    /// If delete is true, delete the found clause.
+    pub fn find_equal_clause(
+        &mut self,
+        clause_db: &ClauseDatabase,
+        needle: Clause,
+        delete: bool,
+    ) -> Option<Clause> {
+        let bucket = &mut self.0[bucket_index(clause_db.clause(needle))];
+        for offset in 0..bucket.len() {
+            let clause = bucket[offset];
+            if clause_db.clause(needle) == clause_db.clause(clause) {
+                if delete {
+                    bucket.swap_remove(offset);
+                }
+                return Some(clause);
+            }
+        }
+        None
+    }
+    /// Return true if this exact clause is active.
+    pub fn clause_is_active(&self, clause_db: &ClauseDatabase, needle: Clause) -> bool {
+        self.0[bucket_index(clause_db.clause(needle))]
+            .iter()
+            .any(|&clause| needle == clause)
+    }
+    /// Delete this exact clause, return true if that succeeded.
+    pub fn delete_clause(&mut self, clause_db: &ClauseDatabase, needle: Clause) -> bool {
+        self.0[bucket_index(clause_db.clause(needle))]
+            .iter()
+            .position(|&clause| needle == clause)
+            .map(|offset| self.0[bucket_index(clause_db.clause(needle))].swap_remove(offset))
+            .is_some()
     }
 }
 
 /// An iterator over the elements of the hash table
-pub struct FixedSizeHashTableIterator<'a> {
+pub struct HashTableIterator<'a> {
     /// The iterator over the buckets
     buckets: slice::Iter<'a, Vector<Clause>>,
     /// The iterator over a single bucket
     bucket: slice::Iter<'a, Clause>,
 }
 
-impl<'a> Iterator for FixedSizeHashTableIterator<'a> {
+impl<'a> Iterator for HashTableIterator<'a> {
     type Item = &'a Clause;
     fn next(&mut self) -> Option<Self::Item> {
         self.bucket.next().or_else(|| {
@@ -190,131 +184,27 @@ impl<'a> Iterator for FixedSizeHashTableIterator<'a> {
     }
 }
 
-impl<'a> IntoIterator for &'a FixedSizeHashTable {
+impl<'a> IntoIterator for &'a HashTable {
     type Item = &'a Clause;
-    type IntoIter = FixedSizeHashTableIterator<'a>;
+    type IntoIter = HashTableIterator<'a>;
     fn into_iter(self) -> Self::IntoIter {
-        FixedSizeHashTableIterator {
+        HashTableIterator {
             buckets: self.0.iter(),
             bucket: self.0[0].iter(),
         }
     }
 }
 
-impl HashTable for FixedSizeHashTable {
-    fn add_clause(&mut self, clause: Clause) {
-        self.0[bucket_index(clause_db().clause(clause))].push(clause);
-    }
-    fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {
-        let bucket = &mut self.0[bucket_index(clause_db().clause(needle))];
-        for offset in 0..bucket.len() {
-            let clause = bucket[offset];
-            if clause_db().clause(needle) == clause_db().clause(clause) {
-                if delete {
-                    bucket.swap_remove(offset);
-                }
-                return Some(clause);
-            }
-        }
-        None
-    }
-    fn clause_is_active(&self, needle: Clause) -> bool {
-        self.0[bucket_index(clause_db().clause(needle))]
-            .iter()
-            .any(|&clause| needle == clause)
-    }
-    fn delete_clause(&mut self, needle: Clause) -> bool {
-        self.0[bucket_index(clause_db().clause(needle))]
-            .iter()
-            .position(|&clause| needle == clause)
-            .map(|offset| self.0[bucket_index(clause_db().clause(needle))].swap_remove(offset))
-            .is_some()
-    }
-}
-
-impl HeapSpace for FixedSizeHashTable {
+impl HeapSpace for HashTable {
     fn heap_space(&self) -> usize {
         self.0.heap_space()
-    }
-}
-
-/// A hashtable that simply uses the standard `HashMap`
-///
-/// This maps clauses (by equality) to a a list of clause identifiers.
-/// We chose `SmallVector<Clause>` for the latter because most clauses are
-/// not duplicated. This way we can avoid one allocation for unique clauses.
-pub struct DynamicHashTable(HashMap<ClauseHashEq, SmallVector<Clause>>);
-
-impl DynamicHashTable {
-    /// Create a new empty hash table.
-    pub fn new() -> DynamicHashTable {
-        DynamicHashTable(HashMap::new())
-    }
-}
-impl HashTable for DynamicHashTable {
-    fn add_clause(&mut self, clause: Clause) {
-        let key = ClauseHashEq(clause);
-        self.0
-            .entry(key)
-            .or_insert_with(SmallVector::default)
-            .push(clause)
-    }
-    fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause> {
-        self.0
-            .get_mut(&ClauseHashEq(needle))
-            .and_then(|equal_clauses| {
-                let first = equal_clauses.first();
-                invariant!(first != Some(needle));
-                if delete {
-                    equal_clauses.swap_remove(0);
-                }
-                first
-            })
-    }
-    // these are not optimized but only used in sick-check
-    fn clause_is_active(&self, needle: Clause) -> bool {
-        self.0
-            .get(&ClauseHashEq(needle))
-            .map_or(false, |vector| !vector.is_empty())
-    }
-    fn delete_clause(&mut self, needle: Clause) -> bool {
-        self.0
-            .get_mut(&ClauseHashEq(needle))
-            .map_or(false, |equal_clauses| {
-                let mut i = 0;
-                while equal_clauses[i] != needle {
-                    i += 1;
-                    invariant!(i < equal_clauses.len());
-                }
-                invariant!(i == 0);
-                equal_clauses.swap_remove(i);
-                true
-            })
-    }
-}
-
-/// Wrapper struct around clause implementing hash and equality by looking
-/// at the literals in the clause database.
-#[derive(Debug, Eq, Clone, Copy)]
-pub struct ClauseHashEq(pub Clause);
-
-impl Hash for ClauseHashEq {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        clause_hash(clause_db().clause(self.0)).hash(hasher);
-    }
-}
-
-impl PartialEq for ClauseHashEq {
-    fn eq(&self, other: &ClauseHashEq) -> bool {
-        clause_db().clause(self.0) == clause_db().clause(other.0)
     }
 }
 
 /// Parse a formula and a proof file.
 pub fn parse_files(formula_file: &str, proof_file: &str, memory_usage_breakdown: bool) -> Parser {
     let mut parser = Parser::new();
-    let mut clause_ids = FixedSizeHashTable::new();
-    // let mut clause_ids = DynamicHashTable::new();
+    let mut clause_ids = HashTable::new();
     run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
     if memory_usage_breakdown {
         print_memory_usage(&parser, &clause_ids);
@@ -323,9 +213,9 @@ pub fn parse_files(formula_file: &str, proof_file: &str, memory_usage_breakdown:
 }
 
 /// Print the memory usage of a parser (useful after parsing).
-fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
+fn print_memory_usage(parser: &Parser, clause_ids: &HashTable) {
     let usages = vec![
-        ("db", clause_db().heap_space()),
+        ("db", parser.clause_db.heap_space()),
         ("hash-table", clause_ids.heap_space()),
         ("proof", parser.proof.heap_space()),
         ("rest", parser.clause_pivot.heap_space()),
@@ -345,7 +235,7 @@ pub fn run_parser_on_formula(
     mut parser: &mut Parser,
     formula_file: &str,
     proof_file: &str,
-    clause_ids: &mut impl HashTable,
+    clause_ids: &mut HashTable,
 ) {
     parser.redundancy_property = proof_format_by_extension(&proof_file);
     if parser.verbose {
@@ -368,7 +258,7 @@ pub fn run_parser(
     mut parser: &mut Parser,
     formula: &str,
     proof_file: &str,
-    clause_ids: &mut impl HashTable,
+    clause_ids: &mut HashTable,
 ) {
     let binary = is_binary_drat(proof_file);
     run_parser_on_formula(parser, formula, proof_file, clause_ids);
@@ -386,8 +276,8 @@ pub fn run_parser(
         binary,
     )
     .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
-    clause_db().shrink_to_fit();
-    witness_db().shrink_to_fit();
+    parser.clause_db.shrink_to_fit();
+    parser.witness_db.shrink_to_fit();
     parser.clause_pivot.shrink_to_fit();
     parser.proof.shrink_to_fit();
 }
@@ -529,27 +419,27 @@ pub fn panic_on_error<T>(result: Result<T>) -> T {
 /// If the literal is zero, the current clause or witness will be terminated.
 fn add_literal(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
+    clause_ids: &mut HashTable,
     state: ProofParserState,
     literal: Literal,
 ) {
     parser.maxvar = cmp::max(parser.maxvar, literal.variable());
     match state {
         ProofParserState::Clause => {
-            clause_db().push_literal(literal);
+            parser.clause_db.push_literal(literal);
             if parser.is_pr() && literal.is_zero() {
-                witness_db().push_literal(literal);
+                parser.witness_db.push_literal(literal);
             }
         }
         ProofParserState::Witness => {
             invariant!(parser.is_pr());
-            witness_db().push_literal(literal);
+            parser.witness_db.push_literal(literal);
             if literal.is_zero() {
-                clause_db().push_literal(literal);
+                parser.clause_db.push_literal(literal);
             }
         }
         ProofParserState::Deletion => {
-            clause_db().push_literal(literal);
+            parser.clause_db.push_literal(literal);
             if literal.is_zero() {
                 add_deletion(parser, clause_ids);
             }
@@ -559,7 +449,7 @@ fn add_literal(
     match state {
         ProofParserState::Clause | ProofParserState::Witness => {
             if literal.is_zero() {
-                clause_ids.add_clause(clause_db().last_clause());
+                clause_ids.add_clause(&parser.clause_db, parser.clause_db.last_clause());
             }
         }
         _ => (),
@@ -569,14 +459,14 @@ fn add_literal(
 /// Add a deletion to the proof.
 ///
 /// Looks up the last parsed clause in the hash table and adds the deletion upon success.
-fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
-    let clause = clause_db().last_clause();
-    match clause_ids.find_equal_clause(clause, /*delete=*/ true) {
+fn add_deletion(parser: &mut Parser, clause_ids: &mut HashTable) {
+    let clause = parser.clause_db.last_clause();
+    match clause_ids.find_equal_clause(&parser.clause_db, clause, /*delete=*/ true) {
         None => {
             if parser.verbose {
                 as_warning!({
                     puts!("c deleted clause is not present in the formula: ");
-                    puts_clause(clause_db().clause(clause));
+                    puts_clause(parser.clause_db.clause(clause));
                     puts!("\n");
                 });
             }
@@ -587,7 +477,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
         }
         Some(clause) => parser.proof.push(ProofStep::deletion(clause)),
     }
-    clause_db().pop_clause();
+    parser.clause_db.pop_clause();
 }
 
 /// Compute the hash of a clause. This is the same hash function `drat-trim` uses.
@@ -796,20 +686,16 @@ fn is_space(c: u8) -> bool {
 /// Must be called before pushing th first literal with
 /// [add_literal()](fn.add_literal.html).
 fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
-    let clause = clause_db().open_clause();
+    let clause = parser.clause_db.open_clause();
     if parser.is_pr() && state != ProofParserState::Deletion {
-        let witness = witness_db().open_witness();
+        let witness = parser.witness_db.open_witness();
         invariant!(clause == witness);
     }
     clause
 }
 
 /// Parse a DIMACS clause.
-fn parse_clause(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    input: &mut Input,
-) -> Result<()> {
+fn parse_clause(parser: &mut Parser, clause_ids: &mut HashTable, input: &mut Input) -> Result<()> {
     open_clause(parser, ProofParserState::Clause);
     parser.clause_pivot.push(Literal::NEVER_READ);
     loop {
@@ -822,11 +708,7 @@ fn parse_clause(
 }
 
 /// Parse a DIMACS formula.
-fn parse_formula(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    mut input: Input,
-) -> Result<()> {
+fn parse_formula(parser: &mut Parser, clause_ids: &mut HashTable, mut input: Input) -> Result<()> {
     parse_formula_header(&mut input)?;
     while let Some(c) = input.peek() {
         if c == b'c' {
@@ -876,7 +758,7 @@ pub enum ProofParserState {
 /// Parse a single proof step
 pub fn parse_proof_step(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
+    clause_ids: &mut HashTable,
     input: &mut Input,
     binary: bool,
     state: &mut ProofParserState,
@@ -936,11 +818,7 @@ pub fn parse_proof_step(
 ///
 /// This adds a zero if the last line was missing one.
 /// Additionally it adds an empty clause as final lemma.
-pub fn finish_proof(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    state: &mut ProofParserState,
-) {
+pub fn finish_proof(parser: &mut Parser, clause_ids: &mut HashTable, state: &mut ProofParserState) {
     // patch missing zero terminators
     match *state {
         ProofParserState::Clause | ProofParserState::Deletion | ProofParserState::Witness => {
@@ -953,11 +831,11 @@ pub fn finish_proof(
 /// Parse a proof given the hashtable.
 fn parse_proof(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
+    clause_ids: &mut HashTable,
     mut input: Input,
     binary: bool,
 ) -> Result<()> {
-    parser.proof_start = Clause::new(clause_db().number_of_clauses());
+    parser.proof_start = Clause::new(parser.clause_db.number_of_clauses());
     let mut state = ProofParserState::Start;
     if parser.max_proof_steps != Some(0) {
         while let Some(()) = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)? {
@@ -973,25 +851,6 @@ fn parse_proof(
     Ok(())
 }
 
-/// Print the clause and witness databases, for debugging.
-#[allow(dead_code)]
-pub fn print_db(have_witnesses: bool) {
-    let clause_db = &clause_db();
-    let witness_db = &witness_db();
-    for clause in Clause::range(0, clause_db.last_clause() + 1) {
-        puts!(
-            "{}{} fields: {:?}\n",
-            clause_db.clause_to_string(clause),
-            if have_witnesses {
-                format!(", {}", witness_db.witness_to_string(clause))
-            } else {
-                "".into()
-            },
-            clause_db.fields(clause)
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1001,7 +860,7 @@ mod tests {
         ($($x:expr),*) => (Vector::from_vec(vec!($(Literal::new($x)),*)));
     }
 
-    fn sample_formula(clause_ids: &mut impl HashTable) -> Parser {
+    fn sample_formula(clause_ids: &mut HashTable) -> Parser {
         let mut parser = Parser::new();
         parser.redundancy_property = RedundancyProperty::RAT;
         let example = r#"c comment
@@ -1019,7 +878,7 @@ c comment
     }
     #[test]
     fn valid_formula_and_proof() {
-        let mut clause_ids = FixedSizeHashTable::new();
+        let mut clause_ids = HashTable::new();
         let mut parser = sample_formula(&mut clause_ids);
         let result = parse_proof(
             &mut parser,
@@ -1035,31 +894,6 @@ c comment
             Literal::from_raw(x)
         }
         assert_eq!(
-            clause_db(),
-            &ClauseDatabase::from(
-                vector!(
-                    raw(0),
-                    raw(0),
-                    lit(1),
-                    lit(2),
-                    lit(0),
-                    raw(1),
-                    raw(0),
-                    lit(-2),
-                    lit(-1),
-                    lit(0),
-                    raw(2),
-                    raw(0),
-                    lit(1),
-                    lit(2),
-                    lit(3),
-                    lit(0),
-                ),
-                vector!(0, 5, 10)
-            )
-        );
-        assert_eq!(witness_db(), &WitnessDatabase::from(vector!(), vector!(0)));
-        assert_eq!(
             parser,
             Parser {
                 redundancy_property: RedundancyProperty::RAT,
@@ -1072,6 +906,28 @@ c comment
                 ),
                 max_proof_steps: None,
                 verbose: true,
+                clause_db: ClauseDatabase::from(
+                    vector!(
+                        raw(0),
+                        raw(0),
+                        lit(1),
+                        lit(2),
+                        lit(0),
+                        raw(1),
+                        raw(0),
+                        lit(-2),
+                        lit(-1),
+                        lit(0),
+                        raw(2),
+                        raw(0),
+                        lit(1),
+                        lit(2),
+                        lit(3),
+                        lit(0),
+                    ),
+                    vector!(0, 5, 10),
+                ),
+                witness_db: WitnessDatabase::from(vector!(), vector!(0)),
             }
         );
     }
@@ -1079,8 +935,8 @@ c comment
 
 impl HeapSpace for Parser {
     fn heap_space(&self) -> usize {
-        clause_db().heap_space()
-            + witness_db().heap_space()
+        self.clause_db.heap_space()
+            + self.witness_db.heap_space()
             + self.clause_pivot.heap_space()
             + self.proof.heap_space()
     }
