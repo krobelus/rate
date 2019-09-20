@@ -46,7 +46,7 @@ fn run_frontend() -> i32 {
     .version(env!("CARGO_PKG_VERSION"))
     .about(env!("CARGO_PKG_DESCRIPTION"))
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
-    .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT format"))
+    .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT/DPR format"))
 
     .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
          .help("Ignore deletion of unit clauses."))
@@ -57,7 +57,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("NO_TERMINATING_EMPTY_CLAUSE").long("--no-terminating-empty-clause")
         .help("Do not assume an implied empty clause at the end of the proof"))
     .arg(Arg::with_name("FORWARD").short("f").long("forward")
-         .help("Use naive forward checking."))
+         .help("Use naive forward checking instead of backwards checking."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
          .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions and --noncore-rat-candidates"))
@@ -71,8 +71,8 @@ fn run_frontend() -> i32 {
          .help("Write the core lemmas as LRAT certificate to this file."))
     .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
          .help("Write the GRAT certificate to this file."))
-    .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck")
-         .help("Write the recheck incorrectness witness."))
+    .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck") // TODO change flag name to -S/--sick
+         .help("Write the SICK incorrectness witness to this file."))
     ;
 
     if config::ENABLE_LOGGING {
@@ -93,7 +93,7 @@ fn run_frontend() -> i32 {
         flags.memory_usage_breakdown,
     );
     if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
-            die!("LRAT and GRAT generation is not possible for PR")
+        die!("LRAT and GRAT generation is not possible for PR")
     }
     let mut checker = Checker::new(parser, flags);
     let result = checker.run();
@@ -246,20 +246,21 @@ pub struct Checker {
     ///
     /// Initially this is the first lemma in the proof. It will be incremented
     /// at each step in the forward pass until there is a conflict. In the
-    /// backwards pass, lemma is decremented, ending with the first lemma in
-    /// the proof.
+    /// backward pass, this is decremented everytime a lemma is verified.
+    /// Finally we end up back at the first lemma in the proof.
     lemma: Clause,
-    /// The forward pass can detect an early conflict at some proof step, this records that step
+    /// The proof step after which the forward pass detects a conflict
     proof_steps_until_conflict: usize,
-    /// True while inside an inference check (as opposed to propagating with no assumptions)
+    /// True while inside an inference check (as opposed to propagating without assumptions)
     soft_propagation: bool,
     /// Incorrectness certificate
     rejection: Sick,
-    /// The unmodified lemma that failed the inference check.
+    /// The lemma that failed the inference check.
     ///
-    /// We need this to produce a correct SICK certificate, because of
+    /// To produce a correct SICK certificate this needs to exactly match the lemma in the
+    /// input proof. We copy it to here because the clause in the database is modified in
     /// [`move_falsified_literals_to_end`](fn.move_falsified_literals_to_end.html).
-    rejection_lemma: Vector<Literal>,
+    rejected_lemma: Vector<Literal>,
 
     /// Contains clauses that caused a conflict
     implication_graph: StackMapping<usize, bool>,
@@ -270,7 +271,7 @@ pub struct Checker {
     /// The watch-lists for core clauses
     watchlist_core: Array<Literal, Watchlist>,
 
-    /// Pivot to use (or rather try first) for each clause
+    /// Pivot to use (or rather try first unless -p is given) for each clause
     clause_pivot: Array<Clause, Literal>,
     /// Used for querying the witness in PR checks
     is_in_witness: Array<Literal, bool>,
@@ -286,7 +287,7 @@ pub struct Checker {
     clause_lrat_id: Array<Clause, Clause>,
     /// Temporary place for the dependencies of a single inference
     dependencies: Vector<LRATDependency>,
-    /// The maximum LRAT clause identifier
+    /// The maximum LRAT clause identifier in use
     lrat_id: Clause,
     /// Clauses that were unit in the RUP check (before the RAT check).
     /// They need to be emitted in the LRAT proof before the units for RAT checks.
@@ -296,7 +297,7 @@ pub struct Checker {
 
     /// GRAT lines justifying inferences of core lemmas
     grat: Vector<GRATLiteral>,
-    /// THe falsified clause
+    /// The falsified clause
     grat_conflict_clause: Clause,
     /// Whether the current GRAT line is a deletion
     grat_in_deletion: bool,
@@ -313,22 +314,22 @@ pub struct Checker {
     grat_prerat: Array<Clause, bool>,
 
     /// Size of the input formula.
-    pub premise_length: usize,
+    premise_length: usize,
     /// Number of verified RUP inferences.
-    pub rup_introductions: usize,
+    rup_introductions: usize,
     /// Number of verified RAT inferences.
-    pub rat_introductions: usize,
+    rat_introductions: usize,
     /// Number of deletions that were applied.
-    pub deletions: usize,
+    deletions: usize,
     /// Number of deletions that were skipped.
-    pub skipped_deletions: usize,
+    skipped_deletions: usize,
     /// Number of reason deletions that were applied.
-    pub reason_deletions: usize,
+    reason_deletions: usize,
     /// Number of unique reason deletions that were applied.
-    pub reason_deletions_shrinking_trail: usize,
+    reason_deletions_shrinking_trail: usize,
     /// Number of clauses that were already satisfied in the forward pass,
     /// so with `--skip-unit-deletions` we do not add them to the watchlists.
-    pub satisfied_count: usize,
+    satisfied_count: usize,
 }
 
 bitfield! {
@@ -443,7 +444,7 @@ impl Checker {
             watchlist_noncore: Array::new(Vector::new(), maxvar.array_size_for_literals()),
             watchlist_core: Array::new(Vector::new(), maxvar.array_size_for_literals()),
             rejection: Sick::default(),
-            rejection_lemma: Vector::new(),
+            rejected_lemma: Vector::new(),
 
             premise_length: parser.proof_start.as_offset(),
             rup_introductions: 0,
@@ -1137,9 +1138,8 @@ fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeCo
 /// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
 fn slice_rup(checker: &mut Checker, clause: &[Literal]) -> MaybeConflict {
     for &unit in clause {
-        if !checker.assignment[-unit] 
-            &&assign(checker, -unit, Reason::assumed()) == CONFLICT {
-                return CONFLICT;
+        if !checker.assignment[-unit] && assign(checker, -unit, Reason::assumed()) == CONFLICT {
+            return CONFLICT;
         }
     }
     propagate(checker)
@@ -1277,9 +1277,9 @@ fn rat(
                                 .1
                                 .is_assumed();
                         if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
-                                checker
-                                    .grat_pending
-                                    .push(GRATLiteral::from_clause(resolution_candidate));
+                            checker
+                                .grat_pending
+                                .push(GRATLiteral::from_clause(resolution_candidate));
                         }
                         extract_dependencies(
                             checker,
@@ -1287,7 +1287,7 @@ fn rat(
                             Some((trail_length_before_rat, resolvent_is_tautological)),
                         );
                         if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
-                                add_rup_conflict_for_grat(checker);
+                            add_rup_conflict_for_grat(checker);
                         }
                         true
                     }
@@ -1624,7 +1624,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     if already_satisfied {
         checker.satisfied_count += 1;
     } else if watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
-            return CONFLICT;
+        return CONFLICT;
     }
     propagate(checker)
 }
@@ -1843,14 +1843,14 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
     if checker.flags.sick_filename.is_some() {
-        checker.rejection_lemma.clear();
+        checker.rejected_lemma.clear();
     }
     for offset in checker.clause_range(clause) {
         let literal = clause_db()[offset];
         // The SICK witness would be incorrect when discarding falsified
-        // literals like here. Copy the lemma to checker.rejection_lemma.
+        // literals like here. Copy the lemma to checker.rejected_lemma.
         if checker.flags.sick_filename.is_some() {
-            checker.rejection_lemma.push(literal);
+            checker.rejected_lemma.push(literal);
         }
         if checker.flags.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
@@ -2180,7 +2180,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     let proof_step = checker.rejection.proof_step;
 
     write!(file, "# Failed to prove lemma")?;
-    for &literal in &checker.rejection_lemma {
+    for &literal in &checker.rejected_lemma {
         if literal != Literal::BOTTOM {
             write!(file, " {}", literal)?;
         }
