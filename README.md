@@ -12,13 +12,15 @@ clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details) by
 default.
 
 # Features
-- check DRAT (default) and PR (file extension `.pr` or `.dpr`) proofs
-- output core lemmas as DIMACS, LRAT or GRAT for verified proofs
-- output certificate of unsatisfiability for rejected proofs
-- competitive performance due to double-sweep checking with
-  core-first unit propagation
-- option to ignore unit deletions (`--skip-unit-deletions`)
+- check DRAT proofs and DPR proofs
+- competitive performance (faster than `drat-trim`, almost as fast as `gratgen`)
+- output core lemmas as DIMACS, LRAT or GRAT after verifying a proof
+- output SICK certificate of incorrectness after rejecting a proof
+- optionally ignore unit deletions for compatibility with `drat-trim`
+  (flag `--skip-unit-deletions`)
 - transparently read compressed input files (Gzip, Zstandard, Bzip2, XZ, LZ4)
+- detect and report many errors like numeric overflows
+- mostly safe Rust, should not have any undefined behavior
 
 # Installation
 

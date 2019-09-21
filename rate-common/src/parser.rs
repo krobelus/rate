@@ -136,10 +136,8 @@ pub trait HashTable {
     /// If delete is true, delete the found clause.
     fn find_equal_clause(&mut self, needle: Clause, delete: bool) -> Option<Clause>;
     /// Return true if this exact clause is active.
-    #[allow(dead_code)]
     fn clause_is_active(&self, needle: Clause) -> bool;
     /// Delete this exact clause, return true if that succeeded.
-    #[allow(dead_code)]
     fn delete_clause(&mut self, needle: Clause) -> bool;
 }
 
@@ -462,7 +460,6 @@ pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
 
 impl RedundancyProperty {
     /// Give the canonical file extension for proofs based on this redundancy property.
-    #[allow(dead_code)]
     pub fn file_extension(&self) -> &str {
         match self {
             RedundancyProperty::RAT => "drat",
