@@ -60,7 +60,7 @@ fn run_frontend() -> i32 {
          .help("Use naive forward checking instead of backwards checking."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
-         .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions and --noncore-rat-candidates"))
+         .help("Try to be compatible with drat-trim.\nThis implies --skip-unit-deletions"))
     .arg(Arg::with_name("RUPEE").long("--rupee")
          .help("Try to be compatible with rupee.\nThis implies --assume-pivot-is-first"))
     .arg(Arg::with_name("MEMORY_USAGE_BREAKDOWN").short("m").long("--memory-breakdown")
@@ -199,6 +199,9 @@ impl Flags {
         }
         if drat_trim && pivot_is_first_literal {
             incompatible_options("--drat-trim --assume-pivot-is-first");
+        }
+        if drat_trim && unmarked_rat_candidates {
+            incompatible_options("--drat-trim --noncore-rat-candidates");
         }
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Flags {
