@@ -69,7 +69,7 @@ of the proof is justified.
 
 ```sh
 $ cargo install rate-sick-check
-$ rate formula.cnf proof.drat --recheck failure.sick ||
+$ rate formula.cnf proof.drat --sick failure.sick ||
   sick-check formula.cnf proof.drat failure.sick
 ```
 

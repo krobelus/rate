@@ -245,7 +245,7 @@ def double_check(drat_checker,
             if grat:
                 args += ['-G', f'{name}.grat']
             if sick:
-                args += ['--recheck', f'{name}.sick']
+                args += ['-S', f'{name}.sick']
         if pr:
             assert accepts(drat_checker + args, name)
             return
