@@ -43,12 +43,10 @@ Alternatively, you can install the development version from a checkout of this
 repository:
 
 ```sh
+$ git clone https://github.com/krobelus/rate
+$ cd rate
 $ cargo install --path rate --force
 ```
-
-Other binaries are provided in the crates `rate-sick-check` and
-`rate-proof-utils` and can be installed by substituting `rate` with the
-crate name in above commands.
 
 # Usage
 
@@ -68,6 +66,7 @@ checked by the `sick-check` binary which tries to make sure that the rejection
 of the proof is justified.
 
 ```sh
+$ cargo install rate-sick-check
 $ rate formula.cnf proof.drat --recheck failure.sick ||
   sick-check formula.cnf proof.drat failure.sick
 ```
@@ -152,14 +151,13 @@ $ cargo doc --document-private-items
 # Contributing
 
 Please let us know if `rate` behaves in a way that is unexpected to you,
-or if you need some feature. Tools that work with clausal proofs can be
-built on top of this. If this is desired we recommend to integrate that
-in this repository since we do not guarantee stability of the library
-modules crates (only the binaries are considered an API).
+or if you need some feature.  We currently do not guarantee stability of the
+library modules in `rate-common` (only the binaries are considered an API),
+so all tools that use these modules should be integrated in this repository.
 
 # Roadmap
 
-Some things that might be useful.
+Some possible improvements:
 
 - expose a subset of the library modules as Rust (and possibly C) API
 - support other clausal proof formats
