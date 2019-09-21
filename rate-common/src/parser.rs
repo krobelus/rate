@@ -13,7 +13,7 @@ use std::{
     convert::TryInto,
     fs::File,
     hash::{Hash, Hasher},
-    io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
+    io::{Seek, SeekFrom, BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
     iter::Peekable,
     panic,
     ptr::NonNull,
@@ -379,12 +379,12 @@ pub fn run_parser(
     proof_file: &str,
     clause_ids: &mut impl HashTable,
 ) {
+    let binary = is_binary_drat(proof_file);
     run_parser_on_formula(parser, formula, proof_file, clause_ids);
     let mut _timer = Timer::name("parsing proof");
     if !parser.verbose {
         _timer.disabled = true;
     }
-    let binary = is_binary_drat(proof_file);
     if binary && parser.verbose {
         comment!("binary proof mode");
     }
@@ -489,14 +489,14 @@ pub fn read_compressed_file_or_stdin<'a>(
 /// If the file is compressed it is transparently uncompressed.
 /// Argument `binary` is passed on to [Input](struct.Input.html).
 pub fn read_compressed_file(filename: &str, binary: bool) -> Input {
-    Input::new(read_compressed_file_impl(filename), binary)
+    let file = open_file(filename);
+    Input::new(read_from_compressed_file(file, filename), binary)
 }
 
 /// Return an Iterator to read from a possibly compressed file.
 ///
 /// If the file is compressed it is transparently uncompressed.
-fn read_compressed_file_impl(filename: &str) -> Box<dyn Iterator<Item = u8>> {
-    let file = open_file(filename);
+fn read_from_compressed_file(file: File, filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let (_basename, compression_format) = compression_format_by_extension(filename);
     if compression_format == "" {
         return Box::new(BufReader::new(file).bytes().map(panic_on_error));
@@ -846,12 +846,16 @@ fn parse_formula(
     Ok(())
 }
 
-/// Returns true if the file is in binary (compressed) DRAT.
+/// Return true if the file is in binary (compressed) DRAT.
 ///
 /// Read the first ten characters of the given file to determine
 /// that, just like `drat-trim`. This works fine on real proofs.
 pub fn is_binary_drat(filename: &str) -> bool {
-    is_binary_drat_impl(read_compressed_file_impl(filename))
+    let mut file = open_file(filename);
+    file.seek(SeekFrom::Start(0)).unwrap_or_else(|_err| {
+        die!("proof file is not seekable - cannot currently determine if it has binary DRAT")
+    });
+    is_binary_drat_impl(read_from_compressed_file(file, filename))
 }
 /// Implementation of `is_binary_drat`.
 fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {

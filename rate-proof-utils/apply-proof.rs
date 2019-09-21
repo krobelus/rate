@@ -62,6 +62,7 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         .unwrap_or_else(|err| die!("Line number must be an integer: {}", err));
     let mut parser = Parser::new();
     parser.verbose = false;
+    let binary = is_binary_drat(proof_filename);
     let mut clause_ids = FixedSizeHashTable::new();
     run_parser_on_formula(
         &mut parser,
@@ -70,7 +71,6 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         &mut clause_ids,
     );
     let mut state = ProofParserState::Start;
-    let binary = is_binary_drat(proof_filename);
     let mut proof_input = read_compressed_file(&proof_filename, binary);
     let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
     let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
