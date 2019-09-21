@@ -71,8 +71,10 @@ fn run_frontend() -> i32 {
          .help("Write the core lemmas as LRAT certificate to this file."))
     .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
          .help("Write the GRAT certificate to this file."))
-    .arg(Arg::with_name("SICK_FILE").takes_value(true).short("i").long("recheck") // TODO change flag name to -S/--sick
+    .arg(Arg::with_name("SICK_FILE").takes_value(true).short("S").long("sick")
          .help("Write the SICK incorrectness witness to this file."))
+    .arg(Arg::with_name("SICK_FILE_LEGACY").takes_value(true).short("i").long("recheck")
+         .help("Write the SICK incorrectness witness to this file.").hidden(true))
     ;
 
     if config::ENABLE_LOGGING {
@@ -162,7 +164,13 @@ impl Flags {
         let forward = matches.is_present("FORWARD");
         let lrat = matches.is_present("LRAT_FILE");
         let grat = matches.is_present("GRAT_FILE");
-        let sick_filename = matches.value_of("SICK_FILE").map(String::from);
+        let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
+        if sick_filename.is_none() {
+            sick_filename = matches.value_of("SICK_FILE_LEGACY").map(String::from);
+            if sick_filename.is_some() {
+                warn!("option -i/--recheck is deprecated, use -S/--sick instead");
+            }
+        }
 
         if forward {
             if grat {
@@ -172,12 +180,12 @@ impl Flags {
                 incompatible_options("--forward --lrat");
             }
             if sick_filename.is_some() {
-                incompatible_options("--forward --recheck");
+                incompatible_options("--forward --sick");
             }
         }
         if skip_unit_deletions && sick_filename.is_some() {
             warn!(
-                "--recheck can produce an incorrect SICK witness when used along --skip-unit-deletions."
+                "--sick can produce an incorrect SICK witness when used along --skip-unit-deletions."
             );
         }
         if !skip_unit_deletions && grat {
