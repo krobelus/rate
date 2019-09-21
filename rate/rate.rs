@@ -50,7 +50,7 @@ fn run_frontend() -> i32 {
 
     .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
          .help("Ignore deletion of unit clauses."))
-    .arg(Arg::with_name("UNMARKED_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
+    .arg(Arg::with_name("NONCORE_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
          .help("Do not ignore RAT candidates that are not part of the core."))
     .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
          .help("When checking for RAT, only try the first literal as pivot."))
@@ -133,7 +133,7 @@ fn run_frontend() -> i32 {
 #[derive(Debug)]
 pub struct Flags {
     pub skip_unit_deletions: bool,
-    pub unmarked_rat_candidates: bool,
+    pub noncore_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
     pub no_terminating_empty_clause: bool,
     pub memory_usage_breakdown: bool,
@@ -159,7 +159,7 @@ impl Flags {
         let drat_trim = matches.is_present("DRAT_TRIM");
         let rupee = matches.is_present("RUPEE");
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
-        let unmarked_rat_candidates = matches.is_present("UNMARKED_RAT_CANDIDATES");
+        let noncore_rat_candidates = matches.is_present("NONCORE_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
         let forward = matches.is_present("FORWARD");
         let lrat = matches.is_present("LRAT_FILE");
@@ -194,19 +194,19 @@ impl Flags {
         if rupee && skip_unit_deletions {
             incompatible_options("--rupee --skip-unit-deletions");
         }
-        if rupee && unmarked_rat_candidates {
-            incompatible_options("--rupee --unmarked_rat_candidates");
+        if rupee && noncore_rat_candidates {
+            incompatible_options("--rupee --noncore_rat_candidates");
         }
         if drat_trim && pivot_is_first_literal {
             incompatible_options("--drat-trim --assume-pivot-is-first");
         }
-        if drat_trim && unmarked_rat_candidates {
+        if drat_trim && noncore_rat_candidates {
             incompatible_options("--drat-trim --noncore-rat-candidates");
         }
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Flags {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
-            unmarked_rat_candidates: rupee || unmarked_rat_candidates,
+            noncore_rat_candidates: rupee || noncore_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_terminating_empty_clause: matches.is_present("NO_TERMINATING_EMPTY_CLAUSE"),
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
@@ -1251,7 +1251,7 @@ fn rat(
     resolution_candidates.iter().all(|&resolution_candidate| {
         preserve_assignment!(
             checker,
-            (!checker.flags.unmarked_rat_candidates
+            (!checker.flags.noncore_rat_candidates
                 && !checker.fields(resolution_candidate).is_in_core())
                 || {
                     watch_invariants(checker);
