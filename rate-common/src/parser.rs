@@ -951,15 +951,17 @@ fn parse_proof(
     parser.proof_start = Clause::new(clause_db().number_of_clauses());
     let mut state = ProofParserState::Start;
     let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
-    let mut result : Option<()> = Some(());
     if !binary {
         skip_any_whitespace(&mut input) ;
     }
-    while instructions != 0usize && result.is_some() {
+    while instructions != 0usize {
         if binary {
-            result = parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
+            parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
         } else {
-            result = parse_instruction(parser, clause_ids, &mut input, &mut state, false)? ;
+            parse_instruction(parser, clause_ids, &mut input, &mut state, false)?;
+        }
+        if input.peek() == None {
+            break;
         }
         instructions -= 1;
     }
@@ -1035,72 +1037,47 @@ pub fn parse_instruction(
     input: &mut Input,
     state: &mut ProofParserState,
     binary: bool,
-) -> Result<Option<()>> {
-    let mut lemma_head = true;
-    let mut first_literal = None;
-    while let Some(c) = input.peek() {
-        if is_space(c) {
+) -> Result<()> {
+    match ParsedInstructionKind::lookahead(input, binary)? {
+        ParsedInstructionKind::Introduction => {
+            let clause = clause_db().open_clause();
+            if parser.is_pr() {
+                let witness = witness_db().open_witness();
+                invariant!(clause == witness);
+            }
+            match parse_clause(parser, input, parser.is_pr(), false)? {
+                ParsedClause::Clause(first) => {
+                    parser.clause_pivot.push(first);
+                }
+                ParsedClause::Repetition(first) => {
+                    parser.clause_pivot.push(first);
+                    witness_db().push_literal(first);
+                    parse_dpr_witness(parser, input, false)?;
+                }
+            }
+            clause_db().push_literal(Literal::new(0));
+            clause_ids.add_clause(clause_db().last_clause());
+            parser.proof.push(ProofStep::lemma(clause));
+            if parser.is_pr() {
+                witness_db().push_literal(Literal::new(0));
+            }
+        }
+        ParsedInstructionKind::Deletion => {
+            clause_db().open_clause();
             input.next();
-            continue;
-        }
-        match ParsedInstructionKind::lookahead(input, binary)? {
-            ParsedInstructionKind::Introduction => {
-                let clause = clause_db().open_clause();
-                if parser.is_pr() {
-                    let witness = witness_db().open_witness();
-                    invariant!(clause == witness);
-                }
-                match parse_clause(parser, input, parser.is_pr(), false)? {
-                    ParsedClause::Clause(first) => {
-                        parser.clause_pivot.push(first);
-                    }
-                    ParsedClause::Repetition(first) => {
-                        parser.clause_pivot.push(first);
-                        witness_db().push_literal(first);
-                        parse_dpr_witness(parser, input, false)?;
-                    }
-                }
-                clause_db().push_literal(Literal::new(0));
-                clause_ids.add_clause(clause_db().last_clause());
-                parser.proof.push(ProofStep::lemma(clause));
-                if parser.is_pr() {
-                    witness_db().push_literal(Literal::new(0));
-                }
+            if !binary {
+                skip_some_whitespace(input)?;
             }
-            ParsedInstructionKind::Deletion => {
-                clause_db().open_clause();
-                input.next();
-                if !binary {
-                    skip_some_whitespace(input)?;
+            match parse_clause(parser, input, false, false)? {
+                ParsedClause::Clause(lit) => {
+                    clause_db().push_literal(Literal::new(0));
+                    add_deletion(parser, clause_ids);
                 }
-                match parse_clause(parser, input, false, false)? {
-                    ParsedClause::Clause(lit) => {
-                        clause_db().push_literal(Literal::new(0));
-                        add_deletion(parser, clause_ids);
-                    }
-                    ParsedClause::Repetition(lit) => unreachable() ,
-                }
+                ParsedClause::Repetition(lit) => unreachable() ,
             }
-        }
-        continue;
-        unreachable();
-        let literal = parse_literal(input)?;
-        if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
-            *state = ProofParserState::Witness;
-        }
-        if *state == ProofParserState::Clause && lemma_head {
-            parser.clause_pivot.push(literal);
-            first_literal = Some(literal);
-            lemma_head = false;
-        }
-        invariant!(*state != ProofParserState::Start);
-        add_literal(parser, clause_ids, *state, literal);
-        if literal.is_zero() {
-            *state = ProofParserState::Start;
-            return Ok(Some(()));
         }
     }
-    Ok(None)
+    Ok(())
 }
 
 
