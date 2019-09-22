@@ -112,7 +112,7 @@ Here are the transformations we do:
   are ignored, even if they could be resolution candidates, find an explanation
   why this is sound [here].
 - RAT checks are done upon every possible pivot and not just the first literal
-  in a clause.
+  in a clause, unless `--assume-pivot-is-first` is specified.
 
 [here]: <http://www21.in.tum.de/~lammich/grat/gratgen-doc/Unmarked_RAT_Candidates.html>
 
@@ -121,7 +121,7 @@ Here are the transformations we do:
 Run unit tests and the system test suite, respectively:
 
 ```sh
-cargo test && pytest test.py
+cargo test && ./test.py
 ```
 
 If you're in a hurry use `pytest test.py -k quick` to only run the system
@@ -129,14 +129,14 @@ tests with small input files.
 
 Above tests require
 - `python3` (version 3.6 or above)
-- `pytest`
+- `pytest` (for python 3)
 - optionally any of the following executables:
   - [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat)
     to validate the produced LRAT proofs.
   - `gratchk` is used to validate produced GRAT proofs.
   - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
     run on the benchmarks and their results will be compared to the output of
-    `rate` in the respective compatibility mode.
+    `rate` in the appropriate compatibility mode.
 
 # Documentation
 
