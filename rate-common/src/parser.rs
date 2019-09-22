@@ -936,7 +936,7 @@ fn parse_proof(
     let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
     let mut result : Option<()> = Some(());
     if !binary {
-
+        skip_any_whitespace(&mut input) ;
     }
     while instructions != 0usize && result.is_some() {
         if binary {
