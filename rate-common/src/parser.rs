@@ -889,9 +889,12 @@ fn parse_formula(
         open_clause(parser, ProofParserState::Clause);
         match parse_any_clause(parser, clause_ids, &mut input, ProofSyntax::Dimacs, false)? {
             ParsedClause::Clause(_) => {
-                clause_db().push_literal(Literal::new(0)) ;
+                clause_db().push_literal(Literal::new(0));
+                if parser.is_pr() {
+                    witness_db().push_literal(Literal::new(0));
+                }
                 parser.clause_pivot.push(Literal::NEVER_READ);
-                clause_ids.add_clause(clause_db().last_clause()) ;
+                clause_ids.add_clause(clause_db().last_clause());
             } ,
             _ => unreachable() ,
         }
