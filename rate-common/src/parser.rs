@@ -912,7 +912,7 @@ fn parse_proof(
         if binary {
             result = parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
         } else {
-            resutl = parse_instruction_text(parser, clause_ids, &mut input, &mut state)? ;
+            result = parse_instruction_text(parser, clause_ids, &mut input, false, &mut state)? ;
         }
         instructions -= 1;
     }
