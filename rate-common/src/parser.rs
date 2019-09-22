@@ -940,9 +940,6 @@ fn parse_formula(
     Ok(())
 }
 
-<<<<<<< 5b164f93d741450fe098bf12d76c65711426edac
-/// Return true if the file is in binary (compressed) DRAT.
-=======
 /// Parse a proof given the hashtable.
 fn parse_proof(
     parser: &mut Parser,
@@ -968,7 +965,6 @@ fn parse_proof(
 }
 
 /// Returns true if the file is in binary (compressed) DRAT.
->>>>>>> moved function parse_proof
 ///
 /// Read the first ten characters of the given file to determine
 /// that, just like `drat-trim`. This works fine on real proofs.
