@@ -658,11 +658,8 @@ fn parse_u64(input: &mut Input) -> Result<u64> {
     }
     let mut value: u64 = 0;
     while let Some(c) = input.peek() {
-        if is_space(c) {
-            break;
-        }
         if !is_digit(c) {
-            return Err(input.error(NUMBER_OR_SPACE));
+            break;
         }
         input.next();
         value = value
