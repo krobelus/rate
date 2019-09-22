@@ -910,7 +910,7 @@ fn parse_proof(
         if binary {
             result = parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
         } else {
-            result = parse_instruction_text(parser, clause_ids, &mut input, false, &mut state)? ;
+            result = parse_instruction_text(parser, clause_ids, &mut input, &mut state)? ;
         }
         instructions -= 1;
     }
@@ -961,18 +961,12 @@ pub fn parse_instruction_text(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
     input: &mut Input,
-    binary: bool,
     state: &mut ProofParserState,
 ) -> Result<Option<()>> {
-    let literal_parser = if binary {
-        parse_literal_binary
-    } else {
-        parse_literal
-    };
     let mut lemma_head = true;
     let mut first_literal = None;
     while let Some(c) = input.peek() {
-        if !binary && is_space(c) {
+        if is_space(c) {
             input.next();
             continue;
         }
@@ -983,10 +977,7 @@ pub fn parse_instruction_text(
                     open_clause(parser, ProofParserState::Deletion);
                     ProofParserState::Deletion
                 }
-                c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
-                    if binary {
-                        input.next();
-                    }
+                c if is_digit_or_dash(c) => {
                     lemma_head = true;
                     let clause = open_clause(parser, ProofParserState::Clause);
                     parser.proof.push(ProofStep::lemma(clause));
@@ -996,7 +987,7 @@ pub fn parse_instruction_text(
             };
             continue;
         }
-        let literal = literal_parser(input)?;
+        let literal = parse_literal(input)?;
         if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
             *state = ProofParserState::Witness;
         }
