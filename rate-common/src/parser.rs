@@ -766,6 +766,22 @@ fn parse_any_space(input: &mut Input) {
     }
 }
 
+/// Skips whitespace, and returns and error if no space nor EOR was parsed.
+fn skip_some_whitespace(input: &mut Input) -> Result<()> {
+    if let Some(c) = input.peek() {
+        if !is_space(c) {
+            return Err(input.error(DRAT))
+        }
+    }
+    while let Some(c) = input.peek() {
+        if !is_space(c) {
+            break;
+        }
+        input.next();
+    }
+    Ok(())
+}
+
 /// Parse zero or more spaces or linebreaks.
 fn parse_any_whitespace(input: &mut Input) {
     while let Some(c) = input.peek() {
