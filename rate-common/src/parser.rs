@@ -707,6 +707,19 @@ pub fn parse_literal(input: &mut Input) -> Result<Literal> {
     }
 }
 
+pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
+    let literal = match input.peek() {
+        None => Err(input.error(EOF)),
+        Some(b'-') => {
+            input.next();
+            Literal::new(-parse_i32(input)?)
+        }
+        _ => Literal::new(parse_i32(input)?)
+    };
+    skip_some_whitespace(input);
+    ltieral
+}
+
 /// Parse a literal from a compressed proof.
 pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     let mut i = 0;
@@ -851,21 +864,39 @@ enum ParsedClause {
 // todo: eventually, parse_clause and parse_dpr_witness should be unified.
 // That will require unifying the underlying types of ClauseDatabase and WitnessDatabase...
 
-fn parse_clause(
+fn parse_clause_text(
     parser: &mut Parser,
     input: &mut Input,
     repetition: bool,
-    binary: bool,
 ) -> Result<ParsedClause> {
     let mut first : bool = false ;
     let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal.
                                                         // When doing that, make sure to take into account the case for the empty clause!
     loop {
-        let literal = if binary {
-            parse_literal_binary(input)?
-        } else {
-            parse_literal(input)?
-        } ;
+        let literal = parse_literal(input)?;
+        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
+        if literal.is_zero() {
+            return Ok(ParsedClause::Clause(initial)) ;
+        } else if repetition && literal == initial {
+            return Ok(ParsedClause::Repetition(literal)) ;
+        } else if first {
+            first = false ;
+            initial = literal ;
+        }
+        clause_db().push_literal(literal);
+    }
+}
+
+fn parse_clause_binary(
+    parser: &mut Parser,
+    input: &mut Input,
+    repetition: bool,
+) -> Result<ParsedClause> {
+    let mut first : bool = false ;
+    let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal.
+                                                        // When doing that, make sure to take into account the case for the empty clause!
+    loop {
+        let literal = parse_literal_binary(input)?;
         parser.maxvar = cmp::max(parser.maxvar, literal.variable());
         if literal.is_zero() {
             return Ok(ParsedClause::Clause(initial)) ;
