@@ -840,10 +840,8 @@ enum ParsedClause {
 
 fn parse_any_clause(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
     input: &mut Input,
-    syntax: ProofSyntax,
-    deletion: bool,
+    repetition: bool,
 ) -> Result<ParsedClause> {
     let mut first : bool = false ;
     let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal.
@@ -853,22 +851,11 @@ fn parse_any_clause(
         parser.maxvar = cmp::max(parser.maxvar, literal.variable());
         if literal.is_zero() {
             return Ok(ParsedClause::Clause(initial)) ;
-            // clause_db().push_literal(Literal::new(0));
-            // if deletion {
-            //     add_deletion(parser, clause_ids);
-            // } else {
-            //     clause_ids.add_clause(clause_db().last_clause());
-            //     if syntax.has_pr() {
-            //         witness_db().push_literal(Literal::new(0));
-            //     }
-            // }
-            // return Ok(()) ;
-        } else if syntax.has_repetition_witness() && literal == initial {
+        } else if repetition && literal == initial {
             return Ok(ParsedClause::Repetition(literal)) ;
         } else if first {
             first = false ;
             initial = literal ;
-            // parser.clause_pivot.push(literal) ;
         }
         clause_db().push_literal(literal);
     }
@@ -888,7 +875,7 @@ fn parse_formula(
             continue;
         }
         open_clause(parser, ProofParserState::Clause);
-        match parse_any_clause(parser, clause_ids, &mut input, ProofSyntax::Dimacs, false)? {
+        match parse_any_clause(parser, &mut input, false)? {
             ParsedClause::Clause(_) => {
                 clause_db().push_literal(Literal::new(0));
                 if parser.is_pr() {
