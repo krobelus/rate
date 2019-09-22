@@ -699,7 +699,7 @@ pub fn parse_literal(input: &mut Input) -> Result<Literal> {
             };
             let number = parse_i32(input)?;
             if number == 0 {
-                parse_any_whitespace(input);
+                skip_any_whitespace(input);
             }
             Ok(Literal::new(sign * number))
         }
@@ -793,7 +793,7 @@ fn skip_some_whitespace(input: &mut Input) -> Result<()> {
 }
 
 /// Parse zero or more spaces or linebreaks.
-fn parse_any_whitespace(input: &mut Input) {
+fn skip_any_whitespace(input: &mut Input) {
     while let Some(c) = input.peek() {
         if !is_space(c) {
             break;
@@ -817,7 +817,7 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     let maxvar = parse_i32(input)?;
     parse_some_spaces(input)?;
     let num_clauses = parse_u64(input)?;
-    parse_any_whitespace(input);
+    skip_any_whitespace(input);
     Ok((maxvar, num_clauses))
 }
 
@@ -935,6 +935,9 @@ fn parse_proof(
     let mut state = ProofParserState::Start;
     let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
     let mut result : Option<()> = Some(());
+    if !binary {
+
+    }
     while instructions != 0usize && result.is_some() {
         if binary {
             result = parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
