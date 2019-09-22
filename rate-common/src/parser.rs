@@ -870,7 +870,7 @@ fn parse_clause(
     repetition: bool,
     binary: bool,
 ) -> Result<ParsedClause> {
-    let mut first : bool = false ;
+    let mut first : bool = true ;
     let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal.
                                                         // When doing that, make sure to take into account the case for the empty clause!
     loop {
@@ -892,6 +892,25 @@ fn parse_clause(
     }
 }
 
+fn parse_dpr_witness(
+    parser: &mut Parser,
+    input: &mut Input,
+    binary: bool,
+) -> Result<()> {
+    loop {
+        let literal = if binary {
+            parse_literal_binary(input)?
+        } else {
+            parse_literal_text(input)?
+        };
+        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
+        if literal.is_zero() {
+            return Ok(()) ;
+        }
+        clause_db().push_literal(literal);
+    }
+}
+
 /// Parse a DIMACS formula.
 fn parse_formula(
     parser: &mut Parser,
@@ -905,14 +924,12 @@ fn parse_formula(
             continue;
         }
         let clause = clause_db().open_clause();
-        if parser.is_pr() {
-            let witness = witness_db().open_witness();
-            invariant!(clause == witness);
-        }
         match parse_clause(parser, &mut input, false, false)? {
             ParsedClause::Clause(_) => {
                 clause_db().push_literal(Literal::new(0));
                 if parser.is_pr() {
+                    let witness = witness_db().open_witness();
+                    invariant!(clause == witness);
                     witness_db().push_literal(Literal::new(0));
                 }
                 parser.clause_pivot.push(Literal::NEVER_READ);
@@ -1005,20 +1022,47 @@ pub fn parse_instruction_text(
         if *state == ProofParserState::Start {
             *state = match c {
                 b'd' => {
+                    clause_db().open_clause();
                     input.next();
-                    open_clause(parser, ProofParserState::Deletion);
-                    ProofParserState::Deletion
+                    skip_some_whitespace(input)?;
+                    match parse_clause(parser, input, false, false)? {
+                        ParsedClause::Clause(lit) => {
+                            clause_db().push_literal(Literal::new(0));
+                            add_deletion(parser, clause_ids);
+                        }
+                        ParsedClause::Repetition(lit) => unreachable() ,
+                    }
+                    ProofParserState::Start
                 }
                 c if is_digit_or_dash(c) => {
-                    lemma_head = true;
-                    let clause = open_clause(parser, ProofParserState::Clause);
+                    let clause = clause_db().open_clause();
+                    if parser.is_pr() {
+                        let witness = witness_db().open_witness();
+                        invariant!(clause == witness);
+                    }
+                    match parse_clause(parser, input, parser.is_pr(), false)? {
+                        ParsedClause::Clause(first) => {
+                            parser.clause_pivot.push(first);
+                        }
+                        ParsedClause::Repetition(first) => {
+                            parser.clause_pivot.push(first);
+                            witness_db().push_literal(first);
+                            parse_dpr_witness(parser, input, false)?;
+                        }
+                    }
+                    clause_db().push_literal(Literal::new(0));
+                    clause_ids.add_clause(clause_db().last_clause());
                     parser.proof.push(ProofStep::lemma(clause));
-                    ProofParserState::Clause
+                    if parser.is_pr() {
+                        witness_db().push_literal(Literal::new(0));
+                    }
+                    ProofParserState::Start
                 }
                 _ => return Err(input.error(DRAT)),
             };
             continue;
         }
+        unreachable();
         let literal = parse_literal(input)?;
         if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
             *state = ProofParserState::Witness;
