@@ -961,7 +961,7 @@ fn parse_proof(
         if binary {
             result = parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
         } else {
-            result = parse_instruction_text(parser, clause_ids, &mut input, &mut state)? ;
+            result = parse_instruction(parser, clause_ids, &mut input, &mut state, false)? ;
         }
         instructions -= 1;
     }
@@ -1012,12 +1012,36 @@ enum ParsedInstruction {
     SrClause,
 }
 
+enum ParsedInstructionKind {
+    Introduction,
+    Deletion,
+}
+
+impl ParsedInstructionKind {
+    fn lookahead(input: &mut Input, binary: bool) -> Result<ParsedInstructionKind> {
+        if binary {
+            match input.peek() {
+                Some(0x61) => Ok(ParsedInstructionKind::Introduction),
+                Some(0x64) => Ok(ParsedInstructionKind::Deletion),
+                _ => Err(input.error(DRAT)),
+            }
+        } else {
+            match input.peek() {
+                Some(b'd') => Ok(ParsedInstructionKind::Deletion),
+                Some(c) if is_digit_or_dash(c) => Ok(ParsedInstructionKind::Introduction),
+                _ => Err(input.error(DRAT)),
+            }
+        }
+    }
+}
+
 /// Parse a single proof step
-pub fn parse_instruction_text(
+pub fn parse_instruction(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
     input: &mut Input,
     state: &mut ProofParserState,
+    binary: bool,
 ) -> Result<Option<()>> {
     let mut lemma_head = true;
     let mut first_literal = None;
@@ -1026,49 +1050,46 @@ pub fn parse_instruction_text(
             input.next();
             continue;
         }
-        if *state == ProofParserState::Start {
-            *state = match c {
-                b'd' => {
-                    clause_db().open_clause();
-                    input.next();
+        match ParsedInstructionKind::lookahead(input, binary)? {
+            ParsedInstructionKind::Introduction => {
+                let clause = clause_db().open_clause();
+                if parser.is_pr() {
+                    let witness = witness_db().open_witness();
+                    invariant!(clause == witness);
+                }
+                match parse_clause(parser, input, parser.is_pr(), false)? {
+                    ParsedClause::Clause(first) => {
+                        parser.clause_pivot.push(first);
+                    }
+                    ParsedClause::Repetition(first) => {
+                        parser.clause_pivot.push(first);
+                        witness_db().push_literal(first);
+                        parse_dpr_witness(parser, input, false)?;
+                    }
+                }
+                clause_db().push_literal(Literal::new(0));
+                clause_ids.add_clause(clause_db().last_clause());
+                parser.proof.push(ProofStep::lemma(clause));
+                if parser.is_pr() {
+                    witness_db().push_literal(Literal::new(0));
+                }
+            }
+            ParsedInstructionKind::Deletion => {
+                clause_db().open_clause();
+                input.next();
+                if !binary {
                     skip_some_whitespace(input)?;
-                    match parse_clause(parser, input, false, false)? {
-                        ParsedClause::Clause(lit) => {
-                            clause_db().push_literal(Literal::new(0));
-                            add_deletion(parser, clause_ids);
-                        }
-                        ParsedClause::Repetition(lit) => unreachable() ,
-                    }
-                    ProofParserState::Start
                 }
-                c if is_digit_or_dash(c) => {
-                    let clause = clause_db().open_clause();
-                    if parser.is_pr() {
-                        let witness = witness_db().open_witness();
-                        invariant!(clause == witness);
+                match parse_clause(parser, input, false, false)? {
+                    ParsedClause::Clause(lit) => {
+                        clause_db().push_literal(Literal::new(0));
+                        add_deletion(parser, clause_ids);
                     }
-                    match parse_clause(parser, input, parser.is_pr(), false)? {
-                        ParsedClause::Clause(first) => {
-                            parser.clause_pivot.push(first);
-                        }
-                        ParsedClause::Repetition(first) => {
-                            parser.clause_pivot.push(first);
-                            witness_db().push_literal(first);
-                            parse_dpr_witness(parser, input, false)?;
-                        }
-                    }
-                    clause_db().push_literal(Literal::new(0));
-                    clause_ids.add_clause(clause_db().last_clause());
-                    parser.proof.push(ProofStep::lemma(clause));
-                    if parser.is_pr() {
-                        witness_db().push_literal(Literal::new(0));
-                    }
-                    ProofParserState::Start
+                    ParsedClause::Repetition(lit) => unreachable() ,
                 }
-                _ => return Err(input.error(DRAT)),
-            };
-            continue;
+            }
         }
+        continue;
         unreachable();
         let literal = parse_literal(input)?;
         if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
@@ -1088,7 +1109,6 @@ pub fn parse_instruction_text(
     }
     Ok(None)
 }
-
 
 
 
