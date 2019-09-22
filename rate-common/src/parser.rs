@@ -880,7 +880,7 @@ fn parse_formula(
             continue;
         }
         open_clause(parser, ProofParserState::Clause);
-        match parse_clause_text(parser, &mut input, false, false)? {
+        match parse_clause(parser, &mut input, false, false)? {
             ParsedClause::Clause(_) => {
                 clause_db().push_literal(Literal::new(0));
                 if parser.is_pr() {
