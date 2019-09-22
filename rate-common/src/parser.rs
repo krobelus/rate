@@ -878,7 +878,11 @@ fn parse_formula(
             parse_comment(&mut input)?;
             continue;
         }
-        open_clause(parser, ProofParserState::Clause);
+        let clause = clause_db().open_clause();
+        if parser.is_pr() {
+            let witness = witness_db().open_witness();
+            invariant!(clause == witness);
+        }
         match parse_clause(parser, &mut input, false, false)? {
             ParsedClause::Clause(_) => {
                 clause_db().push_literal(Literal::new(0));
