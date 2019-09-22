@@ -838,7 +838,7 @@ enum ParsedClause {
 // todo: eventually, parse_clause and parse_dpr_witness should be unified.
 // That will require unifying the underlying types of ClauseDatabase and WitnessDatabase...
 
-fn parse_any_clause(
+fn parse_clause_text(
     parser: &mut Parser,
     input: &mut Input,
     repetition: bool,
@@ -875,7 +875,7 @@ fn parse_formula(
             continue;
         }
         open_clause(parser, ProofParserState::Clause);
-        match parse_any_clause(parser, &mut input, false)? {
+        match parse_clause_text(parser, &mut input, false)? {
             ParsedClause::Clause(_) => {
                 clause_db().push_literal(Literal::new(0));
                 if parser.is_pr() {
