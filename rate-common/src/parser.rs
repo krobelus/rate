@@ -909,7 +909,11 @@ fn parse_proof(
     let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
     let mut result : Option<()> = Some(());
     while instructions != 0usize && result.is_some() {
-        result = parse_proof_step(parser, clause_ids, &mut input, binary, &mut state)?;
+        if binary {
+            result = parse_proof_step(parser, clause_ids, &mut input, true, &mut state)?;
+        } else {
+            resutl = parse_instruction_text(parser, clause_ids, &mut input, &mut state)? ;
+        }
         instructions -= 1;
     }
     finish_proof(parser, clause_ids, &mut state);
@@ -951,6 +955,75 @@ pub enum ProofParserState {
     /// Inside a deletion
     Deletion,
 }
+
+enum ParsedInstruction {
+    Clause(Literal),
+    Deletion,
+    PrClause(Literal),
+    SrClause,
+}
+
+/// Parse a single proof step
+pub fn parse_instruction_text(
+    parser: &mut Parser,
+    clause_ids: &mut impl HashTable,
+    input: &mut Input,
+    binary: bool,
+    state: &mut ProofParserState,
+) -> Result<Option<()>> {
+    let literal_parser = if binary {
+        parse_literal_binary
+    } else {
+        parse_literal
+    };
+    let mut lemma_head = true;
+    let mut first_literal = None;
+    while let Some(c) = input.peek() {
+        if !binary && is_space(c) {
+            input.next();
+            continue;
+        }
+        if *state == ProofParserState::Start {
+            *state = match c {
+                b'd' => {
+                    input.next();
+                    open_clause(parser, ProofParserState::Deletion);
+                    ProofParserState::Deletion
+                }
+                c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
+                    if binary {
+                        input.next();
+                    }
+                    lemma_head = true;
+                    let clause = open_clause(parser, ProofParserState::Clause);
+                    parser.proof.push(ProofStep::lemma(clause));
+                    ProofParserState::Clause
+                }
+                _ => return Err(input.error(DRAT)),
+            };
+            continue;
+        }
+        let literal = literal_parser(input)?;
+        if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
+            *state = ProofParserState::Witness;
+        }
+        if *state == ProofParserState::Clause && lemma_head {
+            parser.clause_pivot.push(literal);
+            first_literal = Some(literal);
+            lemma_head = false;
+        }
+        invariant!(*state != ProofParserState::Start);
+        add_literal(parser, clause_ids, *state, literal);
+        if literal.is_zero() {
+            *state = ProofParserState::Start;
+            return Ok(Some(()));
+        }
+    }
+    Ok(None)
+}
+
+
+
 
 /// Parse a single proof step
 pub fn parse_proof_step(
