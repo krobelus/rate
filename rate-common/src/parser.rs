@@ -813,22 +813,22 @@ fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
     clause
 }
 
-/// Parse a DIMACS clause.
-fn parse_clause(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    input: &mut Input,
-) -> Result<()> {
-    open_clause(parser, ProofParserState::Clause);
-    parser.clause_pivot.push(Literal::NEVER_READ);
-    loop {
-        let literal = parse_literal(input)?;
-        add_literal(parser, clause_ids, ProofParserState::Clause, literal);
-        if literal.is_zero() {
-            return Ok(());
-        }
-    }
-}
+// /// Parse a DIMACS clause.
+// fn parse_clause(
+//     parser: &mut Parser,
+//     clause_ids: &mut impl HashTable,
+//     input: &mut Input,
+// ) -> Result<()> {
+//     open_clause(parser, ProofParserState::Clause);
+//     parser.clause_pivot.push(Literal::NEVER_READ);
+//     loop {
+//         let literal = parse_literal(input)?;
+//         add_literal(parser, clause_ids, ProofParserState::Clause, literal);
+//         if literal.is_zero() {
+//             return Ok(());
+//         }
+//     }
+// }
 
 enum ParsedClause {
     Clause(Literal),
@@ -838,16 +838,21 @@ enum ParsedClause {
 // todo: eventually, parse_clause and parse_dpr_witness should be unified.
 // That will require unifying the underlying types of ClauseDatabase and WitnessDatabase...
 
-fn parse_clause_text(
+fn parse_clause(
     parser: &mut Parser,
     input: &mut Input,
     repetition: bool,
+    binary: bool,
 ) -> Result<ParsedClause> {
     let mut first : bool = false ;
     let mut initial : Literal = Literal::NEVER_READ ;   // todo: This should be changed to the -0 literal.
                                                         // When doing that, make sure to take into account the case for the empty clause!
     loop {
-        let literal = parse_literal(input)? ;
+        let literal = if binary {
+            parse_literal_binary(input)?
+        } else {
+            parse_literal(input)?
+        } ;
         parser.maxvar = cmp::max(parser.maxvar, literal.variable());
         if literal.is_zero() {
             return Ok(ParsedClause::Clause(initial)) ;
@@ -875,7 +880,7 @@ fn parse_formula(
             continue;
         }
         open_clause(parser, ProofParserState::Clause);
-        match parse_clause_text(parser, &mut input, false)? {
+        match parse_clause_text(parser, &mut input, false, false)? {
             ParsedClause::Clause(_) => {
                 clause_db().push_literal(Literal::new(0));
                 if parser.is_pr() {
