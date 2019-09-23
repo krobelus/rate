@@ -10,7 +10,7 @@ use rate_common::{
     die,
     output::install_signal_handler,
     parser::{
-        clause_db, is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
+        clause_db, is_binary_drat, open_file_for_writing, parse_instruction, read_compressed_file,
         run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
     },
     write_to_stdout,
@@ -75,15 +75,15 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
     let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
     for _ in 0..line_number {
-        let _result = parse_proof_step(
+        let _result = parse_instruction(
             &mut parser,
             &mut clause_ids,
             &mut proof_input,
-            binary,
             &mut state,
+            binary,
         )
         .expect("Failed to parse proof step");
-        assert!(_result == Some(()));
+        // assert!(_result == Some(()));
     }
     let mut write_formula = || {
         let number_of_active_clauses = (0..clause_db().number_of_clauses())

@@ -708,7 +708,8 @@ pub fn parse_literal(input: &mut Input) -> Result<Literal> {
 
 pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
     let literal = match input.peek() {
-        None => return Err(input.error(EOF)),
+        // None => return Err(input.error(EOF)),
+        None => return Ok(Literal::new(0)) ,        // todo: make this optional
         Some(b'-') => {
             input.next();
             Literal::new(-parse_i32(input)?)
@@ -733,7 +734,7 @@ pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
             break;
         }
     }
-    Ok(Literal::from_raw(result))
+    Ok(if i == 0 { Literal::new(0) } else { Literal::from_raw(result) })       // todo: make this optional
 }
 
 /// Parse a DIMACS comment starting with "c ".
@@ -1074,67 +1075,6 @@ pub fn parse_instruction(
         }
     }
     Ok(())
-}
-
-
-
-/// Parse a single proof step
-pub fn parse_proof_step(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    input: &mut Input,
-    binary: bool,
-    state: &mut ProofParserState,
-) -> Result<Option<()>> {
-    let literal_parser = if binary {
-        parse_literal_binary
-    } else {
-        parse_literal
-    };
-    let mut lemma_head = true;
-    let mut first_literal = None;
-    while let Some(c) = input.peek() {
-        if !binary && is_space(c) {
-            input.next();
-            continue;
-        }
-        if *state == ProofParserState::Start {
-            *state = match c {
-                b'd' => {
-                    input.next();
-                    open_clause(parser, ProofParserState::Deletion);
-                    ProofParserState::Deletion
-                }
-                c if (!binary && is_digit_or_dash(c)) || (binary && c == b'a') => {
-                    if binary {
-                        input.next();
-                    }
-                    lemma_head = true;
-                    let clause = open_clause(parser, ProofParserState::Clause);
-                    parser.proof.push(ProofStep::lemma(clause));
-                    ProofParserState::Clause
-                }
-                _ => return Err(input.error(DRAT)),
-            };
-            continue;
-        }
-        let literal = literal_parser(input)?;
-        if parser.is_pr() && *state == ProofParserState::Clause && first_literal == Some(literal) {
-            *state = ProofParserState::Witness;
-        }
-        if *state == ProofParserState::Clause && lemma_head {
-            parser.clause_pivot.push(literal);
-            first_literal = Some(literal);
-            lemma_head = false;
-        }
-        invariant!(*state != ProofParserState::Start);
-        add_literal(parser, clause_ids, *state, literal);
-        if literal.is_zero() {
-            *state = ProofParserState::Start;
-            return Ok(Some(()));
-        }
-    }
-    Ok(None)
 }
 
 /// Fix-up incomplete proofs.
