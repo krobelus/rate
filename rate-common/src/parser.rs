@@ -958,7 +958,16 @@ fn parse_proof(
         parse_instruction(parser, clause_ids, &mut input, &mut state, binary)?;
         instructions -= 1;
     }
-    finish_proof(parser, clause_ids, &mut state);
+    if !parser.no_terminating_empty_clause {        // todo: check if this is really necessary
+        let clause = clause_db().open_clause();
+        clause_db().push_literal(Literal::new(0));
+        if parser.is_pr() {
+            witness_db().open_witness();
+            witness_db().push_literal(Literal::new(0));
+        }
+        parser.proof.push(ProofStep::lemma(clause));
+        clause_ids.add_clause(clause_db().last_clause());
+    }
     Ok(())
 }
 
@@ -1075,35 +1084,6 @@ pub fn parse_instruction(
         }
     }
     Ok(())
-}
-
-/// Fix-up incomplete proofs.
-///
-/// This adds a zero if the last line was missing one.
-/// Additionally it adds an empty clause as final lemma.
-pub fn finish_proof(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    state: &mut ProofParserState,
-) {
-    // patch missing zero terminators
-    match *state {
-        ProofParserState::Clause | ProofParserState::Deletion | ProofParserState::Witness => {
-            add_literal(parser, clause_ids, *state, Literal::new(0));
-        }
-        ProofParserState::Start => (),
-    };
-    if !parser.no_terminating_empty_clause {
-        // ensure that every proof ends with an empty clause
-        let clause = open_clause(parser, ProofParserState::Clause);
-        parser.proof.push(ProofStep::lemma(clause));
-        add_literal(
-            parser,
-            clause_ids,
-            ProofParserState::Clause,
-            Literal::new(0),
-        );
-    }
 }
 
 /// Print the clause and witness databases, for debugging.
