@@ -571,69 +571,11 @@ fn clause_hash(clause: &[Literal]) -> usize {
     ((1023 * sum + prod) ^ (31 * xor))
 }
 
-/// Check if a character is a decimal digit.
-fn is_digit(value: u8) -> bool {
-    value >= b'0' && value <= b'9'
-}
-
-/// Check if a character is a decimal digit or a dash.
-fn is_digit_or_dash(value: u8) -> bool {
-    is_digit(value) || value == b'-'
-}
-
-// Error messages.
-/// A numeric overflow. This should only happen for user input.
-const OVERFLOW: &str = "overflow while parsing number";
-/// Parser error ("unexpected EOF")
-const EOF: &str = "premature end of file";
-/// Parser error (`expected ...`)
-const NUMBER: &str = "expected number";
-/// Parser error (`expected ...`)
-const SPACE: &str = "expected space";
-/// Parser error (`expected ...`)
-const NUMBER_OR_SPACE: &str = "expected number or space";
-/// Parser error (`expected ...`)
-const NUMBER_OR_MINUS: &str = "expected number or \"-\"";
-/// Parser error (`expected ...`)
-const P_CNF: &str = "expected \"p cnf\"";
-/// Parser error (`expected ...`)
-const DRAT: &str = "expected DRAT instruction";
-/// Parser error (`expected ...`)
-const NEWLINE: &str = "expected newline";
-
-/// Parse a decimal number.
-///
-/// Consumes one or more decimal digits, returning the value of the
-/// resulting number on success. Fails if there is no digit or if the digits do
-/// not end in a whitespace or newline.
-fn parse_u64(input: &mut Input) -> Result<u64> {
-    match input.peek() {
-        None => return Err(input.error(NUMBER)),
-        Some(c) => {
-            if !is_digit(c) {
-                return Err(input.error(NUMBER));
-            }
-        }
-    }
-    let mut value: u64 = 0;
-    while let Some(c) = input.peek() {
-        if !is_digit(c) {
-            break;
-        }
-        input.next();
-        value = value
-            .checked_mul(10)
-            .and_then(|val| val.checked_add(u64::from(c - b'0')))
-            .ok_or_else(|| input.error(OVERFLOW))?;
-    }
-    Ok(value)
-}
-
 /// Just like `parse_u64` but convert the result to an i32.
 fn parse_i32(input: &mut Input) -> Result<i32> {
-    let value = parse_u64(input)?;
+    let value = input.parse_u64()?;
     if value > i32::max_value().try_into().unwrap() {
-        Err(input.error(OVERFLOW))
+        Err(input.error(Input::OVERFLOW))
     } else {
         Ok(value as i32)
     }
@@ -648,8 +590,8 @@ fn parse_i32(input: &mut Input) -> Result<i32> {
 pub fn parse_literal(input: &mut Input) -> Result<Literal> {
     parse_any_space(input);
     match input.peek() {
-        None => Err(input.error(EOF)),
-        Some(c) if is_digit_or_dash(c) => {
+        None => Err(input.error(Input::EOF)),
+        Some(c) if Input::is_digit_or_dash(c) => {
             let sign = if c == b'-' {
                 input.next();
                 -1
@@ -662,7 +604,7 @@ pub fn parse_literal(input: &mut Input) -> Result<Literal> {
             }
             Ok(Literal::new(sign * number))
         }
-        _ => Err(input.error(NUMBER_OR_MINUS)),
+        _ => Err(input.error(Input::NUMBER_OR_MINUS)),
     }
 }
 
@@ -686,7 +628,7 @@ pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     let mut result = 0;
     while let Some(value) = input.next() {
         if (u64::from(value & 0x7f) << (7 * i)) > u32::max_value().into() {
-            return Err(input.error(OVERFLOW));
+            return Err(input.error(Input::OVERFLOW));
         }
         result |= u32::from(value & 0x7f) << (7 * i);
         i += 1;
@@ -709,7 +651,7 @@ fn parse_comment(input: &mut Input) -> Result<()> {
                     return Ok(());
                 }
             }
-            Err(input.error(NEWLINE))
+            Err(input.error(Input::NEWLINE))
         }
         _ => Err(input.error("")),
     }
@@ -718,7 +660,7 @@ fn parse_comment(input: &mut Input) -> Result<()> {
 /// Parse one or more spaces.
 fn parse_some_spaces(input: &mut Input) -> Result<()> {
     if input.peek() != Some(b' ') {
-        return Err(input.error(SPACE));
+        return Err(input.error(Input::SPACE));
     }
     while let Some(b' ') = input.peek() {
         input.next();
@@ -740,7 +682,7 @@ fn parse_any_space(input: &mut Input) {
 fn skip_some_whitespace(input: &mut Input) -> Result<()> {
     if let Some(c) = input.peek() {
         if !is_space(c) {
-            return Err(input.error(DRAT))
+            return Err(input.error(Input::DRAT))
         }
     }
     while let Some(c) = input.peek() {
@@ -769,14 +711,14 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     }
     for &expected in b"p cnf" {
         if input.peek().map_or(true, |c| c != expected) {
-            return Err(input.error(P_CNF));
+            return Err(input.error(Input::P_CNF));
         }
         input.next();
     }
     parse_some_spaces(input)?;
     let maxvar = parse_i32(input)?;
     parse_some_spaces(input)?;
-    let num_clauses = parse_u64(input)?;
+    let num_clauses = input.parse_u64()?;
     skip_any_whitespace(input);
     Ok((maxvar, num_clauses))
 }
@@ -939,7 +881,7 @@ impl ParsedInstructionKind {
                     input.next();
                     Ok(ParsedInstructionKind::Deletion)
                 }
-                _ => Err(input.error(DRAT)),
+                _ => Err(input.error(Input::DRAT)),
             }
         } else {
             match input.peek() {
@@ -948,8 +890,8 @@ impl ParsedInstructionKind {
                     skip_some_whitespace(input)?;
                     Ok(ParsedInstructionKind::Deletion)
                 }
-                Some(c) if is_digit_or_dash(c) => Ok(ParsedInstructionKind::Introduction),
-                _ => Err(input.error(DRAT)),
+                Some(c) if Input::is_digit_or_dash(c) => Ok(ParsedInstructionKind::Introduction),
+                _ => Err(input.error(Input::DRAT)),
             }
         }
     }
