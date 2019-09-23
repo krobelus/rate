@@ -3,6 +3,7 @@
 use crate::{
     clause::{Clause, ProofStep, RedundancyProperty},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
+    input::{Input},
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
     output::{print_key_value, unreachable, Timer},
@@ -13,8 +14,7 @@ use std::{
     convert::TryInto,
     fs::File,
     hash::{Hash, Hasher},
-    io::{Seek, SeekFrom, BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
-    iter::Peekable,
+    io::{Seek, SeekFrom, BufReader, BufWriter, Read, Result, StdinLock},
     panic,
     ptr::NonNull,
     slice,
@@ -676,7 +676,7 @@ pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
         }
         _ => Literal::new(parse_i32(input)?)
     };
-    skip_some_whitespace(input);
+    skip_some_whitespace(input)?;
     Ok(literal)
 }
 
@@ -922,13 +922,6 @@ fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
     false
 }
 
-enum ParsedInstruction {
-    Clause(Literal),
-    Deletion,
-    PrClause(Literal),
-    SrClause,
-}
-
 enum ParsedInstructionKind {
     Introduction,
     Deletion,
@@ -996,11 +989,11 @@ pub fn parse_instruction(
         ParsedInstructionKind::Deletion => {
             clause_db().open_clause();
             match parse_clause(parser, input, false, binary)? {
-                ParsedClause::Clause(lit) => {
+                ParsedClause::Clause(_) => {
                     clause_db().push_literal(Literal::new(0));
                     add_deletion(parser, clause_ids);
                 }
-                ParsedClause::Repetition(lit) => unreachable() ,
+                ParsedClause::Repetition(_) => unreachable() ,
             }
         }
     }
@@ -1125,55 +1118,3 @@ impl HeapSpace for Parser {
     }
 }
 
-/// A peekable iterator for bytes that records line and column information.
-pub struct Input<'a> {
-    /// The source of the input data
-    source: Peekable<Box<dyn Iterator<Item = u8> + 'a>>,
-    /// Whether we are parsing binary or textual data
-    binary: bool,
-    /// The current line number (if not binary)
-    line: usize,
-    /// The current column
-    column: usize,
-}
-
-impl<'a> Input<'a> {
-    /// Create a new `Input` from some source
-    pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
-        Input {
-            source: source.peekable(),
-            binary,
-            line: 1,
-            column: 1,
-        }
-    }
-    /// Look at the next byte without consuming it
-    pub fn peek(&mut self) -> Option<u8> {
-        self.source.peek().cloned()
-    }
-    /// Create an io::Error with the given message and position information.
-    pub fn error(&self, why: &'static str) -> Error {
-        Error::new(
-            ErrorKind::InvalidData,
-            if self.binary {
-                format!("{} at position {}", why, self.column)
-            } else {
-                format!("{} at line {} column {}", why, self.line, self.column)
-            },
-        )
-    }
-}
-
-impl Iterator for Input<'_> {
-    type Item = u8;
-    fn next(&mut self) -> Option<u8> {
-        self.source.next().map(|c| {
-            if !self.binary && c == b'\n' {
-                self.line += 1;
-                self.column = 0;
-            }
-            self.column += 1;
-            c
-        })
-    }
-}

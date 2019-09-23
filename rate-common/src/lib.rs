@@ -11,5 +11,6 @@ pub mod clause;
 pub mod clausedatabase;
 mod features;
 pub mod literal;
+pub mod input;
 pub mod parser;
 pub mod sick;
