@@ -1,4 +1,4 @@
-#!/usr/bin/env -S python3 -m pytest
+#!/usr/bin/env python3 -m pytest
 
 import sys
 import time

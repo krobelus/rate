@@ -953,11 +953,8 @@ fn parse_proof(
     if !binary {
         skip_any_whitespace(&mut input) ;
     }
-    while instructions != 0usize {
+    while instructions != 0usize && input.peek() != None {
         parse_instruction(parser, clause_ids, &mut input, &mut state, binary)?;
-        if input.peek() == None {
-            break;
-        }
         instructions -= 1;
     }
     finish_proof(parser, clause_ids, &mut state);
