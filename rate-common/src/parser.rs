@@ -1022,13 +1022,23 @@ impl ParsedInstructionKind {
     fn lookahead(input: &mut Input, binary: bool) -> Result<ParsedInstructionKind> {
         if binary {
             match input.peek() {
-                Some(0x61) => Ok(ParsedInstructionKind::Introduction),
-                Some(0x64) => Ok(ParsedInstructionKind::Deletion),
+                Some(0x61) => {
+                    input.next();
+                    Ok(ParsedInstructionKind::Introduction)
+                }
+                Some(0x64) => {
+                    input.next();
+                    Ok(ParsedInstructionKind::Deletion)
+                }
                 _ => Err(input.error(DRAT)),
             }
         } else {
             match input.peek() {
-                Some(b'd') => Ok(ParsedInstructionKind::Deletion),
+                Some(b'd') => {
+                    input.next();
+                    skip_some_whitespace(input)?;
+                    Ok(ParsedInstructionKind::Deletion)
+                }
                 Some(c) if is_digit_or_dash(c) => Ok(ParsedInstructionKind::Introduction),
                 _ => Err(input.error(DRAT)),
             }
@@ -1051,14 +1061,14 @@ pub fn parse_instruction(
                 let witness = witness_db().open_witness();
                 invariant!(clause == witness);
             }
-            match parse_clause(parser, input, parser.is_pr(), false)? {
+            match parse_clause(parser, input, parser.is_pr(), binary)? {
                 ParsedClause::Clause(first) => {
                     parser.clause_pivot.push(first);
                 }
                 ParsedClause::Repetition(first) => {
                     parser.clause_pivot.push(first);
                     witness_db().push_literal(first);
-                    parse_dpr_witness(parser, input, false)?;
+                    parse_dpr_witness(parser, input, binary)?;
                 }
             }
             clause_db().push_literal(Literal::new(0));
@@ -1070,11 +1080,7 @@ pub fn parse_instruction(
         }
         ParsedInstructionKind::Deletion => {
             clause_db().open_clause();
-            input.next();
-            if !binary {
-                skip_some_whitespace(input)?;
-            }
-            match parse_clause(parser, input, false, false)? {
+            match parse_clause(parser, input, false, binary)? {
                 ParsedClause::Clause(lit) => {
                     clause_db().push_literal(Literal::new(0));
                     add_deletion(parser, clause_ids);
