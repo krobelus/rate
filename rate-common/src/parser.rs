@@ -786,23 +786,6 @@ fn is_space(c: u8) -> bool {
     [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
 }
 
-// /// Parse a DIMACS clause.
-// fn parse_clause(
-//     parser: &mut Parser,
-//     clause_ids: &mut impl HashTable,
-//     input: &mut Input,
-// ) -> Result<()> {
-//     open_clause(parser, ProofParserState::Clause);
-//     parser.clause_pivot.push(Literal::NEVER_READ);
-//     loop {
-//         let literal = parse_literal(input)?;
-//         add_literal(parser, clause_ids, ProofParserState::Clause, literal);
-//         if literal.is_zero() {
-//             return Ok(());
-//         }
-//     }
-// }
-
 enum ParsedClause {
     Clause(Literal),
     Repetition(Literal),
@@ -896,13 +879,12 @@ fn parse_proof(
     binary: bool,
 ) -> Result<()> {
     parser.proof_start = Clause::new(clause_db().number_of_clauses());
-    let mut state = ProofParserState::Start;
     let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
     if !binary {
         skip_any_whitespace(&mut input) ;
     }
     while instructions != 0usize && input.peek() != None {
-        parse_instruction(parser, clause_ids, &mut input, &mut state, binary)?;
+        parse_instruction(parser, clause_ids, &mut input, binary)?;
         instructions -= 1;
     }
     if !parser.no_terminating_empty_clause {        // todo: check if this is really necessary
@@ -938,19 +920,6 @@ fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
         }
     }
     false
-}
-
-/// The state of our proof parser
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ProofParserState {
-    /// Before the start of an instruction
-    Start,
-    /// Inside a clause/lemma
-    Clause,
-    /// Inside a witness
-    Witness,
-    /// Inside a deletion
-    Deletion,
 }
 
 enum ParsedInstruction {
@@ -998,7 +967,6 @@ pub fn parse_instruction(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
     input: &mut Input,
-    state: &mut ProofParserState,
     binary: bool,
 ) -> Result<()> {
     match ParsedInstructionKind::lookahead(input, binary)? {

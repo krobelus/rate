@@ -11,7 +11,7 @@ use rate_common::{
     output::install_signal_handler,
     parser::{
         clause_db, is_binary_drat, open_file_for_writing, parse_instruction, read_compressed_file,
-        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
+        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser,
     },
     write_to_stdout,
 };
@@ -70,7 +70,6 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         proof_filename,
         &mut clause_ids,
     );
-    let mut state = ProofParserState::Start;
     let mut proof_input = read_compressed_file(&proof_filename, binary);
     let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
     let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
@@ -79,7 +78,6 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
             &mut parser,
             &mut clause_ids,
             &mut proof_input,
-            &mut state,
             binary,
         )
         .expect("Failed to parse proof step");
