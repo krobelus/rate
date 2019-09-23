@@ -533,47 +533,7 @@ pub fn panic_on_error<T>(result: Result<T>) -> T {
     result.unwrap_or_else(|error| die!("{}", error))
 }
 
-/// Add a literal to the clause or witness database.
-///
-/// If the literal is zero, the current clause or witness will be terminated.
-fn add_literal(
-    parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
-    state: ProofParserState,
-    literal: Literal,
-) {
-    parser.maxvar = cmp::max(parser.maxvar, literal.variable());
-    match state {
-        ProofParserState::Clause => {
-            clause_db().push_literal(literal);
-            if parser.is_pr() && literal.is_zero() {
-                witness_db().push_literal(literal);
-            }
-        }
-        ProofParserState::Witness => {
-            invariant!(parser.is_pr());
-            witness_db().push_literal(literal);
-            if literal.is_zero() {
-                clause_db().push_literal(literal);
-            }
-        }
-        ProofParserState::Deletion => {
-            clause_db().push_literal(literal);
-            if literal.is_zero() {
-                add_deletion(parser, clause_ids);
-            }
-        }
-        ProofParserState::Start => unreachable(),
-    }
-    match state {
-        ProofParserState::Clause | ProofParserState::Witness => {
-            if literal.is_zero() {
-                clause_ids.add_clause(clause_db().last_clause());
-            }
-        }
-        _ => (),
-    }
-}
+
 
 /// Add a deletion to the proof.
 ///
