@@ -786,19 +786,6 @@ fn is_space(c: u8) -> bool {
     [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
 }
 
-/// Commence the addition of a new clause to the database.
-///
-/// Must be called before pushing th first literal with
-/// [add_literal()](fn.add_literal.html).
-fn open_clause(parser: &mut Parser, state: ProofParserState) -> Clause {
-    let clause = clause_db().open_clause();
-    if parser.is_pr() && state != ProofParserState::Deletion {
-        let witness = witness_db().open_witness();
-        invariant!(clause == witness);
-    }
-    clause
-}
-
 // /// Parse a DIMACS clause.
 // fn parse_clause(
 //     parser: &mut Parser,
