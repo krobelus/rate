@@ -147,6 +147,14 @@ impl<'a> Input<'a> {
         Ok(())
     }
 
+    pub fn skip_up_to(&mut self, c: u8) {
+        while let Some(x) = input.next() {
+            if x == c {
+                break;
+            }
+        }
+    }
+
     // Error messages.
     /// A numeric overflow. This should only happen for user input.
     pub const OVERFLOW: &'static str = "overflow while parsing number";

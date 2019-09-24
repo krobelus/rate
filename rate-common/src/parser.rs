@@ -618,7 +618,7 @@ fn parse_comment(input: &mut Input) -> Result<()> {
 /// Parse a DIMACS header.
 fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     while Some(b'c') == input.peek() {
-        parse_comment(input)?
+        input.skip_up_to(b'\n');
     }
     for &expected in b"p cnf" {
         if input.peek().map_or(true, |c| c != expected) {
@@ -699,7 +699,7 @@ fn parse_formula(
     parse_formula_header(&mut input)?;
     while let Some(c) = input.peek() {
         if c == b'c' {
-            parse_comment(&mut input)?;
+            input.skip_up_to(b'\n');
             continue;
         }
         let clause = clause_db().open_clause();
