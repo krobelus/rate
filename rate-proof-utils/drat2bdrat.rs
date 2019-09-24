@@ -59,6 +59,7 @@ fn main() -> Result<()> {
             b'a'
         }])?;
         loop {
+            input.skip_any_whitespace();
             let literal = parse_literal_text(&mut input)?;
             write_number(&mut output, literal.decode())?;
             if literal.is_zero() {
