@@ -93,9 +93,9 @@ impl<'a> Input<'a> {
     }
 
     /// Parses a number in variable-bit encoding.
-    /// Fails if the parsed number does not lie within the range
-    /// [-i32::MAX , i32::MAX], or if the number starts with 0x80.
-    pub fn parse_vbe32(&mut self) -> Result<i32> {
+    /// Fails if the parsed number starts with 0x80,
+    /// or if the number does not lie within the range [0 , u32::MAX].
+    pub fn parse_vbe32(&mut self) -> Result<u32> {
         if self.peek() == Some(0x80) {
             Err(self.error(Self::OVERFLOW))
         } else {
@@ -111,11 +111,10 @@ impl<'a> Input<'a> {
                     break;
                 }
             }
-            if abs > 2 * (i32::max_value() as u64) + 1 || abs == 1 {
+            if abs > i32::max_value() as u64 {
                 Err(self.error(Input::OVERFLOW))
             } else {
-                let int = (abs >> 1) as i32;
-                if (abs & 1u64) == 0 { Ok(int) } else { Ok(-int) }
+                Ok(abs as u32)
             }
         }
     }
