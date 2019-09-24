@@ -49,7 +49,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
     .arg(Arg::with_name("PROOF").required(true).help("proof file in RUP/DRAT/DPR/DSR format"))
 
-    .arg(Arg::with_name("FORMAT").takes_value(true).long("proof-format")
+    .arg(Arg::with_name("FORMAT").takes_value(true).long("proof-format").default_value("drat")
         .help("Sets the proof format: rup, drat (default), dpr, dsr"))
 
     .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
@@ -133,6 +133,23 @@ fn run_frontend() -> i32 {
     }
 }
 
+#[derive(Debug)]
+pub enum ProofSystem {
+    Rup,
+    Drat,
+    Dpr
+}
+impl ProofSystem {
+    fn from_string(s: Option<&str>) -> Option<ProofSystem> {
+        match s {
+            Some("rup") => Some(ProofSystem::Rup),
+            Some("drat") => Some(ProofSystem::Drat),
+            Some("dpr") => Some(ProofSystem::Dpr),
+            _ => None
+        }
+    }
+}
+
 /// Parsed arguments. See `rate --help`.
 #[derive(Debug)]
 pub struct Flags {
@@ -147,6 +164,7 @@ pub struct Flags {
     pub formula_filename: String,
     /// Input proof
     pub proof_filename: String,
+    pub proof_format: ProofSystem,
     /// Present when we want to write core lemmas
     pub lemmas_filename: Option<String>,
     /// Present when we want to write an LRAT certificate
@@ -162,6 +180,7 @@ impl Flags {
     pub fn new(matches: ArgMatches) -> Flags {
         let drat_trim = matches.is_present("DRAT_TRIM");
         let rupee = matches.is_present("RUPEE");
+        let proof_format = ProofSystem::from_string(matches.value_of("FORMAT")).unwrap_or_else(|| die!("unrecognized proof format"));
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let noncore_rat_candidates = matches.is_present("NONCORE_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
@@ -224,6 +243,7 @@ impl Flags {
             },
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
             proof_filename,
+            proof_format,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
             lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
             grat_filename: matches.value_of("GRAT_FILE").map(String::from),

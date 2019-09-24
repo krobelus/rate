@@ -323,7 +323,6 @@ pub fn parse_files(
     let mut parser = Parser::new();
     parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = FixedSizeHashTable::new();
-    // let mut clause_ids = DynamicHashTable::new();
     run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
     if memory_usage_breakdown {
         print_memory_usage(&parser, &clause_ids);
