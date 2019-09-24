@@ -16,7 +16,7 @@ use rate_common::{
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{install_signal_handler, unreachable},
     output::{print_key_value, print_solution, Timer},
-    parser::{clause_db, open_file_for_writing, witness_db, Parser},
+    parser::{clause_db, open_file_for_writing, witness_db, Parser, ProofSyntax},
     parser::{free_clause_database, parse_files},
     requires,
     sick::{Sick, Witness},
@@ -95,6 +95,7 @@ fn run_frontend() -> i32 {
     let parser = parse_files(
         &flags.formula_filename,
         &flags.proof_filename,
+        flags.proof_format,
         flags.no_terminating_empty_clause,
         flags.memory_usage_breakdown,
     );
@@ -133,23 +134,6 @@ fn run_frontend() -> i32 {
     }
 }
 
-#[derive(Debug)]
-pub enum ProofSystem {
-    Rup,
-    Drat,
-    Dpr
-}
-impl ProofSystem {
-    fn from_string(s: Option<&str>) -> Option<ProofSystem> {
-        match s {
-            Some("rup") => Some(ProofSystem::Rup),
-            Some("drat") => Some(ProofSystem::Drat),
-            Some("dpr") => Some(ProofSystem::Dpr),
-            _ => None
-        }
-    }
-}
-
 /// Parsed arguments. See `rate --help`.
 #[derive(Debug)]
 pub struct Flags {
@@ -164,7 +148,7 @@ pub struct Flags {
     pub formula_filename: String,
     /// Input proof
     pub proof_filename: String,
-    pub proof_format: ProofSystem,
+    pub proof_format: ProofSyntax,
     /// Present when we want to write core lemmas
     pub lemmas_filename: Option<String>,
     /// Present when we want to write an LRAT certificate
@@ -180,7 +164,9 @@ impl Flags {
     pub fn new(matches: ArgMatches) -> Flags {
         let drat_trim = matches.is_present("DRAT_TRIM");
         let rupee = matches.is_present("RUPEE");
-        let proof_format = ProofSystem::from_string(matches.value_of("FORMAT")).unwrap_or_else(|| die!("unrecognized proof format"));
+        let proof_format: ProofSyntax = matches.value_of("FORMAT")
+            .and_then(|s| ProofSyntax::parse(s))
+            .unwrap_or_else(|| die!("unrecognized proof format"));
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let noncore_rat_candidates = matches.is_present("NONCORE_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");

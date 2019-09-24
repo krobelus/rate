@@ -20,7 +20,7 @@ use std::{
     slice,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum ProofSyntax {
     Dimacs,
     Rup,
@@ -31,19 +31,28 @@ pub enum ProofSyntax {
 
 #[allow(dead_code)]
 impl ProofSyntax {
-    fn has_header(self) -> bool {
+    pub fn parse(s: &str) -> Option<ProofSyntax> {
+        match s {
+            "rup" => Some(ProofSyntax::Rup),
+            "drat" => Some(ProofSyntax::Drat),
+            "dpr" => Some(ProofSyntax::Dpr),
+            "dsr" => Some(ProofSyntax::Dsr),
+            _ => None,
+        }
+    }
+    pub fn has_header(self) -> bool {
         self == ProofSyntax::Dimacs
     }
-    fn has_deletion(self) -> bool {
+    pub fn has_deletion(self) -> bool {
         match self {
             ProofSyntax::Dimacs | ProofSyntax::Rup => false,
             _ => true,
         }
     }
-    fn has_repetition_witness(self) -> bool {
+    pub fn has_repetition_witness(self) -> bool {
         self == ProofSyntax::Dpr
     }
-    fn has_post_witness(self) -> bool {
+    pub fn has_pair_witness(self) -> bool {
         self == ProofSyntax::Dsr
     }
 }
@@ -317,6 +326,7 @@ impl PartialEq for ClauseHashEq {
 pub fn parse_files(
     formula_file: &str,
     proof_file: &str,
+    proof_format: ProofSyntax,
     no_terminating_empty_clause: bool,
     memory_usage_breakdown: bool,
 ) -> Parser {
