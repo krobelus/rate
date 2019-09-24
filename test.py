@@ -241,7 +241,13 @@ def double_check(drat_checker,
         else:
             args += [proof]
         # NOTE file extension .pr is disallowed, use dpr TODO adjust docs
-        args += [f'--proof-format={os.path.splitext(proof)[1][1:]}']
+        def proof_format(filename):
+            basename, extension = os.path.splitext(filename)
+            extension = extension[1:] # .
+            if extension not in ('rup', 'drat', 'dpr', 'dsr'):
+                extension = os.path.splitext(basename)[1][1:]
+            return extension
+        args += [f'--proof-format={proof_format(proof)}']
         if not pr:
             if lrat:
                 args += ['-L', f'{name}.lrat']
@@ -261,14 +267,14 @@ def double_check(drat_checker,
                          )}):
                 assert 'lrat-check' in lrat_checker[0]
                 assert lrat_checker_accepts(
-                    lrat_checker + [args[0], args[3], 'nil', 't'], name)
+                    lrat_checker + [args[0], args[len(args) - 1 - 2 * (sick + grat)], 'nil', 't'], name)
             if grat and (grat_checker is not None and (
                 ('rate' not in drat_checker[0]) or skip_unit_deletions or
                 (name not in {f'benchmarks/rupee/{x}' for x in (
                     'tricky-2',  # looks like gratchk cannot delete units
                 )})
             )):
-                assert gratchk_accepts(grat_checker + [args[0], args[5]], name)
+                assert gratchk_accepts(grat_checker + [args[0], args[len(args) - 1 - 2 * sick]], name)
         elif sick:
             assert sick_checker_accepts(
                 ['target/release/sick-check'] + args[:2] + [args[-1]], name)
