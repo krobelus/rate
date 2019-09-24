@@ -101,7 +101,7 @@ impl<'a> Input<'a> {
         } else {
             let mut abs: u64 = 0;
             let mut i: u64 = 0;
-            while let Some(value) = self.peek() {
+            while let Some(value) = self.next() {
                 if i > 4 {
                     return Err(self.error(Input::OVERFLOW));
                 }

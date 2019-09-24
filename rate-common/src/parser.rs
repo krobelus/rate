@@ -585,19 +585,16 @@ pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
 
 /// Parse a literal from a compressed proof.
 pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
-    let mut i = 0;
-    let mut result = 0;
-    while let Some(value) = input.next() {
-        if (u64::from(value & 0x7f) << (7 * i)) > u32::max_value().into() {
-            return Err(input.error(Input::OVERFLOW));
-        }
-        result |= u32::from(value & 0x7f) << (7 * i);
-        i += 1;
-        if (value & 0x80) == 0 {
-            break;
+    if input.peek() == None {           // todo: make this optional
+        Ok(Literal::new(0))
+    } else {
+        let vbe = input.parse_vbe32()?;
+        if vbe == 1 {
+            Err(input.error(Input::OVERFLOW))
+        } else {
+            Ok(Literal::from_raw(vbe))
         }
     }
-    Ok(if i == 0 { Literal::new(0) } else { Literal::from_raw(result) })       // todo: make this optional
 }
 
 /// Parse a DIMACS comment starting with "c ".
