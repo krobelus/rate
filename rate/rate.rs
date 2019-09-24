@@ -47,7 +47,10 @@ fn run_frontend() -> i32 {
     .about(env!("CARGO_PKG_DESCRIPTION"))
     .after_help("Input files may be compressed - supported file extensions are: zst, gz, bz2, xz and lz4.")
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
-    .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT/DPR format"))
+    .arg(Arg::with_name("PROOF").required(true).help("proof file in RUP/DRAT/DPR/DSR format"))
+
+    .arg(Arg::with_name("FORMAT").takes_value(true).long("proof-format")
+        .help("Sets the proof format: rup, drat (default), dpr, dsr"))
 
     .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
          .help("Ignore deletion of unit clauses."))
