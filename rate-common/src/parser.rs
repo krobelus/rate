@@ -619,17 +619,6 @@ fn parse_comment(input: &mut Input) -> Result<()> {
     }
 }
 
-/// Parse one or more spaces.
-fn parse_some_spaces(input: &mut Input) -> Result<()> {
-    if input.peek() != Some(b' ') {
-        return Err(input.error(Input::SPACE));
-    }
-    while let Some(b' ') = input.peek() {
-        input.next();
-    }
-    Ok(())
-}
-
 /// Skips whitespace, and returns and error if no space nor EOR was parsed.
 fn skip_some_whitespace(input: &mut Input) -> Result<()> {
     if let Some(c) = input.peek() {
@@ -667,9 +656,9 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
         }
         input.next();
     }
-    parse_some_spaces(input)?;
+    skip_some_whitespace(input)?;
     let maxvar = input.parse_i32()?;
-    parse_some_spaces(input)?;
+    skip_some_whitespace(input)?;
     let num_clauses = input.parse_u64()?;
     skip_any_whitespace(input);
     Ok((maxvar, num_clauses))
