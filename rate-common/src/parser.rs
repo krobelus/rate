@@ -11,7 +11,6 @@ use crate::{
 use std::{
     cmp,
     collections::HashMap,
-    convert::TryInto,
     fs::File,
     hash::{Hash, Hasher},
     io::{Seek, SeekFrom, BufReader, BufWriter, Read, Result, StdinLock},
@@ -571,16 +570,6 @@ fn clause_hash(clause: &[Literal]) -> usize {
     ((1023 * sum + prod) ^ (31 * xor))
 }
 
-/// Just like `parse_u64` but convert the result to an i32.
-fn parse_i32(input: &mut Input) -> Result<i32> {
-    let value = input.parse_u64()?;
-    if value > i32::max_value().try_into().unwrap() {
-        Err(input.error(Input::OVERFLOW))
-    } else {
-        Ok(value as i32)
-    }
-}
-
 /// Parse a [Literal](../literal/struct.Literal.html).
 ///
 /// Consumes zero or more whitespace characters followd
@@ -598,7 +587,7 @@ pub fn parse_literal(input: &mut Input) -> Result<Literal> {
             } else {
                 1
             };
-            let number = parse_i32(input)?;
+            let number = input.parse_i32()?;
             if number == 0 {
                 skip_any_whitespace(input);
             }
@@ -614,9 +603,9 @@ pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
         None => return Ok(Literal::new(0)) ,        // todo: make this optional
         Some(b'-') => {
             input.next();
-            Literal::new(-parse_i32(input)?)
+            Literal::new(-input.parse_i32()?)
         }
-        _ => Literal::new(parse_i32(input)?)
+        _ => Literal::new(input.parse_i32()?)
     };
     skip_some_whitespace(input)?;
     Ok(literal)
@@ -716,7 +705,7 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
         input.next();
     }
     parse_some_spaces(input)?;
-    let maxvar = parse_i32(input)?;
+    let maxvar = input.parse_i32()?;
     parse_some_spaces(input)?;
     let num_clauses = input.parse_u64()?;
     skip_any_whitespace(input);

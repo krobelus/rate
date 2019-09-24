@@ -1,6 +1,7 @@
 //! File reader
 
 use std::{
+    convert::TryInto,
     io::{Error, ErrorKind, Result},
     iter::Peekable,
 };
@@ -70,6 +71,17 @@ impl<'a> Input<'a> {
         }
         Ok(value)
     }
+
+    /// Just like `parse_u64` but convert the result to an i32.
+    pub fn parse_i32(&mut self) -> Result<i32> {
+        let value = self.parse_u64()?;
+        if value > i32::max_value().try_into().unwrap() {
+            Err(self.error(Input::OVERFLOW))
+        } else {
+            Ok(value as i32)
+        }
+    }
+
     // Error messages.
     /// A numeric overflow. This should only happen for user input.
     pub const OVERFLOW: &'static str = "overflow while parsing number";
