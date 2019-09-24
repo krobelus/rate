@@ -94,34 +94,6 @@ impl<'a> Input<'a> {
 
     // todo: unify the two functions, possibly with generics. What's the least general unifier of i64 and i32?
 
-    /// Parse a decimal number.
-    ///
-    /// Consumes one or more decimal digits, returning the value of the
-    /// resulting number on success. Fails if there is no digit or if the digits do
-    /// not end in a whitespace or newline.
-    pub fn parse_u64(&mut self) -> Result<u64> {
-        match self.peek() {
-            None => return Err(self.error(Self::NUMBER)),
-            Some(c) => {
-                if !Self::is_digit(c) {
-                    return Err(self.error(Self::NUMBER));
-                }
-            }
-        }
-        let mut value: u64 = 0;
-        while let Some(c) = self.peek() {
-            if !Self::is_digit(c) {
-                break;
-            }
-            self.next();
-            value = value
-                .checked_mul(10)
-                .and_then(|val| val.checked_add(u64::from(c - b'0')))
-                .ok_or_else(|| self.error(Self::OVERFLOW))?;
-        }
-        Ok(value)
-    }
-
     /// Parse zero or more spaces or linebreaks.
     pub fn skip_any_whitespace(&mut self) {
         while let Some(c) = self.peek() {
