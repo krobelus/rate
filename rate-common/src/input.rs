@@ -92,6 +92,34 @@ impl<'a> Input<'a> {
         if sign { Ok(-value) } else { Ok(value) }
     }
 
+    /// Parses a number in variable-bit encoding.
+    /// Fails if the parsed number does not lie within the range
+    /// [-i32::MAX , i32::MAX], or if the number starts with 0x80.
+    pub fn parse_vbe32(&mut self) -> Result<i32> {
+        if self.peek() == Some(0x80) {
+            Err(self.error(Self::OVERFLOW))
+        } else {
+            let mut abs: u64 = 0;
+            let mut i: u64 = 0;
+            while let Some(value) = self.peek() {
+                if i > 4 {
+                    return Err(self.error(Input::OVERFLOW));
+                }
+                abs |= u64::from(value & 0x7F) << (7 * i);
+                i += 1;
+                if (value & 0x80) == 0x00 {
+                    break;
+                }
+            }
+            if abs > 2 * (i32::max_value() as u64) + 1 || abs == 1 {
+                Err(self.error(Input::OVERFLOW))
+            } else {
+                let int = (abs >> 1) as i32;
+                if (abs & 1u64) == 0 { Ok(int) } else { Ok(-int) }
+            }
+        }
+    }
+
     // todo: unify the two functions, possibly with generics. What's the least general unifier of i64 and i32?
 
     /// Parse zero or more spaces or linebreaks.
