@@ -635,16 +635,6 @@ fn skip_some_whitespace(input: &mut Input) -> Result<()> {
     Ok(())
 }
 
-/// Parse zero or more spaces or linebreaks.
-fn skip_any_whitespace(input: &mut Input) {
-    while let Some(c) = input.peek() {
-        if !is_space(c) {
-            break;
-        }
-        input.next();
-    }
-}
-
 /// Parse a DIMACS header.
 fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     while Some(b'c') == input.peek() {
@@ -660,7 +650,7 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     let maxvar = input.parse_i32()?;
     skip_some_whitespace(input)?;
     let num_clauses = input.parse_u64()?;
-    skip_any_whitespace(input);
+    skip_some_whitespace(input)?;
     Ok((maxvar, num_clauses))
 }
 
@@ -764,7 +754,7 @@ fn parse_proof(
     parser.proof_start = Clause::new(clause_db().number_of_clauses());
     let mut instructions : usize = parser.max_proof_steps.unwrap_or(std::usize::MAX);       // usize::MAX will hopefully be enough here until we're all retired
     if !binary {
-        skip_any_whitespace(&mut input) ;
+        input.skip_any_whitespace();
     }
     while instructions != 0usize && input.peek() != None {
         parse_instruction(parser, clause_ids, &mut input, binary)?;

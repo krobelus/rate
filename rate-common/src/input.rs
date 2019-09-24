@@ -82,6 +82,16 @@ impl<'a> Input<'a> {
         }
     }
 
+    /// Parse zero or more spaces or linebreaks.
+    pub fn skip_any_whitespace(&mut self) {
+        while let Some(c) = self.peek() {
+            if !Self::is_space(c) {
+                break;
+            }
+            self.next();
+        }
+    }
+
     // Error messages.
     /// A numeric overflow. This should only happen for user input.
     pub const OVERFLOW: &'static str = "overflow while parsing number";
@@ -110,6 +120,11 @@ impl<'a> Input<'a> {
     /// Check if a character is a decimal digit or a dash.
     pub fn is_digit_or_dash(value: u8) -> bool {
         Self::is_digit(value) || value == b'-'
+    }
+
+    /// Returns true if the character is one of the whitespace characters we allow.
+    pub fn is_space(c: u8) -> bool {
+        [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
     }
 }
 
