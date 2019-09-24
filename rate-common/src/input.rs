@@ -47,6 +47,57 @@ impl<'a> Input<'a> {
     /// Parse a decimal number.
     ///
     /// Consumes one or more decimal digits, returning the value of the
+    /// resulting number on success. Fails if there is no digit, or if the
+    /// number does not lie within the range [-i64::MAX , i64::MAX].
+    /// Otherwise, it is guaranteed to succeed.
+    pub fn parse_dec64(&mut self) -> Result<i64> {
+        let sign : bool = self.peek() == Some(b'-');
+        if sign {
+            self.next();
+        }
+        let mut value: i64 = 0;
+        while let Some(c) = self.peek() {
+            if !Self::is_digit(c) {
+                break;
+            }
+            // Does not unnecessarily overflow because of the order of operations
+            value = value.checked_mul(10)
+                .and_then(|val| val.checked_add(i64::from(c - b'0')))
+                .ok_or_else(|| self.error(Self::OVERFLOW))?;
+            self.next();
+        }
+        // Does not unnecessary overflow because the positive range is smaller than the negative range
+        if sign { Ok(-value) } else { Ok(value) }
+    }
+
+    /// Like parse_dec64, but returns an i32.
+    /// Fails if the parsed number does not lie within the range
+    /// [-i32::MAX , i32::MAX].
+    pub fn parse_dec32(&mut self) -> Result<i32> {
+        let sign : bool = self.peek() == Some(b'-');
+        if sign {
+            self.next();
+        }
+        let mut value: i32 = 0;
+        while let Some(c) = self.peek() {
+            if !Self::is_digit(c) {
+                break;
+            }
+            // Does not unnecessarily overflow because of the order of operations
+            value = value.checked_mul(10)
+                .and_then(|val| val.checked_add(i32::from(c - b'0')))
+                .ok_or_else(|| self.error(Self::OVERFLOW))?;
+            self.next();
+        }
+        // Does not unnecessary overflow because the positive range is smaller than the negative range
+        if sign { Ok(-value) } else { Ok(value) }
+    }
+
+    // todo: unify the two functions, possibly with generics. What's the least general unifier of i64 and i32?
+
+    /// Parse a decimal number.
+    ///
+    /// Consumes one or more decimal digits, returning the value of the
     /// resulting number on success. Fails if there is no digit or if the digits do
     /// not end in a whitespace or newline.
     pub fn parse_u64(&mut self) -> Result<u64> {

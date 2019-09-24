@@ -11,6 +11,7 @@ use crate::{
 use std::{
     cmp,
     collections::HashMap,
+    convert::TryInto,
     fs::File,
     hash::{Hash, Hasher},
     io::{Seek, SeekFrom, BufReader, BufWriter, Read, Result, StdinLock},
@@ -633,7 +634,8 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     input.skip_some_whitespace()?;
     let maxvar = input.parse_i32()?;
     input.skip_some_whitespace()?;
-    let num_clauses = input.parse_u64()?;
+    let num_clauses: u64 = input.parse_dec64()?
+        .try_into().map_err(|_| input.error(Input::P_CNF))?;
     input.skip_some_whitespace()?;
     Ok((maxvar, num_clauses))
 }
