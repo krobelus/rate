@@ -597,24 +597,6 @@ pub fn parse_literal_binary(input: &mut Input) -> Result<Literal> {
     }
 }
 
-/// Parse a DIMACS comment starting with "c ".
-///
-/// Consumes a leading "c" and any characters until (including) the next newline.
-fn parse_comment(input: &mut Input) -> Result<()> {
-    match input.peek() {
-        Some(b'c') => {
-            input.next();
-            while let Some(c) = input.next() {
-                if c == b'\n' {
-                    return Ok(());
-                }
-            }
-            Err(input.error(Input::NEWLINE))
-        }
-        _ => Err(input.error("")),
-    }
-}
-
 /// Parse a DIMACS header.
 fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     while Some(b'c') == input.peek() {

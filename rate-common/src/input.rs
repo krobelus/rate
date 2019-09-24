@@ -148,7 +148,7 @@ impl<'a> Input<'a> {
     }
 
     pub fn skip_up_to(&mut self, c: u8) {
-        while let Some(x) = input.next() {
+        while let Some(x) = self.next() {
             if x == c {
                 break;
             }
