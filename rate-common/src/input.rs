@@ -76,7 +76,7 @@ impl<'a> Input<'a> {
     pub fn parse_i32(&mut self) -> Result<i32> {
         let value = self.parse_u64()?;
         if value > i32::max_value().try_into().unwrap() {
-            Err(self.error(Input::OVERFLOW))
+            Err(self.error(Self::OVERFLOW))
         } else {
             Ok(value as i32)
         }
@@ -90,6 +90,22 @@ impl<'a> Input<'a> {
             }
             self.next();
         }
+    }
+
+    /// Skips whitespace, and returns and error if no space nor EOR was parsed.
+    pub fn skip_some_whitespace(&mut self) -> Result<()> {
+        if let Some(c) = self.peek() {
+            if !Self::is_space(c) {
+                return Err(self.error(Self::DRAT))
+            }
+        }
+        while let Some(c) = self.peek() {
+            if !Self::is_space(c) {
+                break;
+            }
+            self.next();
+        }
+        Ok(())
     }
 
     // Error messages.

@@ -580,7 +580,7 @@ pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
         }
         _ => Literal::new(input.parse_i32()?)
     };
-    skip_some_whitespace(input)?;
+    input.skip_some_whitespace()?;
     Ok(literal)
 }
 
@@ -619,22 +619,6 @@ fn parse_comment(input: &mut Input) -> Result<()> {
     }
 }
 
-/// Skips whitespace, and returns and error if no space nor EOR was parsed.
-fn skip_some_whitespace(input: &mut Input) -> Result<()> {
-    if let Some(c) = input.peek() {
-        if !is_space(c) {
-            return Err(input.error(Input::DRAT))
-        }
-    }
-    while let Some(c) = input.peek() {
-        if !is_space(c) {
-            break;
-        }
-        input.next();
-    }
-    Ok(())
-}
-
 /// Parse a DIMACS header.
 fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
     while Some(b'c') == input.peek() {
@@ -646,17 +630,12 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
         }
         input.next();
     }
-    skip_some_whitespace(input)?;
+    input.skip_some_whitespace()?;
     let maxvar = input.parse_i32()?;
-    skip_some_whitespace(input)?;
+    input.skip_some_whitespace()?;
     let num_clauses = input.parse_u64()?;
-    skip_some_whitespace(input)?;
+    input.skip_some_whitespace()?;
     Ok((maxvar, num_clauses))
-}
-
-/// Returns true if the character is one of the whitespace characters we allow.
-fn is_space(c: u8) -> bool {
-    [b' ', b'\n', b'\r'].iter().any(|&s| s == c)
 }
 
 enum ParsedClause {
@@ -818,7 +797,7 @@ impl ParsedInstructionKind {
             match input.peek() {
                 Some(b'd') => {
                     input.next();
-                    skip_some_whitespace(input)?;
+                    input.skip_some_whitespace()?;
                     Ok(ParsedInstructionKind::Deletion)
                 }
                 Some(c) if Input::is_digit_or_dash(c) => Ok(ParsedInstructionKind::Introduction),
