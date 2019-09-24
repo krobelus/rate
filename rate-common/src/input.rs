@@ -1,7 +1,6 @@
 //! File reader
 
 use std::{
-    convert::TryInto,
     io::{Error, ErrorKind, Result},
     iter::Peekable,
 };
@@ -121,16 +120,6 @@ impl<'a> Input<'a> {
                 .ok_or_else(|| self.error(Self::OVERFLOW))?;
         }
         Ok(value)
-    }
-
-    /// Just like `parse_u64` but convert the result to an i32.
-    pub fn parse_i32(&mut self) -> Result<i32> {
-        let value = self.parse_u64()?;
-        if value > i32::max_value().try_into().unwrap() {
-            Err(self.error(Self::OVERFLOW))
-        } else {
-            Ok(value as i32)
-        }
     }
 
     /// Parse zero or more spaces or linebreaks.
