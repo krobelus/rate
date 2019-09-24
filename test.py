@@ -236,6 +236,8 @@ def double_check(drat_checker,
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = os.path.exists(f'{name}.dpr')
         args = [cnf]
+        # NOTE file extension .pr is disallowed, use dpr TODO adjust docs
+        args += [f'--proof-format={os.path.splitext(proof)[1][1:]}']
         if pr:
             args += [f'{name}.dpr']
         else:
