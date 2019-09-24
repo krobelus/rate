@@ -240,6 +240,9 @@ def double_check(drat_checker,
             args += [f'{name}.dpr']
         else:
             args += [proof]
+        # NOTE file extension .pr is disallowed, use dpr TODO adjust docs
+        args += [f'--proof-format={os.path.splitext(proof)[1][1:]}']
+        if not pr:
             if lrat:
                 args += ['-L', f'{name}.lrat']
             if grat:
