@@ -572,17 +572,15 @@ fn clause_hash(clause: &[Literal]) -> usize {
 }
 
 pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
-    let literal = match input.peek() {
+    match input.peek() {
         // None => return Err(input.error(EOF)),
-        None => return Ok(Literal::new(0)) ,        // todo: make this optional
-        Some(b'-') => {
-            input.next();
-            Literal::new(-input.parse_i32()?)
+        None => Ok(Literal::new(0)) ,        // todo: make this optional
+        Some(_) => {
+            let literal = Literal::new(input.parse_dec32()?);
+            input.skip_some_whitespace()?;
+            Ok(literal)
         }
-        _ => Literal::new(input.parse_i32()?)
-    };
-    input.skip_some_whitespace()?;
-    Ok(literal)
+    }
 }
 
 /// Parse a literal from a compressed proof.
@@ -632,7 +630,7 @@ fn parse_formula_header(input: &mut Input) -> Result<(i32, u64)> {
         input.next();
     }
     input.skip_some_whitespace()?;
-    let maxvar = input.parse_i32()?;
+    let maxvar = input.parse_dec32()?;
     input.skip_some_whitespace()?;
     let num_clauses: u64 = input.parse_dec64()?
         .try_into().map_err(|_| input.error(Input::P_CNF))?;
