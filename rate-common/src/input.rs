@@ -104,7 +104,7 @@ impl<'a> Input<'a> {
         }
     }
 
-    /// Skips whitespace, and returns and error if no space nor EOR was parsed.
+    /// Skips whitespace, and returns and error if no space nor EOF was parsed.
     pub fn skip_some_whitespace(&mut self) -> Result<()> {
         if let Some(c) = self.peek() {
             if !Self::is_space(c) {
