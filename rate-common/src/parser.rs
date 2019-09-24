@@ -570,33 +570,6 @@ fn clause_hash(clause: &[Literal]) -> usize {
     ((1023 * sum + prod) ^ (31 * xor))
 }
 
-/// Parse a [Literal](../literal/struct.Literal.html).
-///
-/// Consumes zero or more whitespace characters followd
-/// by an optional "-", a number of at least one decimal digit,
-/// trailed by whitespace. If the number is zero, consumes all whitespace
-/// until the next newline.
-pub fn parse_literal(input: &mut Input) -> Result<Literal> {
-    parse_any_space(input);
-    match input.peek() {
-        None => Err(input.error(Input::EOF)),
-        Some(c) if Input::is_digit_or_dash(c) => {
-            let sign = if c == b'-' {
-                input.next();
-                -1
-            } else {
-                1
-            };
-            let number = input.parse_i32()?;
-            if number == 0 {
-                skip_any_whitespace(input);
-            }
-            Ok(Literal::new(sign * number))
-        }
-        _ => Err(input.error(Input::NUMBER_OR_MINUS)),
-    }
-}
-
 pub fn parse_literal_text(input: &mut Input) -> Result<Literal> {
     let literal = match input.peek() {
         // None => return Err(input.error(EOF)),
@@ -655,16 +628,6 @@ fn parse_some_spaces(input: &mut Input) -> Result<()> {
         input.next();
     }
     Ok(())
-}
-
-/// Parse zero or more spaces.
-fn parse_any_space(input: &mut Input) {
-    while let Some(c) = input.peek() {
-        if c != b' ' {
-            break;
-        }
-        input.next();
-    }
 }
 
 /// Skips whitespace, and returns and error if no space nor EOR was parsed.

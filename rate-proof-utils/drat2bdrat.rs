@@ -7,7 +7,7 @@ use std::io::{self, Result, Write};
 
 use rate_common::{
     output,
-    parser::{open_file_for_writing, parse_literal, read_compressed_file_or_stdin},
+    parser::{open_file_for_writing, parse_literal_text, read_compressed_file_or_stdin},
 };
 
 /// Write a number in signed little-endian binary (SLEB) encoding.
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
             b'a'
         }])?;
         loop {
-            let literal = parse_literal(&mut input)?;
+            let literal = parse_literal_text(&mut input)?;
             write_number(&mut output, literal.decode())?;
             if literal.is_zero() {
                 break;
