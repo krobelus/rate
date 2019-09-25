@@ -256,13 +256,6 @@ pub fn run_parser(
     parser.proof.shrink_to_fit();
 }
 
-/// Open a file for reading.
-/// # Panics
-/// Panics on error.
-pub fn open_file(filename: &str) -> File {
-    File::open(filename).unwrap_or_else(|err| die!("cannot open file: {}", err))
-}
-
 /// Open a file for writing.
 /// # Panics
 /// Panics on error.

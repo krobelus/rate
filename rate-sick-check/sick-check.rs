@@ -2,6 +2,7 @@
 
 use clap::Arg;
 use std::io::Read;
+use std::fs::File;
 use toml;
 
 use rate_common::{
@@ -14,7 +15,7 @@ use rate_common::{
     memory::{Array, Vector},
     output::{install_signal_handler, print_solution},
     parser::{
-        open_file, run_parser,
+        run_parser,
         BinaryMode, Parser, ProofSyntax,
     },
     requires,
@@ -50,7 +51,7 @@ fn main() -> Result<(), ()> {
     let proof_file_redundancy_property = RedundancyProperty::RAT;
 
     let mut toml_str = String::new();
-    let mut sick_file = open_file(sick_filename);
+    let mut sick_file = File::open(sick_filename).unwrap_or_else(|err| die!("cannot open file: {}", err));
     sick_file
         .read_to_string(&mut toml_str)
         .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));
