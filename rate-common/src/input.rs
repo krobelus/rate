@@ -17,14 +17,14 @@ pub enum CompressionFormat {
 
 impl CompressionFormat {
     pub fn parse_extension(s: &str) -> Option<CompressionFormat> {
-        for (extension, format) in Self::pairs {
+        for (extension, format) in Self::PAIRS {
             if s.ends_with(extension) {
                 return Some(*format);
             }
         }
         None
     }
-    const pairs : &'static [(&'static str, CompressionFormat)] = &[
+    const PAIRS : &'static [(&'static str, CompressionFormat)] = &[
         (".zst", CompressionFormat::ZSTD),
         (".gz", CompressionFormat::GZIP),
         (".bz2", CompressionFormat::BZIP2),

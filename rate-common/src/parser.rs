@@ -388,10 +388,11 @@ pub fn run_parser(
         if !parser.verbose {
             _timer.disabled = true;
         }
+        let input = Input::from_file(formula, false);
         parse_formula(
             &mut parser,
             clause_ids,
-            read_compressed_file(formula, false),
+            input,
         )
         .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
     }
