@@ -72,6 +72,7 @@ impl fmt::Display for ProofSyntax {
     }
 }
 
+
 /// The static singleton instance of the clause database.
 ///
 /// It needs to be static so that hash and equality functions can access it.

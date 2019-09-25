@@ -1,9 +1,37 @@
 //! File reader
 
 use std::{
-    io::{Error, ErrorKind, Result},
+    fs::File,
+    io::{BufReader, Error, ErrorKind, Read, Result},
     iter::Peekable,
 };
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CompressionFormat {
+    ZSTD,
+    GZIP,
+    BZIP2,
+    XZ,
+    LZ4,
+}
+
+impl CompressionFormat {
+    pub fn parse_extension(s: &str) -> Option<CompressionFormat> {
+        for (extension, format) in Self::pairs {
+            if s.ends_with(extension) {
+                return Some(*format);
+            }
+        }
+        None
+    }
+    const pairs : &'static [(&'static str, CompressionFormat)] = &[
+        (".zst", CompressionFormat::ZSTD),
+        (".gz", CompressionFormat::GZIP),
+        (".bz2", CompressionFormat::BZIP2),
+        (".xz", CompressionFormat::XZ),
+        (".lz4", CompressionFormat::LZ4),
+    ];
+}
 
 /// A peekable iterator for bytes that records line and column information.
 pub struct Input<'a> {
@@ -18,6 +46,43 @@ pub struct Input<'a> {
 }
 
 impl<'a> Input<'a> {
+    pub fn from_file(filename: &str, binary: bool) -> Self {
+        let file = File::open(filename).unwrap_or_else(|err| die!("cannot open file: {}", err));
+        let compression = CompressionFormat::parse_extension(filename);
+        let source : Box<dyn Iterator<Item = u8>> = match compression {
+            None => Box::new(BufReader::new(file).bytes().map(panic_on_error)) ,
+            Some(CompressionFormat::ZSTD) => {
+                let de = zstd::stream::read::Decoder::new(file)
+                    .unwrap_or_else(|err| die!("failed to decompress ZST archive: {}", err));
+                Box::new(de.bytes().map(panic_on_error))
+            }
+            Some(CompressionFormat::GZIP) => {
+                let de = flate2::read::GzDecoder::new(file);
+                Box::new(de.bytes().map(panic_on_error))
+            }
+            Some(CompressionFormat::BZIP2) => {
+                let de = bzip2::read::BzDecoder::new(file);
+                Box::new(de.bytes().map(panic_on_error))
+            }
+            Some(CompressionFormat::XZ) => {
+                let de = xz2::read::XzDecoder::new(file);
+                Box::new(de.bytes().map(panic_on_error))
+            }
+            Some(CompressionFormat::LZ4) => {
+                let de = lz4::Decoder::new(file)
+                    .unwrap_or_else(|err| die!("failed to decode LZ4 archive: {}", err));
+                Box::new(de.bytes().map(panic_on_error))
+            }
+        };
+        Input {
+            source: source.peekable(),
+            binary,
+            line: 1,
+            column: 1,
+        }
+    }
+
+
     /// Create a new `Input` from some source
     pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
         Input {
@@ -203,4 +268,9 @@ impl Iterator for Input<'_> {
             c
         })
     }
+}
+
+/// Unwraps a result, panicking on error.
+pub fn panic_on_error<T>(result: Result<T>) -> T {
+    result.unwrap_or_else(|error| die!("{}", error))
 }
