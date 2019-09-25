@@ -405,10 +405,11 @@ pub fn run_parser(
         if binary && parser.verbose {
             comment!("binary proof mode");
         }
+        let input = Input::from_file(proof_file, binary);
         parse_proof(
             &mut parser,
             clause_ids,
-            read_compressed_file(proof_file, binary),
+            input,
             binary,
         )
         .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
