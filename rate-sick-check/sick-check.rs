@@ -7,13 +7,14 @@ use toml;
 use rate_common::{
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{Reason, RedundancyProperty},
+    clausedatabase::{clause_db, witness_db},
     comment, die,
     hashtable::{FixedSizeHashTable, HashTable},
     literal::Literal,
     memory::{Array, Vector},
     output::{install_signal_handler, print_solution},
     parser::{
-        clause_db, open_file, run_parser, witness_db,
+        open_file, run_parser,
         BinaryMode, Parser, ProofSyntax,
     },
     requires,

@@ -11,6 +11,7 @@ use std::{
     convert::TryFrom,
     mem::size_of,
     ops::{Index, IndexMut, Range},
+    ptr::NonNull,
 };
 
 /// Size of metadata that precede the literals of a clause
@@ -355,4 +356,32 @@ fn sort_clause(clause: &mut [Literal]) {
     let _sort_literally = |&literal: &Literal| literal.decode();
     let _sort_magnitude = |&literal: &Literal| literal.encoding;
     clause.sort_unstable_by_key(_sort_literally);
+}
+
+
+/// The static singleton instance of the clause database.
+///
+/// It needs to be static so that hash and equality functions can access it.
+pub static mut CLAUSE_DATABASE: NonNull<ClauseDatabase> = NonNull::dangling();
+
+/// Static singleton instance of the witness database.
+///
+/// This should be made non-static.
+pub static mut WITNESS_DATABASE: NonNull<WitnessDatabase> = NonNull::dangling();
+
+/// Wrapper to access the clause database safely in a single-threaded context.
+pub fn clause_db() -> &'static mut ClauseDatabase {
+    unsafe { CLAUSE_DATABASE.as_mut() }
+}
+/// Wrapper to access the witness database safely in a single-threaded context.
+pub fn witness_db() -> &'static mut WitnessDatabase {
+    unsafe { WITNESS_DATABASE.as_mut() }
+}
+
+/// Release the memory by both clause and witness database.
+pub fn free_clause_database() {
+    unsafe {
+        Box::from_raw(CLAUSE_DATABASE.as_ptr());
+        Box::from_raw(WITNESS_DATABASE.as_ptr());
+    }
 }

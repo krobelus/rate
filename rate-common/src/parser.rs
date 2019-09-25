@@ -2,7 +2,7 @@
 
 use crate::{
     clause::{Clause, ProofStep},
-    clausedatabase::{ClauseDatabase, WitnessDatabase},
+    clausedatabase::{ClauseDatabase, WitnessDatabase, CLAUSE_DATABASE, WITNESS_DATABASE, clause_db, witness_db},
     hashtable::{FixedSizeHashTable, HashTable},
     input::{Input},
     literal::{Literal, Variable},
@@ -116,34 +116,6 @@ impl BinaryMode {
     }
     fn drat_trim_heuristic(c: u8) -> bool {
         (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
-    }
-}
-
-
-/// The static singleton instance of the clause database.
-///
-/// It needs to be static so that hash and equality functions can access it.
-pub static mut CLAUSE_DATABASE: NonNull<ClauseDatabase> = NonNull::dangling();
-
-/// Static singleton instance of the witness database.
-///
-/// This should be made non-static.
-pub static mut WITNESS_DATABASE: NonNull<WitnessDatabase> = NonNull::dangling();
-
-/// Wrapper to access the clause database safely in a single-threaded context.
-pub fn clause_db() -> &'static mut ClauseDatabase {
-    unsafe { CLAUSE_DATABASE.as_mut() }
-}
-/// Wrapper to access the witness database safely in a single-threaded context.
-pub fn witness_db() -> &'static mut WitnessDatabase {
-    unsafe { WITNESS_DATABASE.as_mut() }
-}
-
-/// Release the memory by both clause and witness database.
-pub fn free_clause_database() {
-    unsafe {
-        Box::from_raw(CLAUSE_DATABASE.as_ptr());
-        Box::from_raw(WITNESS_DATABASE.as_ptr());
     }
 }
 

@@ -2,9 +2,9 @@
 
 use crate::{
     clause::{Clause},
+    clausedatabase::{clause_db},
     memory::{HeapSpace, Offset, SmallVector, Vector},
     literal::{Literal},
-    parser::{clause_db},
 };
 use std::{
     collections::HashMap,
