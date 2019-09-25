@@ -16,7 +16,7 @@ use rate_common::{
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{install_signal_handler, unreachable},
     output::{print_key_value, print_solution, Timer},
-    parser::{clause_db, open_file_for_writing, witness_db, Parser, ProofSyntax},
+    parser::{clause_db, open_file_for_writing, witness_db, BinaryMode, Parser, ProofSyntax},
     parser::{free_clause_database, parse_files},
     requires,
     sick::{Sick, Witness},
@@ -51,6 +51,8 @@ fn run_frontend() -> i32 {
 
     .arg(Arg::with_name("FORMAT").takes_value(true).long("proof-format").default_value("drat")
         .help("Sets the proof format: rup, drat (default), dpr, dsr"))
+    .arg(Arg::with_name("BINARY").takes_value(true).long("binary-detect").default_value("drat-trim")
+        .help("Sets the binary detection method: text, binary, drat-trim, prefix"))
 
     .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
          .help("Ignore deletion of unit clauses."))
@@ -142,6 +144,7 @@ pub struct Flags {
     pub pivot_is_first_literal: bool,
     pub no_terminating_empty_clause: bool,
     pub memory_usage_breakdown: bool,
+    pub binary_mode: BinaryMode,
     pub forward: bool,
     pub verbosity: u64,
     /// Input formula
@@ -167,6 +170,9 @@ impl Flags {
         let proof_format: ProofSyntax = matches.value_of("FORMAT")
             .and_then(|s| ProofSyntax::parse(s))
             .unwrap_or_else(|| die!("unrecognized proof format"));
+        let binary_mode: BinaryMode = matches.value_of("BINARY")
+            .and_then(|s| BinaryMode::parse(s))
+            .unwrap_or_else(|| die!("unrecognized binary detection method"));
         let skip_unit_deletions = matches.is_present("SKIP_UNIT_DELETIONS");
         let noncore_rat_candidates = matches.is_present("NONCORE_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
@@ -219,6 +225,7 @@ impl Flags {
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_terminating_empty_clause: matches.is_present("NO_TERMINATING_EMPTY_CLAUSE"),
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
+            binary_mode,
             forward,
             verbosity: match matches.occurrences_of("v") {
                 i if i > 4 => {
@@ -262,7 +269,6 @@ pub struct Checker {
     pub flags: Flags,
     /// Which redundancy property to use for inferences
     redundancy_property: RedundancyProperty,
-
     /// The highest variable that is used in the formula or proof
     maxvar: Variable,
     /// The trail storing variable assignments
