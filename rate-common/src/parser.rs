@@ -119,6 +119,27 @@ impl BinaryMode {
     }
 }
 
+// pub enum LexerItem {
+//     Number(i64),
+//     Addition,
+//     Deletion,
+//     Redundancy,
+//     DimacsHeader,
+//     Top,
+//     Bottom,
+//     EndOfFile,
+// }
+
+// pub struct Lexer {
+//     input: Input,
+// }
+
+// impl Lexer {
+//     pub fn from_file(filename: &str, binary: bool) -> Lexer {
+//         Le
+//     }
+// }
+
 /// CNF and DRAT/DPR parser.
 #[derive(Debug, PartialEq)]
 pub struct Parser {
@@ -564,15 +585,10 @@ mod tests {
     fn sample_formula(clause_ids: &mut impl HashTable) -> Parser {
         let mut parser = Parser::new(ProofSyntax::Drat);
         parser.proof_format = ProofSyntax::Drat;
-        let example = r#"c comment
-p cnf 2 2
-1 2 0
-c comment
--1 -2 0"#;
         assert!(parse_formula(
             &mut parser,
             clause_ids,
-            Input::new(Box::new(example.as_bytes().iter().cloned()), false),
+            crate::input::tests::sample_formula_input(),
         )
         .is_ok());
         parser
@@ -584,7 +600,7 @@ c comment
         let result = parse_proof(
             &mut parser,
             &mut clause_ids,
-            Input::new(Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned()), false),
+            crate::input::tests::sample_proof_input(),
             false,
         );
         assert!(result.is_ok());

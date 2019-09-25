@@ -109,14 +109,14 @@ impl<'a> Input<'a> {
     }
 
     /// Create a new `Input` from some source
-    pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
-        Input {
-            source: source.peekable(),
-            binary,
-            line: 1,
-            column: 1,
-        }
-    }
+    // pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
+    //     Input {
+    //         source: source.peekable(),
+    //         binary,
+    //         line: 1,
+    //         column: 1,
+    //     }
+    // }
     /// Look at the next byte without consuming it
     pub fn peek(&mut self) -> Option<u8> {
         self.source.peek().cloned()
@@ -298,4 +298,33 @@ impl Iterator for Input<'_> {
 /// Unwraps a result, panicking on error.
 pub fn panic_on_error<T>(result: Result<T>) -> T {
     result.unwrap_or_else(|error| die!("{}", error))
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    pub fn sample_formula_input() -> Input<'static> {
+        let example = r#"c comment
+p cnf 2 2
+1 2 0
+c comment
+-1 -2 0"#;
+        let source : Box<dyn Iterator<Item = u8>> = Box::new(example.as_bytes().iter().cloned());
+        Input {
+            source: source.peekable(),
+            binary: false,
+            line: 1,
+            column: 1,
+        }
+    }
+    pub fn sample_proof_input() -> Input<'static> {
+        let source : Box<dyn Iterator<Item = u8>> = Box::new(b"1 2 3 0\nd 1 2 0".into_iter().cloned());
+        Input {
+            source: source.peekable(),
+            binary: false,
+            line: 1,
+            column: 1,
+        }
+    }
 }
