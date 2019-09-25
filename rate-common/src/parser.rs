@@ -543,17 +543,8 @@ pub fn read_compressed_file_or_stdin<'a>(
 ) -> Input<'a> {
     match filename {
         "-" => Input::new(Box::new(stdin.bytes().map(panic_on_error)), binary),
-        filename => read_compressed_file(filename, binary),
+        filename => Input::new(read_from_compressed_file(open_file(filename), filename), binary),
     }
-}
-
-/// Return an [Input](struct.Input.html) to read from a possibly compressed file.
-///
-/// If the file is compressed it is transparently uncompressed.
-/// Argument `binary` is passed on to [Input](struct.Input.html).
-pub fn read_compressed_file(filename: &str, binary: bool) -> Input {
-    let file = open_file(filename);
-    Input::new(read_from_compressed_file(file, filename), binary)
 }
 
 /// Return an Iterator to read from a possibly compressed file.

@@ -8,9 +8,10 @@ use std::io::{Result, Write};
 use rate_common::{
     clause::{write_clause, Clause},
     die,
+    input::Input,
     output::install_signal_handler,
     parser::{
-        clause_db, open_file_for_writing, parse_instruction, read_compressed_file,
+        clause_db, open_file_for_writing, parse_instruction,
         parse_formula, BinaryMode, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
     },
     write_to_stdout,
@@ -64,14 +65,15 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     parser.verbose = false;
     let binary = BinaryMode::DratTrim.detect(proof_filename);
     let mut clause_ids = FixedSizeHashTable::new();
+    let formula_input = Input::from_file(formula_filename, false);
+    let mut proof_input = Input::from_file(&proof_filename, binary);
+    let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
+    let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
     parse_formula(
         &mut parser,
         &mut clause_ids,
-        read_compressed_file(formula_filename, false),
+        formula_input,
     )?;
-    let mut proof_input = read_compressed_file(&proof_filename, binary);
-    let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
-    let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
     for _ in 0..line_number {
         let _result = parse_instruction(
             &mut parser,
