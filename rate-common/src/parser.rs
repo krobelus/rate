@@ -45,7 +45,7 @@ impl ProofSyntax {
     }
     #[inline]
     pub fn has_comments(self) -> bool {
-        has_header(self)
+        self.has_header()
     }
     #[inline]
     pub fn has_deletion(self) -> bool {
