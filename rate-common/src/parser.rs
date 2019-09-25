@@ -15,7 +15,7 @@ use std::{
     fmt,
     fs::File,
     hash::{Hash, Hasher},
-    io::{Seek, SeekFrom, BufReader, BufWriter, Read, Result, StdinLock},
+    io::{BufReader, BufWriter, Read, Result, StdinLock},
     panic,
     ptr::NonNull,
     slice,
@@ -421,7 +421,6 @@ pub fn run_parser(
     binary_mode: BinaryMode,
     clause_ids: &mut impl HashTable,
 ) {
-    let binary = binary_mode.detect(proof_file);
     if parser.verbose {
         comment!("proof format: {}", parser.proof_format);
     }
@@ -442,6 +441,7 @@ pub fn run_parser(
 
     {
         let mut _timer = Timer::name("parsing proof");
+        let binary = binary_mode.detect(proof_file);
         if !parser.verbose {
             _timer.disabled = true;
         }
@@ -792,28 +792,6 @@ fn parse_proof(
         clause_ids.add_clause(clause_db().last_clause());
     }
     Ok(())
-}
-
-/// Returns true if the file is in binary (compressed) DRAT.
-///
-/// Read the first ten characters of the given file to determine
-/// that, just like `drat-trim`. This works fine on real proofs.
-pub fn is_binary_drat(filename: &str) -> bool {
-    let mut file = open_file(filename);
-    file.seek(SeekFrom::Start(0)).unwrap_or_else(|_err| {
-        die!("proof file is not seekable - cannot currently determine if it has binary DRAT")
-    });
-    is_binary_drat_impl(read_from_compressed_file(file, filename))
-}
-/// Implementation of `is_binary_drat`.
-fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
-    for c in buffer {
-        if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
-        {
-            return true;
-        }
-    }
-    false
 }
 
 enum ParsedInstructionKind {
