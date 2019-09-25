@@ -12,7 +12,7 @@ use rate_common::{
     memory::{Array, Vector},
     output::{install_signal_handler, print_solution},
     parser::{
-        clause_db, open_file, proof_format_by_extension, run_parser, witness_db,
+        clause_db, open_file, run_parser, witness_db,
         BinaryMode, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
     },
     requires,
@@ -45,7 +45,7 @@ fn main() -> Result<(), ()> {
     let formula_filename = matches.value_of("INPUT").unwrap();
     let proof_filename = matches.value_of("PROOF").unwrap();
     let sick_filename = matches.value_of("CERTIFICATE").unwrap();
-    let proof_file_redundancy_property = proof_format_by_extension(proof_filename);
+    let proof_file_redundancy_property = RedundancyProperty::RAT;
 
     let mut toml_str = String::new();
     let mut sick_file = open_file(sick_filename);

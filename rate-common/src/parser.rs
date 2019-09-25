@@ -1,7 +1,7 @@
 //! DIMACS and DRAT/DPR parser
 
 use crate::{
-    clause::{Clause, ProofStep, RedundancyProperty},
+    clause::{Clause, ProofStep},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     input::{Input},
     literal::{Literal, Variable},
@@ -478,57 +478,6 @@ pub fn open_file_for_writing(filename: &str) -> BufWriter<File> {
     BufWriter::new(
         File::create(filename).unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
     )
-}
-
-/// File extension of Zstandard archives.
-const ZSTD: &str = ".zst";
-/// File extension of Gzip archives.
-const GZIP: &str = ".gz";
-/// File extension of Bzip2 archives.
-const BZIP2: &str = ".bz2";
-/// File extension of XZ archives.
-const XZ: &str = ".xz";
-/// File extension of LZ4 archives.
-const LZ4: &str = ".lz4";
-
-/// Strip the compression format off a filename.
-///
-/// If the filename ends with a known archive extension,
-/// return the filname without extension and the extension.
-/// Otherwise return the unmodified filename and the empty string.
-fn compression_format_by_extension(filename: &str) -> (&str, &str) {
-    let mut basename = filename;
-    let mut compression_format = "";
-    for extension in &[ZSTD, GZIP, BZIP2, LZ4, XZ] {
-        if filename.ends_with(extension) {
-            compression_format = extension;
-            basename = &filename[0..filename.len() - extension.len()];
-            break;
-        }
-    }
-    (basename, compression_format)
-}
-
-/// Determine the proof format based on the proof filename.
-pub fn proof_format_by_extension(proof_filename: &str) -> RedundancyProperty {
-    let (basename, _compression_format) = compression_format_by_extension(proof_filename);
-    if basename.ends_with(".drat") {
-        RedundancyProperty::RAT
-    } else if basename.ends_with(".pr") || basename.ends_with(".dpr") {
-        RedundancyProperty::PR
-    } else {
-        RedundancyProperty::RAT
-    }
-}
-
-impl RedundancyProperty {
-    /// Give the canonical file extension for proofs based on this redundancy property.
-    pub fn file_extension(&self) -> &str {
-        match self {
-            RedundancyProperty::RAT => "drat",
-            RedundancyProperty::PR => "dpr",
-        }
-    }
 }
 
 /// Unwraps a result, panicking on error.
