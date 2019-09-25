@@ -39,18 +39,26 @@ impl ProofSyntax {
             _ => None,
         }
     }
+    #[inline]
     pub fn has_header(self) -> bool {
         self == ProofSyntax::Dimacs
     }
+    #[inline]
+    pub fn has_comments(self) -> bool {
+        has_header(self)
+    }
+    #[inline]
     pub fn has_deletion(self) -> bool {
         match self {
             ProofSyntax::Dimacs | ProofSyntax::Rup => false,
             _ => true,
         }
     }
+    #[inline]
     pub fn has_repetition_witness(self) -> bool {
         self == ProofSyntax::Dpr
     }
+    // #[inline]
     // pub fn has_pair_witness(self) -> bool {
     //     self == ProofSyntax::Dsr
     // }
