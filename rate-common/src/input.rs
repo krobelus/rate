@@ -47,9 +47,19 @@ pub struct Input<'a> {
 
 impl<'a> Input<'a> {
     pub fn from_file(filename: &str, binary: bool) -> Self {
+        let source = Self::open(filename);
+        Input {
+            source: source.peekable(),
+            binary,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    fn open(filename: &str) -> Box<dyn Iterator<Item = u8>> {
         let file = File::open(filename).unwrap_or_else(|err| die!("cannot open file: {}", err));
         let compression = CompressionFormat::parse_extension(filename);
-        let source : Box<dyn Iterator<Item = u8>> = match compression {
+        match compression {
             None => Box::new(BufReader::new(file).bytes().map(panic_on_error)) ,
             Some(CompressionFormat::ZSTD) => {
                 let de = zstd::stream::read::Decoder::new(file)
@@ -73,15 +83,8 @@ impl<'a> Input<'a> {
                     .unwrap_or_else(|err| die!("failed to decode LZ4 archive: {}", err));
                 Box::new(de.bytes().map(panic_on_error))
             }
-        };
-        Input {
-            source: source.peekable(),
-            binary,
-            line: 1,
-            column: 1,
         }
     }
-
 
     /// Create a new `Input` from some source
     pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
