@@ -1,0 +1,24 @@
+diff --git a/src/watchlist.cpp b/src/watchlist.cpp
+index 7b455c2..013c6e4 100755
+--- a/src/watchlist.cpp
++++ b/src/watchlist.cpp
+@@ -203,8 +203,8 @@ bool reviseWatches(watchlist& wl, model& m, long offset, int* pointer, int liter
+         firstptr = pointer + 2;
+         if(Database::nextNonFalsified(firstptr, firstlit, m)) {
+             *firstptr = *pointer;
+-            *pointer = firstlit;
+             findAndRemoveWatch(wl, *pointer, offset);
++            *pointer = firstlit;
+             if(!addWatch(wl, firstlit, offset)) { return false; }
+             #ifdef VERBOSE
+             Blablabla::log("Setting watches: " + Blablabla::clauseToString(pointer));
+@@ -219,8 +219,8 @@ bool reviseWatches(watchlist& wl, model& m, long offset, int* pointer, int liter
+         #ifdef VERBOSE
+         Blablabla::log("Watches are correct");
+         #endif
+-        ++watch;
+     }
++    ++watch;
+     #ifdef VERBOSE
+     Blablabla::decrease();
+     #endif

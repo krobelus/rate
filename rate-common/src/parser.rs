@@ -13,7 +13,7 @@ use std::{
     convert::TryInto,
     fs::File,
     hash::{Hash, Hasher},
-    io::{Seek, SeekFrom, BufReader, BufWriter, Error, ErrorKind, Read, Result, StdinLock},
+    io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, Seek, SeekFrom, StdinLock},
     iter::Peekable,
     panic,
     ptr::NonNull,
