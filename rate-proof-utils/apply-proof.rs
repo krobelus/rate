@@ -8,11 +8,12 @@ use std::io::{Result, Write};
 use rate_common::{
     clause::{write_clause, Clause},
     die,
+    hashtable::{FixedSizeHashTable, HashTable},
     input::Input,
     output::install_signal_handler,
     parser::{
         clause_db, open_file_for_writing, parse_instruction,
-        parse_formula, BinaryMode, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
+        parse_formula, BinaryMode, Parser, ProofSyntax,
     },
     write_to_stdout,
 };

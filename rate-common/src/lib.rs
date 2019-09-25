@@ -9,6 +9,7 @@ pub mod memory;
 pub mod assignment;
 pub mod clause;
 pub mod clausedatabase;
+pub mod hashtable;
 mod features;
 pub mod literal;
 pub mod input;
