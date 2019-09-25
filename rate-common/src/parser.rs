@@ -15,7 +15,7 @@ use std::{
     fmt,
     fs::File,
     hash::{Hash, Hasher},
-    io::{BufReader, BufWriter, Read, Result, StdinLock},
+    io::{BufWriter, Result},
     panic,
     ptr::NonNull,
     slice,
@@ -528,57 +528,6 @@ impl RedundancyProperty {
             RedundancyProperty::RAT => "drat",
             RedundancyProperty::PR => "dpr",
         }
-    }
-}
-
-/// Return an [Input](struct.Input.html) to read from a possibly compressed file.
-///
-/// If the file is compressed it is transparently uncompressed.
-/// If the filename is "-", returns an [Input](struct.Input.html) reading data from stdin.
-/// Argument `binary` is passed on to [Input](struct.Input.html).
-pub fn read_compressed_file_or_stdin<'a>(
-    filename: &'a str,
-    binary: bool,
-    stdin: StdinLock<'a>,
-) -> Input<'a> {
-    match filename {
-        "-" => Input::new(Box::new(stdin.bytes().map(panic_on_error)), binary),
-        filename => Input::new(read_from_compressed_file(open_file(filename), filename), binary),
-    }
-}
-
-/// Return an Iterator to read from a possibly compressed file.
-///
-/// If the file is compressed it is transparently uncompressed.
-fn read_from_compressed_file(file: File, filename: &str) -> Box<dyn Iterator<Item = u8>> {
-    let (_basename, compression_format) = compression_format_by_extension(filename);
-    if compression_format == "" {
-        return Box::new(BufReader::new(file).bytes().map(panic_on_error));
-    }
-    match compression_format {
-        ZSTD => {
-            let de = zstd::stream::read::Decoder::new(file)
-                .unwrap_or_else(|err| die!("failed to decompress ZST archive: {}", err));
-            Box::new(de.bytes().map(panic_on_error))
-        }
-        GZIP => {
-            let de = flate2::read::GzDecoder::new(file);
-            Box::new(de.bytes().map(panic_on_error))
-        }
-        BZIP2 => {
-            let de = bzip2::read::BzDecoder::new(file);
-            Box::new(de.bytes().map(panic_on_error))
-        }
-        XZ => {
-            let de = xz2::read::XzDecoder::new(file);
-            Box::new(de.bytes().map(panic_on_error))
-        }
-        LZ4 => {
-            let de = lz4::Decoder::new(file)
-                .unwrap_or_else(|err| die!("failed to decode LZ4 archive: {}", err));
-            Box::new(de.bytes().map(panic_on_error))
-        }
-        _ => unreachable(),
     }
 }
 

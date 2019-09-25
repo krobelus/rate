@@ -2,7 +2,7 @@
 
 use std::{
     fs::File,
-    io::{BufReader, Error, ErrorKind, Read, Result},
+    io::{BufReader, Error, ErrorKind, Read, Result, StdinLock},
     iter::Peekable,
 };
 
@@ -50,6 +50,16 @@ impl<'a> Input<'a> {
         let source = Self::open(filename).peekable();
         Input {
             source,
+            binary,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    pub fn from_stdin(stdin: StdinLock<'a>, binary: bool) -> Input<'a> {
+        let source : Box<dyn Iterator<Item = u8>> = Box::new(stdin.bytes().map(panic_on_error));
+        Input {
+            source: source.peekable(),
             binary,
             line: 1,
             column: 1,

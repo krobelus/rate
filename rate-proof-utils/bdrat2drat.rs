@@ -6,8 +6,9 @@ use clap::Arg;
 use std::io::{self, Result, Write};
 
 use rate_common::{
+    input::Input,
     output::install_signal_handler,
-    parser::{open_file_for_writing, parse_literal_binary, read_compressed_file_or_stdin},
+    parser::{open_file_for_writing, parse_literal_binary},
 };
 
 /// Run `bdrat2drat`.
@@ -25,8 +26,11 @@ fn main() -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let input_filename = matches.value_of("INPUT").unwrap_or("-");
-    let mut input =
-        read_compressed_file_or_stdin(input_filename, /*binary=*/ true, stdin.lock());
+    let mut input = if input_filename == "-" {
+        Input::from_stdin(stdin.lock(), true)
+    } else {
+        Input::from_file(input_filename, true)
+    };
     let mut output: Box<dyn Write> = match matches.value_of("OUTPUT") {
         None => Box::new(stdout.lock()),
         Some(filename) => Box::new(open_file_for_writing(filename)),

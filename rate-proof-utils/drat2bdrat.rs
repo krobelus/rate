@@ -6,8 +6,9 @@ use clap::Arg;
 use std::io::{self, Result, Write};
 
 use rate_common::{
+    input::Input,
     output,
-    parser::{open_file_for_writing, parse_literal_text, read_compressed_file_or_stdin},
+    parser::{open_file_for_writing, parse_literal_text},
 };
 
 /// Write a number in signed little-endian binary (SLEB) encoding.
@@ -42,11 +43,12 @@ fn main() -> Result<()> {
         .get_matches();
     let stdout = io::stdout();
     let stdin = io::stdin();
-    let mut input = read_compressed_file_or_stdin(
-        matches.value_of("INPUT").unwrap_or("-"),
-        /*binary=*/ false,
-        stdin.lock(),
-    );
+    let input_filename = matches.value_of("INPUT").unwrap_or("-");
+    let mut input = if input_filename == "-" {
+        Input::from_stdin(stdin.lock(), false)
+    } else {
+        Input::from_file(input_filename, false)
+    };
     let mut output: Box<dyn Write> = match matches.value_of("OUTPUT") {
         None => Box::new(stdout.lock()),
         Some(filename) => Box::new(open_file_for_writing(filename)),
