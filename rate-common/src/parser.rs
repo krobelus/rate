@@ -12,6 +12,7 @@ use std::{
     cmp,
     collections::HashMap,
     convert::TryInto,
+    fmt,
     fs::File,
     hash::{Hash, Hasher},
     io::{Seek, SeekFrom, BufReader, BufWriter, Read, Result, StdinLock},
@@ -26,7 +27,7 @@ pub enum ProofSyntax {
     Rup,
     Drat,
     Dpr,
-    Dsr,
+    // Dsr,
 }
 
 #[allow(dead_code)]
@@ -36,7 +37,7 @@ impl ProofSyntax {
             "rup" => Some(ProofSyntax::Rup),
             "drat" => Some(ProofSyntax::Drat),
             "dpr" => Some(ProofSyntax::Dpr),
-            "dsr" => Some(ProofSyntax::Dsr),
+            // "dsr" => Some(ProofSyntax::Dsr),
             _ => None,
         }
     }
@@ -52,8 +53,22 @@ impl ProofSyntax {
     pub fn has_repetition_witness(self) -> bool {
         self == ProofSyntax::Dpr
     }
-    pub fn has_pair_witness(self) -> bool {
-        self == ProofSyntax::Dsr
+    // pub fn has_pair_witness(self) -> bool {
+    //     self == ProofSyntax::Dsr
+    // }
+}
+
+impl fmt::Display for ProofSyntax {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}",
+            match self {
+                ProofSyntax::Dimacs => "DIMACS",
+                ProofSyntax::Rup => "RUP",
+                ProofSyntax::Drat => "DRAT",
+                ProofSyntax::Dpr => "DPR",
+                // ProofSyntax::Dsr,
+            }
+        )
     }
 }
 
@@ -88,7 +103,7 @@ pub fn free_clause_database() {
 #[derive(Debug, PartialEq)]
 pub struct Parser {
     /// The redundancy property identifying the proof format.
-    pub redundancy_property: RedundancyProperty,
+    pub proof_format: ProofSyntax,
     /// The highest variable parsed so far
     pub maxvar: Variable,
     /// For RAT, the pivot (first literal) for each clause
@@ -112,7 +127,7 @@ impl Parser {
     /// Create a new parser.
     ///
     /// *Note*: this allocates the static clause and witness databases, so this should only be called once.
-    pub fn new() -> Parser {
+    pub fn new(proof_format: ProofSyntax) -> Parser {
         unsafe {
             CLAUSE_DATABASE =
                 NonNull::new_unchecked(Box::into_raw(Box::new(ClauseDatabase::new())));
@@ -120,7 +135,7 @@ impl Parser {
                 NonNull::new_unchecked(Box::into_raw(Box::new(WitnessDatabase::new())));
         }
         Parser {
-            redundancy_property: RedundancyProperty::RAT,
+            proof_format,
             maxvar: Variable::new(0),
             clause_pivot: Vector::new(),
             proof_start: Clause::new(0),
@@ -132,7 +147,7 @@ impl Parser {
     }
     /// Returns true if we are parsing a (D)PR proof.
     pub fn is_pr(&self) -> bool {
-        self.redundancy_property == RedundancyProperty::PR
+        self.proof_format == ProofSyntax::Dpr
     }
 }
 
@@ -330,7 +345,7 @@ pub fn parse_files(
     no_terminating_empty_clause: bool,
     memory_usage_breakdown: bool,
 ) -> Parser {
-    let mut parser = Parser::new();
+    let mut parser = Parser::new(proof_format);
     parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = FixedSizeHashTable::new();
     run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
@@ -365,9 +380,8 @@ pub fn run_parser_on_formula(
     proof_file: &str,
     clause_ids: &mut impl HashTable,
 ) {
-    parser.redundancy_property = proof_format_by_extension(&proof_file);
     if parser.verbose {
-        comment!("mode: {}", parser.redundancy_property);
+        comment!("proof format: {}", parser.proof_format);
     }
     let mut _timer = Timer::name("parsing formula");
     if !parser.verbose {
@@ -869,8 +883,8 @@ mod tests {
     }
 
     fn sample_formula(clause_ids: &mut impl HashTable) -> Parser {
-        let mut parser = Parser::new();
-        parser.redundancy_property = RedundancyProperty::RAT;
+        let mut parser = Parser::new(ProofSyntax::Drat);
+        parser.proof_format = ProofSyntax::Drat;
         let example = r#"c comment
 p cnf 2 2
 1 2 0
@@ -932,7 +946,7 @@ c comment
         assert_eq!(
             parser,
             Parser {
-                redundancy_property: RedundancyProperty::RAT,
+                proof_format: ProofSyntax::Drat,
                 maxvar: Variable::new(3),
                 clause_pivot: vector!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                 proof_start: Clause::new(2),

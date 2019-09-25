@@ -402,6 +402,10 @@ impl Checker {
         let assignment = Assignment::new(maxvar);
         let lrat = flags.lrat_filename.is_some();
         let grat = flags.grat_filename.is_some();
+        let redundancy_property = match parser.proof_format {       // todo: change this into further redundancy
+            ProofSyntax::Drat => RedundancyProperty::RAT,
+            _ => RedundancyProperty::PR,
+        };
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
@@ -413,7 +417,7 @@ impl Checker {
             clause_pivot: Array::from(parser.clause_pivot),
             dependencies: Vector::new(),
             flags,
-            redundancy_property: parser.redundancy_property,
+            redundancy_property,
             soft_propagation: false,
             implication_graph: StackMapping::with_array_value_size_stack_size(
                 false,

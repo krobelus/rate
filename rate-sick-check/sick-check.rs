@@ -13,7 +13,7 @@ use rate_common::{
     output::{install_signal_handler, print_solution},
     parser::{
         clause_db, open_file, proof_format_by_extension, run_parser, witness_db,
-        FixedSizeHashTable, HashTable, Parser,
+        FixedSizeHashTable, HashTable, Parser, ProofSyntax,
     },
     requires,
     sick::Sick,
@@ -62,7 +62,7 @@ fn main() -> Result<(), ()> {
     };
     requires!(redundancy_property == proof_file_redundancy_property);
     let mut clause_ids = FixedSizeHashTable::new();
-    let mut parser = Parser::new();
+    let mut parser = Parser::new(ProofSyntax::Drat);        // todo: change this into option
     parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
         &mut parser,

@@ -11,7 +11,7 @@ use rate_common::{
     output::install_signal_handler,
     parser::{
         clause_db, is_binary_drat, open_file_for_writing, parse_instruction, read_compressed_file,
-        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser,
+        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
     },
     write_to_stdout,
 };
@@ -60,7 +60,7 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         .unwrap()
         .parse()
         .unwrap_or_else(|err| die!("Line number must be an integer: {}", err));
-    let mut parser = Parser::new();
+    let mut parser = Parser::new(ProofSyntax::Dpr); // todo: change this into option
     parser.verbose = false;
     let binary = is_binary_drat(proof_filename);
     let mut clause_ids = FixedSizeHashTable::new();
