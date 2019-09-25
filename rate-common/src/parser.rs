@@ -72,6 +72,47 @@ impl fmt::Display for ProofSyntax {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum BinaryMode {
+    Text,
+    Binary,
+    DratTrim,
+    Prefix,
+}
+impl BinaryMode {
+    pub fn parse(s: &str) -> Option<BinaryMode> {
+        match s {
+            "binary" => Some(BinaryMode::Binary),
+            "text" => Some(BinaryMode::Text),
+            "drat-trim" => Some(BinaryMode::DratTrim),
+            "prefix" => Some(BinaryMode::Prefix),
+            _ => None,
+        }
+    }
+    pub fn detect(&self, filename: &str) -> bool {
+        match self {
+            BinaryMode::Binary => true,
+            BinaryMode::Text => false,
+            BinaryMode::DratTrim => {
+                let vec = Input::peek_file(filename, 10);
+                for &c in vec.iter() {
+                    if Self::drat_trim_heuristic(c) {
+                        return true;
+                    }
+                }
+                false
+            }
+            BinaryMode::Prefix => {
+                let vec = Input::peek_file(filename, 1);
+                vec.get(0) == Some(&0x80)
+            }
+        }
+    }
+    fn drat_trim_heuristic(c: u8) -> bool {
+        (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
+    }
+}
+
 
 /// The static singleton instance of the clause database.
 ///
