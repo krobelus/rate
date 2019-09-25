@@ -13,7 +13,7 @@ use rate_common::{
     output::{install_signal_handler, print_solution},
     parser::{
         clause_db, open_file, proof_format_by_extension, run_parser, witness_db,
-        FixedSizeHashTable, HashTable, Parser, ProofSyntax,
+        BinaryMode, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
     },
     requires,
     sick::Sick,
@@ -68,6 +68,7 @@ fn main() -> Result<(), ()> {
         &mut parser,
         formula_filename,
         proof_filename,
+        BinaryMode::DratTrim,
         &mut clause_ids,
     );
 

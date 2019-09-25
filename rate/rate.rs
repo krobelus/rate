@@ -98,6 +98,7 @@ fn run_frontend() -> i32 {
         &flags.formula_filename,
         &flags.proof_filename,
         flags.proof_format,
+        flags.binary_mode,
         flags.no_terminating_empty_clause,
         flags.memory_usage_breakdown,
     );

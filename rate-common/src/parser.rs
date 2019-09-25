@@ -384,13 +384,14 @@ pub fn parse_files(
     formula_file: &str,
     proof_file: &str,
     proof_format: ProofSyntax,
+    binary_mode: BinaryMode,
     no_terminating_empty_clause: bool,
     memory_usage_breakdown: bool,
 ) -> Parser {
     let mut parser = Parser::new(proof_format);
     parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = FixedSizeHashTable::new();
-    run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
+    run_parser(&mut parser, formula_file, proof_file, binary_mode, &mut clause_ids);
     if memory_usage_breakdown {
         print_memory_usage(&parser, &clause_ids);
     }
@@ -417,9 +418,10 @@ pub fn run_parser(
     mut parser: &mut Parser,
     formula: &str,
     proof_file: &str,
+    binary_mode: BinaryMode,
     clause_ids: &mut impl HashTable,
 ) {
-    let binary = is_binary_drat(proof_file);
+    let binary = binary_mode.detect(proof_file);
     if parser.verbose {
         comment!("proof format: {}", parser.proof_format);
     }
