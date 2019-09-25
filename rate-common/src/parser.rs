@@ -403,21 +403,40 @@ pub fn run_parser(
     clause_ids: &mut impl HashTable,
 ) {
     let binary = is_binary_drat(proof_file);
-    run_parser_on_formula(parser, formula, proof_file, clause_ids);
-    let mut _timer = Timer::name("parsing proof");
-    if !parser.verbose {
-        _timer.disabled = true;
+    if parser.verbose {
+        comment!("proof format: {}", parser.proof_format);
     }
-    if binary && parser.verbose {
-        comment!("binary proof mode");
+
+    {
+        let mut _timer = Timer::name("parsing formula");
+        if !parser.verbose {
+            _timer.disabled = true;
+        }
+        parse_formula(
+            &mut parser,
+            clause_ids,
+            read_compressed_file(formula, false),
+        )
+        .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
     }
-    parse_proof(
-        &mut parser,
-        clause_ids,
-        read_compressed_file(proof_file, binary),
-        binary,
-    )
-    .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
+
+    {
+        let mut _timer = Timer::name("parsing proof");
+        if !parser.verbose {
+            _timer.disabled = true;
+        }
+        if binary && parser.verbose {
+            comment!("binary proof mode");
+        }
+        parse_proof(
+            &mut parser,
+            clause_ids,
+            read_compressed_file(proof_file, binary),
+            binary,
+        )
+        .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
+    }
+    
     clause_db().shrink_to_fit();
     witness_db().shrink_to_fit();
     parser.clause_pivot.shrink_to_fit();
