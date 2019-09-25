@@ -47,13 +47,25 @@ pub struct Input<'a> {
 
 impl<'a> Input<'a> {
     pub fn from_file(filename: &str, binary: bool) -> Self {
-        let source = Self::open(filename);
+        let source = Self::open(filename).peekable();
         Input {
-            source: source.peekable(),
+            source,
             binary,
             line: 1,
             column: 1,
         }
+    }
+
+    pub fn peek_file(filename: &str, length: usize) -> Vec<u8> {
+        let mut source = Self::open(filename);
+        let mut vec = Vec::<u8>::with_capacity(length);
+        for _ in 0..length {
+            match source.next() {
+                Some(c) => vec.push(c),
+                None => break ,
+            }
+        }
+        vec
     }
 
     fn open(filename: &str) -> Box<dyn Iterator<Item = u8>> {
