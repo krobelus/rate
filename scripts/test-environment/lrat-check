@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -e -u
+
+cnf="$(realpath "$1")'
+shift
+lrat="$(realpath "$1")"
+shift
+
+cd /usr/local/lib/stobj-based
+
+cnf_without_comments="$(mktemp lrat-check.XXXXXXX)"
+cleanup() {
+    rm "$cnf_without_comments"
+    exit 1
+}
+trap cleanup INT TERM
+
+grep -v '^c' "$cnf" | grep -v '^$' > "$cnf_without_comments"
+
+set +e
+./run.sh "$cnf_without_comments" "$lrat" "$@"
+status="$?"
+rm "$cnf_without_comments"
+exit "$status"

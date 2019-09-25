@@ -2,10 +2,24 @@ version: 2
 jobs:
     build:
         docker:
-            - image: circleci/rust:1.37-buster
+            - image: krobelus/rate-test-environment
+
         steps:
             - checkout
+
+            - restore_cache:
+                keys:
+                    - sdeps-v2-{{ checksum "Cargo.lock" }}
+                    - sdeps-v2-
+            - run: cargo fetch
+            - save_cache:
+                key: sdeps-v2-{{ checksum "Cargo.lock" }}
+                paths:
+                    - /usr/local/cargo/registry
+                    - /usr/local/cargo/.package-cache
+
             - run: |
-                cargo test
-                sudo apt install python3-pytest
+                cargo fmt -- --check
+                cargo build --release --offline --frozen
+                cargo test --release --offline --frozen
                 pytest-3 test.py
