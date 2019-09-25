@@ -11,7 +11,7 @@ use rate_common::{
     output::install_signal_handler,
     parser::{
         clause_db, is_binary_drat, open_file_for_writing, parse_instruction, read_compressed_file,
-        run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
+        parse_formula, FixedSizeHashTable, HashTable, Parser, ProofSyntax,
     },
     write_to_stdout,
 };
@@ -64,12 +64,11 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     parser.verbose = false;
     let binary = is_binary_drat(proof_filename);
     let mut clause_ids = FixedSizeHashTable::new();
-    run_parser_on_formula(
+    parse_formula(
         &mut parser,
-        formula_filename,
-        proof_filename,
         &mut clause_ids,
-    );
+        read_compressed_file(formula_filename, false),
+    )?;
     let mut proof_input = read_compressed_file(&proof_filename, binary);
     let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
     let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());

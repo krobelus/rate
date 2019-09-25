@@ -370,31 +370,6 @@ fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
     }
 }
 
-/// Parse a formula.
-///
-/// This requires the proof file as well to determine the proof format,
-/// which is necessary for initialization of the witness database.
-pub fn run_parser_on_formula(
-    mut parser: &mut Parser,
-    formula_file: &str,
-    proof_file: &str,
-    clause_ids: &mut impl HashTable,
-) {
-    if parser.verbose {
-        comment!("proof format: {}", parser.proof_format);
-    }
-    let mut _timer = Timer::name("parsing formula");
-    if !parser.verbose {
-        _timer.disabled = true;
-    }
-    parse_formula(
-        &mut parser,
-        clause_ids,
-        read_compressed_file(formula_file, false),
-    )
-    .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
-}
-
 /// Parse a formula and a proof file using a given hash table.
 pub fn run_parser(
     mut parser: &mut Parser,
@@ -436,7 +411,7 @@ pub fn run_parser(
         )
         .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
     }
-    
+
     clause_db().shrink_to_fit();
     witness_db().shrink_to_fit();
     parser.clause_pivot.shrink_to_fit();
@@ -715,7 +690,7 @@ fn parse_dpr_witness(
 }
 
 /// Parse a DIMACS formula.
-fn parse_formula(
+pub fn parse_formula(
     parser: &mut Parser,
     clause_ids: &mut impl HashTable,
     mut input: Input,
