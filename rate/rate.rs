@@ -50,7 +50,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT/DPR format"))
 
     .arg(Arg::with_name("SKIP_UNIT_DELETIONS").short("d").long("skip-unit-deletions")
-         .help("Ignore deletion of unit clauses."))
+         .help("Ignore deletion of unit clauses (drat-trim compatibility)."))
     .arg(Arg::with_name("NONCORE_RAT_CANDIDATES").short("r").long("noncore-rat-candidates")
          .help("Do not ignore RAT candidates that are not part of the core."))
     .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
@@ -61,9 +61,9 @@ fn run_frontend() -> i32 {
          .help("Use naive forward checking instead of backwards checking."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
-         .help("Compatibility with drat-trim; implies --skip-unit-deletions."))
+         .help("Compatibility with drat-trim; implies --skip-unit-deletions.").hidden(true))
     .arg(Arg::with_name("RUPEE").long("--rupee")
-         .help("Compatibility with rupee; implies --assume-pivot-is-first."))
+         .help("Compatibility with rupee; implies --assume-pivot-is-first.").hidden(true))
     .arg(Arg::with_name("MEMORY_USAGE_BREAKDOWN").short("m").long("--memory-breakdown")
          .help("Output detailed memory usage metrics.").hidden(true))
     .arg(Arg::with_name("LEMMAS_FILE").takes_value(true).short("l").long("lemmas")
@@ -166,13 +166,18 @@ impl Flags {
         let lrat = matches.is_present("LRAT_FILE");
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
+        if drat_trim {
+            warn!("option --drat-trim is deprecated, use --skip-unit-deletions instead");
+        }
+        if rupee {
+            warn!("option --rupee is deprecated, use --assume-pivot-is-first instead");
+        }
         if sick_filename.is_none() {
             sick_filename = matches.value_of("SICK_FILE_LEGACY").map(String::from);
             if sick_filename.is_some() {
                 warn!("option -i/--recheck is deprecated, use -S/--sick instead");
             }
         }
-
         if forward {
             if grat {
                 incompatible_options("--forward --grat");
