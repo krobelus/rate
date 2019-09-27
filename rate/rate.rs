@@ -99,7 +99,7 @@ fn run_frontend() -> i32 {
         die!("LRAT and GRAT generation is not possible for PR")
     }
     let mut checker = Checker::new(parser, flags);
-    let result = checker.run();
+    let result = run(&mut checker);
     print_key_value("premise clauses", checker.premise_length);
     print_key_value("proof steps", checker.proof.len());
     print_key_value("skipped tautologies", checker.satisfied_count);
@@ -113,7 +113,7 @@ fn run_frontend() -> i32 {
         checker.reason_deletions_shrinking_trail,
     );
     drop(timer);
-    checker.print_memory_usage();
+    print_memory_usage(&checker);
     if result == Verdict::NoConflict {
         warn!("all lemmas verified, but no conflict");
     }
@@ -488,14 +488,6 @@ impl Checker {
             checker.rejection.witness = Some(Vector::new())
         }
         checker
-    }
-    /// Run the checker.
-    pub fn run(&mut self) -> Verdict {
-        run(self)
-    }
-    /// Print memory usage statistics (after checking).
-    pub fn print_memory_usage(&self) {
-        print_memory_usage(self)
     }
     /// Build the DIMACS representation of the given clause.
     fn clause_to_string(&self, clause: Clause) -> String {
