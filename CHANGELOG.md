@@ -1,6 +1,10 @@
 # Unreleased
 
-- Deprecate options --drat-trim and --rupee, they can be replaced by
+- SICK certificates for proofs without an empty clause now must not contain
+  the `proof_step` attribute (previously it was the size of the proof + 1).
+- Deprecate option --no-terminating-empty-clause, now we explicitly handle
+  rejected proofs without an empty clause (printing "no conflict").
+- Deprecate options --drat-trim and --rupee, they should be replaced by
   --skip-unit-deletions and --assume-pivot-is-first respectively.
   Also, gratgen-like behavior can be simulated with --noncore-rat-candidates.
 - Deprecate option -i/--recheck in favor of -S/--sick to produce a SICK

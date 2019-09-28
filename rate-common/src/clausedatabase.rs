@@ -193,13 +193,6 @@ impl ClauseDatabase {
     pub fn swap(&mut self, a: usize, b: usize) {
         self.data.swap(a, b);
     }
-    /// Make the clause equivalent to the empty clause.
-    ///
-    /// *Note:* This assumes that clauses with a higher index will not be used anymore.
-    pub fn make_clause_empty(&mut self, target: Clause) {
-        self.offset[target.as_offset() + 1] =
-            self.offset[target.as_offset()] + PADDING_START + PADDING_END;
-    }
     /// Access the metadata for this clause.
     pub fn fields(&self, clause: Clause) -> &u32 {
         &self.data[self.offset[clause.as_offset()] + FIELDS_OFFSET].encoding

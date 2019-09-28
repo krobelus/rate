@@ -12,7 +12,7 @@ pub struct Sick {
     /// The string identifying the proof format
     pub proof_format: String,
     //// The line in the proof that failed
-    pub proof_step: usize,
+    pub proof_step: Option<usize>,
     /// The trail of the formula before any inference checks
     pub natural_model: Vector<Literal>,
     /// The list of witnesses (none for RUP, one for each pivot for RAT)

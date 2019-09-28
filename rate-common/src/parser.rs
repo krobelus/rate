@@ -93,8 +93,6 @@ pub struct Parser {
     pub proof: Vector<ProofStep>,
     /// How many proof steps we want to parse
     pub max_proof_steps: Option<usize>,
-    /// Whether to insert an extra empty clause at the end
-    pub no_terminating_empty_clause: bool,
     /// Print diagnostics and timing information
     pub verbose: bool,
 }
@@ -117,7 +115,6 @@ impl Parser {
             proof_start: Clause::new(0),
             proof: Vector::new(),
             max_proof_steps: None,
-            no_terminating_empty_clause: false,
             verbose: true,
         }
     }
@@ -314,14 +311,8 @@ impl PartialEq for ClauseHashEq {
 }
 
 /// Parse a formula and a proof file.
-pub fn parse_files(
-    formula_file: &str,
-    proof_file: &str,
-    no_terminating_empty_clause: bool,
-    memory_usage_breakdown: bool,
-) -> Parser {
+pub fn parse_files(formula_file: &str, proof_file: &str, memory_usage_breakdown: bool) -> Parser {
     let mut parser = Parser::new();
-    parser.no_terminating_empty_clause = no_terminating_empty_clause;
     let mut clause_ids = FixedSizeHashTable::new();
     // let mut clause_ids = DynamicHashTable::new();
     run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
@@ -956,17 +947,6 @@ pub fn finish_proof(
         }
         ProofParserState::Start => (),
     };
-    if !parser.no_terminating_empty_clause {
-        // ensure that every proof ends with an empty clause
-        let clause = open_clause(parser, ProofParserState::Clause);
-        parser.proof.push(ProofStep::lemma(clause));
-        add_literal(
-            parser,
-            clause_ids,
-            ProofParserState::Clause,
-            Literal::new(0),
-        );
-    }
 }
 
 /// Parse a proof given the hashtable.
@@ -1073,11 +1053,8 @@ c comment
                     lit(2),
                     lit(3),
                     lit(0),
-                    raw(3),
-                    raw(0),
-                    lit(0),
                 ),
-                vector!(0, 5, 10, 16)
+                vector!(0, 5, 10)
             )
         );
         assert_eq!(witness_db(), &WitnessDatabase::from(vector!(), vector!(0)));
@@ -1091,10 +1068,8 @@ c comment
                 proof: vector!(
                     ProofStep::lemma(Clause::new(2)),
                     ProofStep::deletion(Clause::new(0)),
-                    ProofStep::lemma(Clause::new(3)),
                 ),
                 max_proof_steps: None,
-                no_terminating_empty_clause: false,
                 verbose: true,
             }
         );

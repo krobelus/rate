@@ -63,7 +63,7 @@ fn main() -> Result<(), ()> {
     requires!(redundancy_property == proof_file_redundancy_property);
     let mut clause_ids = FixedSizeHashTable::new();
     let mut parser = Parser::new();
-    parser.max_proof_steps = Some(sick.proof_step);
+    parser.max_proof_steps = sick.proof_step;
     run_parser(
         &mut parser,
         formula_filename,
@@ -71,14 +71,6 @@ fn main() -> Result<(), ()> {
         &mut clause_ids,
     );
 
-    if sick.proof_step > parser.proof.len() {
-        die!(
-            "Specified proof step exceeds proof size: {}",
-            sick.proof_step
-        );
-    }
-    let lemma = parser.proof[sick.proof_step - 1].clause();
-    requires!(lemma.index < clause_db().number_of_clauses());
     let mut assignment = Assignment::new(parser.maxvar);
     for &literal in &sick.natural_model {
         if assignment[-literal] {
@@ -89,6 +81,18 @@ fn main() -> Result<(), ()> {
         }
         assignment.push(literal, Reason::assumed());
     }
+    let proof_step = match sick.proof_step {
+        Some(proof_step) => proof_step,
+        None => {
+            print_solution("VERIFIED");
+            return Ok(());
+        }
+    };
+    if proof_step > parser.proof.len() {
+        die!("Specified proof step exceeds proof size: {}", proof_step);
+    }
+    let lemma = parser.proof[proof_step - 1].clause();
+    requires!(lemma.index < clause_db().number_of_clauses());
     if clause_db().clause(lemma).is_empty() {
         comment!("Tried to introduce empty clause but natural model is consistent");
         print_solution("VERIFIED");

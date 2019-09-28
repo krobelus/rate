@@ -56,7 +56,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("ASSUME_PIVOT_IS_FIRST").short("p").long("assume-pivot-is-first")
          .help("When checking for RAT, only try the first literal as pivot."))
     .arg(Arg::with_name("NO_TERMINATING_EMPTY_CLAUSE").long("--no-terminating-empty-clause")
-        .help("Do not add an empty clause at the end of the proof."))
+        .help("Do not add an empty clause at the end of the proof.").hidden(true))
     .arg(Arg::with_name("FORWARD").short("f").long("forward")
          .help("Use naive forward checking instead of backwards checking."))
 
@@ -92,7 +92,6 @@ fn run_frontend() -> i32 {
     let parser = parse_files(
         &flags.formula_filename,
         &flags.proof_filename,
-        flags.no_terminating_empty_clause,
         flags.memory_usage_breakdown,
     );
     if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
@@ -114,8 +113,11 @@ fn run_frontend() -> i32 {
     );
     drop(timer);
     print_memory_usage(&checker);
-    if result == Verdict::NoConflict {
-        warn!("all lemmas verified, but no conflict");
+    match result {
+        Verdict::NoEmptyClause => warn!("no conflict"),
+        Verdict::IncorrectEmptyClause => warn!("conflict claimed but not detected"),
+        Verdict::IncorrectLemma => warn!("incorrect lemma"),
+        Verdict::Verified => (),
     }
     print_solution(if result == Verdict::Verified {
         "VERIFIED"
@@ -136,7 +138,6 @@ pub struct Flags {
     pub skip_unit_deletions: bool,
     pub noncore_rat_candidates: bool,
     pub pivot_is_first_literal: bool,
-    pub no_terminating_empty_clause: bool,
     pub memory_usage_breakdown: bool,
     pub forward: bool,
     pub verbosity: u64,
@@ -163,6 +164,7 @@ impl Flags {
         let noncore_rat_candidates = matches.is_present("NONCORE_RAT_CANDIDATES");
         let pivot_is_first_literal = matches.is_present("ASSUME_PIVOT_IS_FIRST");
         let forward = matches.is_present("FORWARD");
+        let no_terminating_empty_clause = matches.is_present("NO_TERMINATING_EMPTY_CLAUSE");
         let lrat = matches.is_present("LRAT_FILE");
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
@@ -171,6 +173,9 @@ impl Flags {
         }
         if rupee {
             warn!("option --rupee is deprecated, use --assume-pivot-is-first instead");
+        }
+        if no_terminating_empty_clause {
+            warn!("option --no-terminating-empty-clause is deprecated, please remove the flag");
         }
         if sick_filename.is_none() {
             sick_filename = matches.value_of("SICK_FILE_LEGACY").map(String::from);
@@ -214,7 +219,6 @@ impl Flags {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
             noncore_rat_candidates: rupee || noncore_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
-            no_terminating_empty_clause: matches.is_present("NO_TERMINATING_EMPTY_CLAUSE"),
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             forward,
             verbosity: match matches.occurrences_of("v") {
@@ -242,9 +246,14 @@ fn incompatible_options(what: &str) {
 /// The (intermediate) result of a proof checker
 #[derive(PartialEq, Eq, Debug)]
 pub enum Verdict {
+    /// All good so far.
     Verified,
-    NoConflict,
-    Falsified,
+    /// Failure to derive the empty clause.
+    NoEmptyClause,
+    /// Proof adds empty clause when it is not an inference.
+    IncorrectEmptyClause,
+    /// Some lemma is not an inference.
+    IncorrectLemma,
 }
 
 /// The proof checker
@@ -392,7 +401,8 @@ impl Checker {
     /// [Parser](../parser/struct.Parser.html) and a
     /// [Flags](struct.Flags.html)
     pub fn new(parser: Parser, flags: Flags) -> Checker {
-        let num_clauses = clause_db().number_of_clauses() as usize;
+        // We will add one extra empty clause at the end of the proof.
+        let num_clauses = clause_db().number_of_clauses() as usize + 1;
         let num_lemmas = parser.proof.len();
         let maxvar = parser.maxvar;
         let assignment = Assignment::new(maxvar);
@@ -572,12 +582,6 @@ impl Checker {
         }
         result
     }
-    /// Return the empty clause that finishes the proof.
-    fn closing_empty_clause(&self) -> Clause {
-        requires!(self.proof_steps_until_conflict != usize::max_value());
-        let proof_step = self.proof[self.proof_steps_until_conflict];
-        proof_step.clause()
-    }
 }
 
 /// Run the checker.
@@ -587,28 +591,21 @@ fn run(checker: &mut Checker) -> Verdict {
     } else {
         let mut verdict = preprocess(checker);
         if verdict == Verdict::Verified {
-            // so far so good
-            invariant!({
-                let last_step = checker.proof[checker.proof_steps_until_conflict];
-                !last_step.is_deletion() && checker.clause(last_step.clause()).is_empty()
-            });
-            verdict = if verify(checker) {
-                Verdict::Verified
-            } else {
-                Verdict::Falsified
+            if !verify(checker) {
+                verdict = Verdict::IncorrectLemma;
             }
         }
         verdict
     };
     if verdict == Verdict::Verified {
-        write_lemmas(checker).unwrap_or_else(|err| die!("Failed to write lemmas: {}", err));
+        write_lemmas(checker).unwrap_or_else(|err| die!("Failed to write core lemmas: {}", err));
         write_lrat_certificate(checker)
             .unwrap_or_else(|err| die!("Failed to write LRAT certificate: {}", err));
         write_grat_certificate(checker)
             .unwrap_or_else(|err| die!("Failed to write GRAT certificate: {}", err));
         Verdict::Verified
     } else {
-        write_sick_witness(checker).expect("Failed to write incorrectness witness.");
+        write_sick_witness(checker).expect("Failed to write SICK incorrectness witness.");
         verdict
     }
 }
@@ -618,7 +615,8 @@ fn forward_check(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("forward check");
     for clause in Clause::range(0, checker.lemma) {
         if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
-            return close_proof(checker, 0);
+            close_proof_trivially_unsat(checker, clause);
+            return Verdict::Verified;
         }
     }
     log!(checker, 1, "[forward check] added premise");
@@ -628,19 +626,20 @@ fn forward_check(checker: &mut Checker) -> Verdict {
         if proof_step.is_deletion() {
             forward_delete(checker, clause);
         } else {
-            if !forward_preadd(checker, i, clause) {
-                return Verdict::NoConflict;
+            if claims_conflict(checker, i, clause) {
+                return Verdict::IncorrectEmptyClause;
             }
             if !check_inference(checker) {
-                return Verdict::Falsified;
+                return Verdict::IncorrectLemma;
             }
             if add_premise(checker, clause) == CONFLICT {
-                return close_proof(checker, i + 1);
+                close_proof_after_steps(checker, i + 1);
+                return Verdict::Verified;
             }
             checker.lemma += 1;
         }
     }
-    Verdict::NoConflict
+    Verdict::NoEmptyClause
 }
 
 /// Delete a clause during the forward pass.
@@ -704,17 +703,16 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
 /// Must be called before adding a clause in the forward pass.
 ///
 /// Returns true if we hit the empty clause (trivial UNSAT).
-fn forward_preadd(checker: &mut Checker, step: usize, clause: Clause) -> bool {
+fn claims_conflict(checker: &mut Checker, step: usize, clause: Clause) -> bool {
     invariant!(clause == checker.lemma);
-    if checker.clause(clause).is_empty() {
-        if checker.flags.sick_filename.is_some() {
-            checker.rejection.proof_step = step;
-        }
-        extract_natural_model(checker, checker.assignment.len());
-        false
-    } else {
-        true
+    if !checker.clause(clause).is_empty() {
+        return false;
     }
+    if checker.flags.sick_filename.is_some() {
+        checker.rejection.proof_step = Some(step);
+    }
+    extract_natural_model(checker, checker.assignment.len());
+    true
 }
 
 impl fmt::Display for Revision {
@@ -1650,39 +1648,46 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     propagate(checker)
 }
 
+/// Finish the proof given that the input formula is confirmed unsatisfiable by
+/// unit propagation.
+/// The internal proof will just contain a single empty clause.
+fn close_proof_trivially_unsat(checker: &mut Checker, clause: Clause) {
+    checker.proof_steps_until_conflict = 0;
+    close_proof(checker, clause);
+}
+
 /// Finish the proof at the given step.
 ///
-/// This replaces the instruction at the given step by a RUP inference of
-/// the empty clause. This works around some solvers omitting the empty clause
-/// in their proofs.
-fn close_proof(checker: &mut Checker, steps_until_conflict: usize) -> Verdict {
+/// After applying `steps_until_conflict` proof steps, there is a conflict by
+/// unit propagation.
+fn close_proof_after_steps(checker: &mut Checker, steps_until_conflict: usize) {
+    invariant!(steps_until_conflict > 0);
     checker.proof_steps_until_conflict = steps_until_conflict;
-    let empty_clause = checker.lemma;
-    clause_db().make_clause_empty(empty_clause);
-    invariant!(checker.clause(empty_clause).is_empty());
-    invariant!((checker.maxvar == Variable(0)) == (checker.assignment.peek().0 == Literal::TOP));
+    let clause = checker.proof[steps_until_conflict - 1].clause();
+    close_proof(checker, clause);
+}
+
+/// Add an empty clause to the proof (as it might be missing) and to the core.
+fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
+    let empty_clause = clause_db().open_clause();
+    clause_db().push_literal(Literal::new(0));
     let grat_pending_length = checker.grat_pending.len();
     extract_dependencies(checker, checker.assignment.len(), None);
     checker.grat_pending.truncate(grat_pending_length);
     write_dependencies_for_lrat(checker, empty_clause, false);
     add_to_core(checker, empty_clause);
-    checker.proof[checker.proof_steps_until_conflict] = ProofStep::lemma(empty_clause);
     if checker.flags.lrat_filename.is_some() {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
     if checker.flags.grat_filename.is_some() {
-        let reason = checker.assignment.pop().unwrap().1;
-        if reason.is_assumed() {
-            let empty_clause_in_premise = Clause::range(0, checker.lemma)
-                .find(|&clause| checker.clause(clause).is_empty())
-                .unwrap();
-            add_to_core(checker, empty_clause_in_premise);
-            checker.grat_conflict_clause = empty_clause_in_premise;
+        if checker.clause(last_added_clause).is_empty() {
+            add_to_core(checker, last_added_clause);
+            checker.grat_conflict_clause = last_added_clause;
         } else {
+            let reason = checker.assignment.pop().unwrap().1;
             checker.grat_conflict_clause = checker.offset2clause(reason.offset());
         }
     }
-    Verdict::Verified
 }
 
 /// Preprocess the proof (forward pass).
@@ -1695,7 +1700,8 @@ fn preprocess(checker: &mut Checker) -> Verdict {
     defer_log!(checker, 1, "[preprocess] done\n");
     for clause in Clause::range(0, checker.lemma) {
         if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
-            return close_proof(checker, 0);
+            close_proof_trivially_unsat(checker, clause);
+            return Verdict::Verified;
         }
     }
     log!(checker, 1, "[preprocess] done adding premise");
@@ -1706,16 +1712,17 @@ fn preprocess(checker: &mut Checker) -> Verdict {
         if proof_step.is_deletion() {
             forward_delete(checker, clause);
         } else {
-            if !forward_preadd(checker, i, clause) {
-                return Verdict::NoConflict;
+            if claims_conflict(checker, i, clause) {
+                return Verdict::IncorrectEmptyClause;
             }
             checker.lemma += 1;
             if add_premise(checker, clause) == CONFLICT {
-                return close_proof(checker, i + 1);
+                close_proof_after_steps(checker, i + 1);
+                return Verdict::Verified;
             }
         }
     }
-    unreachable()
+    Verdict::NoEmptyClause
 }
 
 /// Check inferences (backward pass).
@@ -1790,7 +1797,7 @@ fn verify(checker: &mut Checker) -> bool {
         };
         if !accepted {
             if checker.flags.sick_filename.is_some() {
-                checker.rejection.proof_step = i;
+                checker.rejection.proof_step = Some(i);
             }
             return false;
         }
@@ -1899,7 +1906,10 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
-    for lemma in Clause::range(checker.lemma, checker.closing_empty_clause()) {
+    for lemma in Clause::range(
+        checker.lemma,
+        checker.lemma.as_offset() + checker.proof_steps_until_conflict,
+    ) {
         if checker.fields(lemma).is_in_core() {
             write_clause(&mut file, checker.clause(lemma).iter())?;
             writeln!(file)?;
@@ -2068,10 +2078,11 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
-    let num_clauses = checker.closing_empty_clause().as_offset() + 1;
+    let num_clauses = checker.optimized_proof.first().clause().as_offset() + 1;
     let mut clause_deleted = Array::new(false, num_clauses);
     let empty_clause_as_premise =
         Clause::range(0, checker.lemma).any(|clause| checker.clause(clause).is_empty());
+    // TODO
     if empty_clause_as_premise {
         // write an empty LRAT certificate, this is accepted by lratcheck
         return Ok(());
@@ -2200,8 +2211,6 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         }
         RedundancyProperty::PR => "PR",
     };
-    let proof_step = checker.rejection.proof_step;
-
     write!(file, "# Failed to prove lemma")?;
     for &literal in &checker.rejected_lemma {
         if literal != Literal::BOTTOM {
@@ -2210,11 +2219,14 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     }
     writeln!(file, " 0")?;
     writeln!(file, "proof_format   = \"{}\"", proof_format)?;
-    writeln!(
-        file,
-        "proof_step     = {} # Failed line in the proof",
-        proof_step + 1
-    )?;
+    match checker.rejection.proof_step {
+        Some(proof_step) => writeln!(
+            file,
+            "proof_step     = {} # Failed line in the proof",
+            proof_step + 1
+        )?,
+        None => (),
+    }
     write!(file, "natural_model  = [")?;
     for &literal in &checker.rejection.natural_model {
         write!(file, "{}, ", literal)?;
