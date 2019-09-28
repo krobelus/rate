@@ -1,6 +1,6 @@
 [package]
 name = "rate"
-version = "0.1.0"
+version = "0.2.1"
 authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
 edition = "2018"
 description = "Clausal proof checker (DRAT, DPR) for certifying SAT solvers' unsatisfiability results"
@@ -13,8 +13,8 @@ name = "rate"
 path = "rate.rs"
 
 [dependencies]
-rate-common = { path = "../rate-common", version = "0.1.0" }
-rate-macros = { path = "../rate-macros", version = "0.1.0" }
+rate-common = { path = "../rate-common", version = "0.2.1" }
+rate-macros = { path = "../rate-macros", version = "0.2.1" }
 ansi_term = "0.12"
 bitfield = "0.13"
 clap = "2.32"

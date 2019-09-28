@@ -361,19 +361,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "rate"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitfield 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-common 0.1.0",
- "rate-macros 0.1.0",
+ "rate-common 0.2.1",
+ "rate-macros 0.2.1",
  "scopeguard 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "rate-common"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -382,7 +382,7 @@ dependencies = [
  "flate2 1.0.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.62 (registry+https://github.com/rust-lang/crates.io-index)",
  "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-macros 0.1.0",
+ "rate-macros 0.2.1",
  "scopeguard 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "rate-macros"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "proc-macro2 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -403,20 +403,20 @@ dependencies = [
 
 [[package]]
 name = "rate-proof-utils"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-common 0.1.0",
+ "rate-common 0.2.1",
 ]
 
 [[package]]
 name = "rate-sick-check"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-common 0.1.0",
+ "rate-common 0.2.1",
  "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
