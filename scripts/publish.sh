@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 
-set -e
+set -eu
 
 cd "$(dirname "$0")"/..
 
-./scripts/generate-metadata.sh
-./scripts/format.sh
+version="$1"
+
+# require clean worktree
 git --no-pager diff
 git --no-pager diff | grep . && exit 1 ||:
 
-source <(grep '^our_version=' scripts/generate-metadata.sh)
-git tag "$our_version"
+./scripts/generate-metadata.sh "$version"
+git commit -am "release $version"
+git tag "$version"
+git push
 git push --tags
-
 
 for crate in rate-macros rate-common rate rate-sick-check rate-proof-utils
 do
