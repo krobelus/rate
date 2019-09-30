@@ -8,6 +8,7 @@ use crate::{
 };
 use std::{
     collections::HashMap,
+    fmt::{self, Debug},
     hash::{Hash, Hasher},
     slice,
 };
@@ -123,6 +124,12 @@ impl HashTable for FixedSizeHashTable {
 impl HeapSpace for FixedSizeHashTable {
     fn heap_space(&self) -> usize {
         self.0.heap_space()
+    }
+}
+
+impl Debug for FixedSizeHashTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[[hash table]]")
     }
 }
 

@@ -120,12 +120,14 @@ impl BinaryMode {
 }
 
 /// CNF and DRAT/DPR parser.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Parser {
     /// The redundancy property identifying the proof format.
     pub proof_format: ProofSyntax,
     /// The highest variable parsed so far
     pub maxvar: Variable,
+    /// Clause hash table for deletion search
+    pub table: FixedSizeHashTable,
     /// For RAT, the pivot (first literal) for each clause
     ///
     /// It is necessary to store this because the clauses will be sorted
@@ -157,6 +159,7 @@ impl Parser {
         Parser {
             proof_format,
             maxvar: Variable::new(0),
+            table: FixedSizeHashTable::new(),
             clause_pivot: Vector::new(),
             proof_start: Clause::new(0),
             proof: Vector::new(),
@@ -172,6 +175,19 @@ impl Parser {
 
     pub fn process_variable(&mut self, lit: Literal) {
         self.maxvar = cmp::max(self.maxvar, lit.variable())
+    }
+}
+
+impl PartialEq for Parser {
+    fn eq(&self, other: &Self) -> bool {
+        self.proof_format == other.proof_format
+            && self.maxvar == other.maxvar
+            && self.clause_pivot == other.clause_pivot
+            && self.proof_start == other.proof_start
+            && self.proof == other.proof
+            && self.max_proof_steps == other.max_proof_steps
+            && self.no_terminating_empty_clause == other.no_terminating_empty_clause
+            && self.verbose == other.verbose
     }
 }
 
@@ -626,6 +642,7 @@ mod tests {
             Parser {
                 proof_format: ProofSyntax::Drat,
                 maxvar: Variable::new(3),
+                table: FixedSizeHashTable::new(),
                 clause_pivot: vector!(Literal::NEVER_READ, Literal::NEVER_READ, Literal::new(1)),
                 proof_start: Clause::new(2),
                 proof: vector!(
