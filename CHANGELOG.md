@@ -1,3 +1,8 @@
+# Unreleased
+
+- Fix unsound rejections by `rate --forward`
+- Correctly implement flag `--noncore-rat-candidates`
+
 # 0.2.1 (2019-09-28)
 
 - SICK certificates for proofs without an empty clause now must not contain
