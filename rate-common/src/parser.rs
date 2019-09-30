@@ -172,7 +172,7 @@ impl Parser {
     pub fn is_pr(&self) -> bool {
         self.proof_format == ProofSyntax::Dpr
     }
-
+    /// Updates maxvar if necessary
     pub fn process_variable(&mut self, lit: Literal) {
         self.maxvar = cmp::max(self.maxvar, lit.variable())
     }
@@ -202,19 +202,18 @@ pub fn parse_files(
 ) -> Parser {
     let mut parser = Parser::new(proof_format);
     parser.no_terminating_empty_clause = no_terminating_empty_clause;
-    let mut clause_ids = FixedSizeHashTable::new();
-    run_parser(&mut parser, formula_file, proof_file, binary_mode, &mut clause_ids);
+    run_parser(&mut parser, formula_file, proof_file, binary_mode);
     if memory_usage_breakdown {
-        print_memory_usage(&parser, &clause_ids);
+        print_memory_usage(&parser);
     }
     parser
 }
 
 /// Print the memory usage of a parser (useful after parsing).
-fn print_memory_usage(parser: &Parser, clause_ids: &impl HashTable) {
+fn print_memory_usage(parser: &Parser) {
     let usages = vec![
         ("db", clause_db().heap_space()),
-        ("hash-table", clause_ids.heap_space()),
+        ("hash-table", parser.table.heap_space()),
         ("proof", parser.proof.heap_space()),
         ("rest", parser.clause_pivot.heap_space()),
     ];
@@ -231,7 +230,6 @@ pub fn run_parser(
     formula: &str,
     proof_file: &str,
     binary_mode: BinaryMode,
-    clause_ids: &mut impl HashTable,
 ) {
     if parser.verbose {
         comment!("proof format: {}", parser.proof_format);
@@ -245,7 +243,6 @@ pub fn run_parser(
         let input = Input::from_file(formula, false);
         parse_formula(
             &mut parser,
-            clause_ids,
             input,
         )
         .unwrap_or_else(|err| die!("failed to parse formula: {}", err));
@@ -263,7 +260,6 @@ pub fn run_parser(
         let input = Input::from_file(proof_file, binary);
         parse_proof(
             &mut parser,
-            clause_ids,
             input,
             binary,
         )
@@ -295,9 +291,9 @@ pub fn panic_on_error<T>(result: Result<T>) -> T {
 /// Add a deletion to the proof.
 ///
 /// Looks up the last parsed clause in the hash table and adds the deletion upon success.
-fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
+fn add_deletion(parser: &mut Parser) {
     let clause = clause_db().last_clause();
-    match clause_ids.find_equal_clause(clause, /*delete=*/ true) {
+    match parser.table.find_equal_clause(clause, /*delete=*/ true) {
         None => {
             if parser.verbose {
                 warn!(
@@ -419,7 +415,6 @@ fn parse_dpr_witness(
 /// Parse a DIMACS formula.
 pub fn parse_formula(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
     mut input: Input,
 ) -> Result<()> {
     parse_formula_header(&mut input)?;
@@ -438,7 +433,7 @@ pub fn parse_formula(
                     witness_db().push_literal(Literal::new(0));
                 }
                 parser.clause_pivot.push(Literal::NEVER_READ);
-                clause_ids.add_clause(clause_db().last_clause());
+                parser.table.add_clause(clause_db().last_clause());
             } ,
             _ => unreachable() ,
         }
@@ -449,7 +444,6 @@ pub fn parse_formula(
 /// Parse a proof given the hashtable.
 fn parse_proof(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
     mut input: Input,
     binary: bool,
 ) -> Result<()> {
@@ -459,7 +453,7 @@ fn parse_proof(
         input.skip_any_whitespace();
     }
     while instructions != 0usize && input.peek() != None {
-        parse_instruction(parser, clause_ids, &mut input, binary)?;
+        parse_instruction(parser, &mut input, binary)?;
         instructions -= 1;
     }
     if !parser.no_terminating_empty_clause {        // todo: check if this is really necessary
@@ -470,7 +464,7 @@ fn parse_proof(
             witness_db().push_literal(Literal::new(0));
         }
         parser.proof.push(ProofStep::lemma(clause));
-        clause_ids.add_clause(clause_db().last_clause());
+        parser.table.add_clause(clause_db().last_clause());
     }
     Ok(())
 }
@@ -511,7 +505,6 @@ impl ParsedInstructionKind {
 /// Parse a single proof step
 pub fn parse_instruction(
     parser: &mut Parser,
-    clause_ids: &mut impl HashTable,
     input: &mut Input,
     binary: bool,
 ) -> Result<()> {
@@ -533,7 +526,7 @@ pub fn parse_instruction(
                 }
             }
             clause_db().push_literal(Literal::new(0));
-            clause_ids.add_clause(clause_db().last_clause());
+            parser.table.add_clause(clause_db().last_clause());
             parser.proof.push(ProofStep::lemma(clause));
             if parser.is_pr() {
                 witness_db().push_literal(Literal::new(0));
@@ -544,7 +537,7 @@ pub fn parse_instruction(
             match parse_clause(parser, input, false, binary)? {
                 ParsedClause::Clause(_) => {
                     clause_db().push_literal(Literal::new(0));
-                    add_deletion(parser, clause_ids);
+                    add_deletion(parser);
                 }
                 ParsedClause::Repetition(_) => unreachable() ,
             }
@@ -581,12 +574,11 @@ mod tests {
         ($($x:expr),*) => (Vector::from_vec(vec!($(Literal::new($x)),*)));
     }
 
-    fn sample_formula(clause_ids: &mut impl HashTable) -> Parser {
+    fn sample_formula() -> Parser {
         let mut parser = Parser::new(ProofSyntax::Drat);
         parser.proof_format = ProofSyntax::Drat;
         assert!(parse_formula(
             &mut parser,
-            clause_ids,
             crate::input::tests::sample_formula_input(),
         )
         .is_ok());
@@ -594,11 +586,9 @@ mod tests {
     }
     #[test]
     fn valid_formula_and_proof() {
-        let mut clause_ids = FixedSizeHashTable::new();
-        let mut parser = sample_formula(&mut clause_ids);
+        let mut parser = sample_formula();
         let result = parse_proof(
             &mut parser,
-            &mut clause_ids,
             crate::input::tests::sample_proof_input(),
             false,
         );

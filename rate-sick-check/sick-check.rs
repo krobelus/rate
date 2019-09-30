@@ -72,7 +72,6 @@ fn main() -> Result<(), ()> {
         formula_filename,
         proof_filename,
         BinaryMode::DratTrim,
-        &mut clause_ids,
     );
 
     if sick.proof_step > parser.proof.len() {

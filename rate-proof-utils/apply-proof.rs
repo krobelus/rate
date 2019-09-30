@@ -9,7 +9,7 @@ use rate_common::{
     clause::{write_clause, Clause},
     clausedatabase::{clause_db},
     die,
-    hashtable::{FixedSizeHashTable, HashTable},
+    hashtable::{HashTable},
     input::Input,
     output::install_signal_handler,
     parser::{
@@ -66,20 +66,17 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     let mut parser = Parser::new(ProofSyntax::Dpr); // todo: change this into option
     parser.verbose = false;
     let binary = BinaryMode::DratTrim.detect(proof_filename);
-    let mut clause_ids = FixedSizeHashTable::new();
     let formula_input = Input::from_file(formula_filename, false);
     let mut proof_input = Input::from_file(&proof_filename, binary);
     let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
     let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
     parse_formula(
         &mut parser,
-        &mut clause_ids,
         formula_input,
     )?;
     for _ in 0..line_number {
         let _result = parse_instruction(
             &mut parser,
-            &mut clause_ids,
             &mut proof_input,
             binary,
         )
@@ -89,7 +86,7 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     let mut write_formula = || {
         let number_of_active_clauses = (0..clause_db().number_of_clauses())
             .map(Clause::new)
-            .filter(|&clause| clause_ids.clause_is_active(clause))
+            .filter(|&clause| parser.table.clause_is_active(clause))
             .count();
         writeln!(
             &mut formula_output,
@@ -97,7 +94,7 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
             parser.maxvar, number_of_active_clauses
         )?;
         for clause in (0..clause_db().number_of_clauses()).map(Clause::new) {
-            if !clause_ids.clause_is_active(clause) {
+            if !parser.table.clause_is_active(clause) {
                 continue;
             }
             write_clause(&mut formula_output, clause_db().clause(clause).iter())?;
