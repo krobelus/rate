@@ -276,18 +276,23 @@ def test_pr():
 
 def test_quick_default():
     double_check(
-        rate(flags=['--assume-pivot-is-first']), instances=small_drat_inputs())
-
-
-def test_quick_arbitrary_pivot():
-    double_check(
         rate(), instances=small_drat_inputs())
+
+
+def test_quick_pivot_is_first():
+    double_check(
+        rate(flags=['--assume-pivot-is-first']), instances=small_drat_inputs())
 
 
 def test_quick_skip_unit_deletions():
     double_check(
-        rate(flags=['--assume-pivot-is-first', '--skip-unit-deletions']),
+        rate(flags=['--skip-unit-deletions']),
         instances=small_drat_inputs())
+
+
+def test_full():
+    double_check(rate(),
+                 instances=set(drat_inputs()) - set(small_drat_inputs()))
 
 
 def test_compression():
@@ -300,11 +305,6 @@ def test_compression():
         instances=compressed_inputs,
         lrat_checker=None,
         grat_checker=None)
-
-
-def test_full():
-    double_check(rate(),
-                 instances=set(drat_inputs()) - set(small_drat_inputs()))
 
 
 def test_forward():
@@ -327,7 +327,7 @@ def test_acceptance_drat_trim():
     if executable('drat-trim'):
         compare_acceptance(
             rate(
-                flags=['--drat-trim']),
+                flags=['--skip-unit-deletions']),
             ['drat-trim'],
             instances=drat_inputs())
 
@@ -336,7 +336,7 @@ def test_acceptance_rupee():
     if executable('rupee'):
         compare_acceptance(
             rate(
-                flags=['--rupee']),
+                flags=['--assume-pivot-is-first']),
             ['rupee'],
             instances=drat_inputs())
 
@@ -345,7 +345,7 @@ def test_acceptance_gratgen():
     if executable('gratgen'):
         compare_acceptance(
             rate(
-                flags=['--skip-unit-deletions']),
+                flags=['--skip-unit-deletions', '--noncore-rat-candidates']),
             ['gratgen'],
             instances=drat_inputs())
 
