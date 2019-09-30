@@ -1,6 +1,6 @@
 [package]
 name = "rate-sick-check"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
 edition = "2018"
 description = "Verify SICK certificates of proof incorrectness produced by rate"
@@ -13,7 +13,7 @@ name = "sick-check"
 path = "sick-check.rs"
 
 [dependencies]
-rate-common = { path = "../rate-common", version = "0.2.1" }
+rate-common = { path = "../rate-common", version = "0.2.2" }
 clap = "2.32"
 toml = "0.5"
 ansi_term = "0.12"
