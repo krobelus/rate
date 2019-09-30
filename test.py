@@ -1,6 +1,5 @@
 #!/usr/bin/env -S python3 -m pytest
 
-import sys
 import time
 import os
 from subprocess import Popen, PIPE
@@ -307,19 +306,14 @@ def test_full():
     double_check(rate(),
                  instances=set(drat_inputs()) - set(small_drat_inputs()))
 
+
 def test_forward():
-    double_check(rate(flags=['--forward']), instances=set(drat_inputs()) | set(pr_inputs()))
-
-# def test_with_lrat_check():
-#     double_check(rate(
-#         flags=['--assume-pivot-is-first']), ['lrat-check'])
-
-# def test_with_lratcheck():
-#     double_check(
-#         rate(
-#             flags=['--assume-pivot-is-first', '--lratcheck-compat']),
-#         ['lratcheck'])
-
+    double_check(
+        rate(
+            flags=['--forward']),
+        instances=set(
+            drat_inputs()) | set(
+                pr_inputs()))
 
 # def test_acceptance_initial_commit():
 #     build_release(INITIAL_COMMIT)
