@@ -169,6 +169,10 @@ impl Parser {
     pub fn is_pr(&self) -> bool {
         self.proof_format == ProofSyntax::Dpr
     }
+
+    pub fn process_variable(&mut self, lit: Literal) {
+        self.maxvar = cmp::max(self.maxvar, lit.variable())
+    }
 }
 
 /// Parse a formula and a proof file.
@@ -364,7 +368,7 @@ fn parse_clause(
         } else {
             parse_literal_text(input)?
         };
-        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
+        parser.process_variable(literal);
         if literal.is_zero() {
             return Ok(ParsedClause::Clause(initial)) ;
         } else if repetition && literal == initial {
@@ -388,7 +392,7 @@ fn parse_dpr_witness(
         } else {
             parse_literal_text(input)?
         };
-        parser.maxvar = cmp::max(parser.maxvar, literal.variable());
+        parser.process_variable(literal);
         if literal.is_zero() {
             return Ok(()) ;
         }
