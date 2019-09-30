@@ -108,15 +108,6 @@ impl<'a> Input<'a> {
         }
     }
 
-    /// Create a new `Input` from some source
-    // pub fn new(source: Box<dyn Iterator<Item = u8> + 'a>, binary: bool) -> Self {
-    //     Input {
-    //         source: source.peekable(),
-    //         binary,
-    //         line: 1,
-    //         column: 1,
-    //     }
-    // }
     /// Look at the next byte without consuming it
     pub fn peek(&mut self) -> Option<u8> {
         self.source.peek().cloned()

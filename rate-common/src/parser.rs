@@ -119,27 +119,6 @@ impl BinaryMode {
     }
 }
 
-// pub enum LexerItem {
-//     Number(i64),
-//     Addition,
-//     Deletion,
-//     Redundancy,
-//     DimacsHeader,
-//     Top,
-//     Bottom,
-//     EndOfFile,
-// }
-
-// pub struct Lexer {
-//     input: Input,
-// }
-
-// impl Lexer {
-//     pub fn from_file(filename: &str, binary: bool) -> Lexer {
-//         Le
-//     }
-// }
-
 /// CNF and DRAT/DPR parser.
 #[derive(Debug, PartialEq)]
 pub struct Parser {
