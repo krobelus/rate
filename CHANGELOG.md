@@ -1,5 +1,10 @@
 # Unreleased
 
+- Fix unsound rejections by `rate --forward`
+- Correctly implement flag `--noncore-rat-candidates`
+
+# 0.2.1 (2019-09-28)
+
 - Fix documentation of compatibility flag --drat-trim, error out when using it
   with --noncore-rat-candidates.
 - Deprecate option -i/--recheck in favor of -S/--sick to produce a SICK

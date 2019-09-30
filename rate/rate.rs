@@ -223,7 +223,7 @@ impl Flags {
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Flags {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
-            noncore_rat_candidates: rupee || noncore_rat_candidates,
+            noncore_rat_candidates: rupee || forward || noncore_rat_candidates,
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             no_terminating_empty_clause: matches.is_present("NO_TERMINATING_EMPTY_CLAUSE"),
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
@@ -972,6 +972,23 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Vector<Cl
             }
         }
     }
+    if checker.flags.noncore_rat_candidates {
+        for lit in Literal::all(checker.maxvar) {
+            for i in 0..checker.watchlist_noncore[lit].len() {
+                let head = checker.watchlist_noncore[lit][i];
+                let clause = checker.offset2clause(head);
+                invariant!(!checker.fields(clause).is_in_core());
+                if checker.clause(clause)[0] == lit
+                    && checker
+                        .clause(clause)
+                        .iter()
+                        .any(|&literal| literal == -pivot)
+                {
+                    candidates.push(clause);
+                }
+            }
+        }
+    }
     candidates.sort_unstable(); // resolution candidates in an LRAT proof have to be sorted
     candidates
 }
@@ -1271,73 +1288,68 @@ fn rat(
     checker.dependencies.clear();
     let trail_length_before_rup = checker.assignment.len();
     resolution_candidates.iter().all(|&resolution_candidate| {
-        preserve_assignment!(
-            checker,
-            (!checker.flags.noncore_rat_candidates
-                && !checker.fields(resolution_candidate).is_in_core())
-                || {
-                    watch_invariants(checker);
-                    log!(
-                        checker,
-                        2,
-                        "Resolving with {}",
-                        checker.clause_to_string(resolution_candidate)
+        preserve_assignment!(checker, {
+            watch_invariants(checker);
+            log!(
+                checker,
+                2,
+                "Resolving with {}",
+                checker.clause_to_string(resolution_candidate)
+            );
+            if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
+                if checker.flags.sick_filename.is_some() {
+                    let failing_clause = Vector::from_iter(
+                        checker
+                            .clause(resolution_candidate)
+                            .iter()
+                            .filter(|&literal| literal != &Literal::BOTTOM)
+                            .cloned(),
                     );
-                    if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
-                        if checker.flags.sick_filename.is_some() {
-                            let failing_clause = Vector::from_iter(
-                                checker
-                                    .clause(resolution_candidate)
-                                    .iter()
-                                    .filter(|&literal| literal != &Literal::BOTTOM)
-                                    .cloned(),
-                            );
-                            let failing_model = checker
-                                .assignment
-                                .iter()
-                                .skip(trail_length_before_rup)
-                                .map(|&(literal, _reason)| literal)
-                                .collect();
-                            let pivot = Some(pivot);
-                            if let Some(witnesses) = checker.rejection.witness.as_mut() {
-                                witnesses.push(Witness {
-                                    failing_clause,
-                                    failing_model,
-                                    pivot,
-                                })
-                            }
-                        }
-                        false
-                    } else {
-                        if checker.flags.lrat_filename.is_some() {
-                            checker
-                                .dependencies
-                                .push(LRATDependency::resolution_candidate(resolution_candidate));
-                        }
-                        let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
-                        let resolvent_is_tautological = conflict_literal_reason.is_assumed()
-                            && checker
-                                .assignment
-                                .trail_at(checker.assignment.position_in_trail(-conflict_literal))
-                                .1
-                                .is_assumed();
-                        if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
-                            checker
-                                .grat_pending
-                                .push(GRATLiteral::from_clause(resolution_candidate));
-                        }
-                        extract_dependencies(
-                            checker,
-                            trail_length_before_rup,
-                            Some((trail_length_before_rat, resolvent_is_tautological)),
-                        );
-                        if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
-                            add_rup_conflict_for_grat(checker);
-                        }
-                        true
+                    let failing_model = checker
+                        .assignment
+                        .iter()
+                        .skip(trail_length_before_rup)
+                        .map(|&(literal, _reason)| literal)
+                        .collect();
+                    let pivot = Some(pivot);
+                    if let Some(witnesses) = checker.rejection.witness.as_mut() {
+                        witnesses.push(Witness {
+                            failing_clause,
+                            failing_model,
+                            pivot,
+                        })
                     }
                 }
-        )
+                false
+            } else {
+                if checker.flags.lrat_filename.is_some() {
+                    checker
+                        .dependencies
+                        .push(LRATDependency::resolution_candidate(resolution_candidate));
+                }
+                let (conflict_literal, conflict_literal_reason) = checker.assignment.peek();
+                let resolvent_is_tautological = conflict_literal_reason.is_assumed()
+                    && checker
+                        .assignment
+                        .trail_at(checker.assignment.position_in_trail(-conflict_literal))
+                        .1
+                        .is_assumed();
+                if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
+                    checker
+                        .grat_pending
+                        .push(GRATLiteral::from_clause(resolution_candidate));
+                }
+                extract_dependencies(
+                    checker,
+                    trail_length_before_rup,
+                    Some((trail_length_before_rat, resolvent_is_tautological)),
+                );
+                if checker.flags.grat_filename.is_some() && !resolvent_is_tautological {
+                    add_rup_conflict_for_grat(checker);
+                }
+                true
+            }
+        })
     })
 }
 

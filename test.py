@@ -316,11 +316,8 @@ def test_full():
     double_check(rate(),
                  instances=set(drat_inputs()) - set(small_drat_inputs()))
 
-
-# TODO
 def test_forward():
-    # double_check(rate(flags=['--forward']), instances=set(drat_inputs()) | set(pr_inputs()))
-    double_check(rate(flags=['--forward']), instances=drat_inputs())
+    double_check(rate(flags=['--forward']), instances=set(drat_inputs()) | set(pr_inputs()))
 
 # def test_with_lrat_check():
 #     double_check(rate(
