@@ -42,7 +42,6 @@ sed -E -i '/(^version|^rate)/s/version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "'$r
 	done
 	eval $script
 ) << EOF
-ansi_term = "0.12"
 atty = "0.2"
 bitfield = "0.13"
 bzip2 = "0.3"

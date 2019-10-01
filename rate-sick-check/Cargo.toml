@@ -16,4 +16,3 @@ path = "sick-check.rs"
 rate-common = { path = "../rate-common", version = "0.2.2" }
 clap = "2.32"
 toml = "0.5"
-ansi_term = "0.12"

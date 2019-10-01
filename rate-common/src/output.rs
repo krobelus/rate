@@ -6,7 +6,7 @@ use std::{fmt::Display, time::SystemTime};
 
 /// Write a solution line (`"s ..."`) to stdout.
 pub fn print_solution(verdict: &str) {
-    write_to_stdout!("s {}\n", verdict);
+    puts!("s {}\n", verdict);
 }
 
 /// Write a key-value pair to stdout.

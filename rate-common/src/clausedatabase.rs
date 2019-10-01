@@ -1,7 +1,7 @@
 //! Container for clauses
 
 use crate::{
-    clause::{Clause, ClauseIdentifierType},
+    clause::{puts_clause_with_id, Clause, ClauseIdentifierType},
     literal::Literal,
     memory::{HeapSpace, Offset, Vector},
 };
@@ -135,10 +135,11 @@ impl ClauseDatabase {
         self.data.push(Literal::new(0));
         self.push_sentinel(self.data.len());
         if duplicate {
-            warn!(
-                "Removed duplicate literals in {}",
-                self.clause_to_string(clause)
-            );
+            as_warning!({
+                puts!("Removed duplicate literals in ");
+                puts_clause_with_id(clause, self.clause(clause));
+                puts!("\n");
+            });
         }
     }
     /// Delete the last clause.
@@ -153,8 +154,7 @@ impl ClauseDatabase {
     }
     /// Give the DIMACS representation of a clause.
     ///
-    /// FIXME: possibly inefficient, use
-    /// [clause::write_clause()](../clause/fn.write_clause.html) instead.
+    /// Only used for debugging, prefer `clause::write_clause()`.
     pub fn clause_to_string(&self, clause: Clause) -> String {
         format!(
             "[{}]{} 0",

@@ -17,7 +17,6 @@ use rate_common::{
     },
     requires,
     sick::Sick,
-    write_to_stdout,
 };
 
 #[allow(clippy::cognitive_complexity)]

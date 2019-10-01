@@ -417,7 +417,7 @@ fn assert_primitive_sizes() {
     const_assert!(align_of::<Reason>() == align_of::<usize>());
 }
 
-/// Write a clause-like data type in DIMACS format.
+/// Write some literals in DIMACS format.
 ///
 /// Includes a terminating 0, but no newline.
 pub fn write_clause<'a, T>(file: &mut impl Write, clause: T) -> io::Result<()>
@@ -430,4 +430,26 @@ where
         }
     }
     write!(file, "0")
+}
+
+/// Write the some literals in DIMACS format to stdout.
+pub fn puts_clause<'a, T>(clause: T)
+where
+    T: IntoIterator<Item = &'a Literal>,
+{
+    for &literal in clause.into_iter() {
+        if literal != Literal::BOTTOM {
+            puts!("{} ", literal);
+        }
+    }
+    puts!("0")
+}
+
+/// Write the clause ID and literals to stdout, like [<ID] <literals> 0.
+pub fn puts_clause_with_id<'a, T>(clause: Clause, literals: T)
+where
+    T: IntoIterator<Item = &'a Literal>,
+{
+    puts!("[{}] ", clause);
+    puts_clause(literals);
 }

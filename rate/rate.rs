@@ -1,26 +1,23 @@
 //! Clausal proof checker (DRAT, DPR) for certifying SAT solvers' unsatisfiability results
 
-use ansi_term::Colour;
 use bitfield::bitfield;
 use clap::{Arg, ArgMatches};
 use rate_common::{
-    _log,
+    as_warning,
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{
-        write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason,
-        RedundancyProperty,
+        puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral,
+        ProofStep, Reason, RedundancyProperty,
     },
     config, die, invariant,
     literal::{Literal, Variable},
-    log,
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{install_signal_handler, unreachable},
     output::{print_key_value, print_solution, Timer},
     parser::{clause_db, open_file_for_writing, witness_db, Parser},
     parser::{free_clause_database, parse_files},
-    requires,
+    puts, requires,
     sick::{Sick, Witness},
-    warn, write_to_stdout,
 };
 use rate_macros::{self, HeapSpace};
 use std::{
@@ -107,19 +104,19 @@ fn run_frontend() -> i32 {
     );
     drop(timer);
     print_memory_usage(&checker);
-    match result {
-        Verdict::NoEmptyClause => warn!("no conflict"),
-        Verdict::IncorrectEmptyClause => warn!("conflict claimed but not detected"),
-        Verdict::IncorrectLemma => {
-            let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
-            if checker.flags.verbosity > 0 {
-                write_to_stdout!("c redundancy check failed for [{}] ", lemma);
-                write_clause(&mut io::stdout(), checker.rejected_lemma.iter()).unwrap();
-                write_to_stdout!("\n");
+    as_warning!({
+        match result {
+            Verdict::NoEmptyClause => puts!("no conflict\n"),
+            Verdict::IncorrectEmptyClause => puts!("conflict claimed but not detected\n"),
+            Verdict::IncorrectLemma => {
+                let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
+                puts!("c redundancy check failed for ");
+                puts_clause_with_id(lemma, checker.clause(lemma));
+                puts!("\n");
             }
+            Verdict::Verified => (),
         }
-        Verdict::Verified => (),
-    }
+    });
     print_solution(if result == Verdict::Verified {
         "VERIFIED"
     } else {
@@ -141,7 +138,7 @@ pub struct Flags {
     pub pivot_is_first_literal: bool,
     pub memory_usage_breakdown: bool,
     pub forward: bool,
-    pub verbosity: u64,
+    pub verbose: bool,
     /// Input formula
     pub formula_filename: String,
     /// Input proof
@@ -170,18 +167,26 @@ impl Flags {
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
         if drat_trim {
-            warn!("option --drat-trim is deprecated, use --skip-unit-deletions instead");
+            as_warning!(puts!(
+                "option --drat-trim is deprecated, use --skip-unit-deletions instead"
+            ));
         }
         if rupee {
-            warn!("option --rupee is deprecated, use --assume-pivot-is-first instead");
+            as_warning!(puts!(
+                "option --rupee is deprecated, use --assume-pivot-is-first instead"
+            ));
         }
         if no_terminating_empty_clause {
-            warn!("option --no-terminating-empty-clause is deprecated, please remove the flag");
+            as_warning!(puts!(
+                "option --no-terminating-empty-clause is deprecated, please remove the flag"
+            ));
         }
         if sick_filename.is_none() {
             sick_filename = matches.value_of("SICK_FILE_LEGACY").map(String::from);
             if sick_filename.is_some() {
-                warn!("option -i/--recheck is deprecated, use -S/--sick instead");
+                as_warning!(puts!(
+                    "option -i/--recheck is deprecated, use -S/--sick instead"
+                ));
             }
         }
         if forward {
@@ -196,12 +201,14 @@ impl Flags {
             }
         }
         if skip_unit_deletions && sick_filename.is_some() {
-            warn!(
+            as_warning!(puts!(
                 "--sick can produce an incorrect SICK witness when used along --skip-unit-deletions."
-            );
+            ));
         }
         if !skip_unit_deletions && grat {
-            warn!("GRAT does not support unit deletions, I might generated invalid certificates.");
+            as_warning!(puts!(
+                "GRAT does not support unit deletions, I might generated invalid certificates."
+            ));
         }
         if rupee && skip_unit_deletions {
             incompatible_options("--rupee --skip-unit-deletions");
@@ -222,7 +229,7 @@ impl Flags {
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             forward,
-            verbosity: if matches.is_present("v") { 1 } else { 0 },
+            verbose: matches.is_present("v"),
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
             proof_filename,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
@@ -494,14 +501,9 @@ impl Checker {
         }
         checker
     }
-    /// Build the DIMACS representation of the given clause.
-    fn clause_to_string(&self, clause: Clause) -> String {
-        clause_db().clause_to_string(clause)
-    }
-    /// Build the DIMACS representation of the given witness.
-    #[allow(dead_code)]
-    fn witness_to_string(&self, clause: Clause) -> String {
-        witness_db().witness_to_string(clause)
+    /// Write the clause ID and literals to stdout, like [<ID] <literals> 0.
+    fn puts_clause_with_id(&self, clause: Clause) {
+        puts_clause_with_id(clause, self.clause(clause));
     }
     /// The literals in the the clause.
     fn clause(&self, clause: Clause) -> &[Literal] {
@@ -560,23 +562,6 @@ impl Checker {
             &mut *(clause_db().fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
         }
     }
-    /// Build the DIMACS representation of this clause, but color literals
-    /// according to the current assignment.
-    #[allow(dead_code)]
-    fn clause_colorized(&self, clause: Clause) -> String {
-        let mut result = String::new();
-        for &literal in self.clause(clause) {
-            let style = match (self.assignment[literal], self.assignment[-literal]) {
-                (true, true) => Colour::Purple,
-                (true, false) => Colour::Green,
-                (false, true) => Colour::Red,
-                (false, false) => Colour::Yellow,
-            }
-            .normal();
-            result += &format!("{}", style.paint(&format!("{} ", literal)));
-        }
-        result
-    }
 }
 
 /// Run the checker.
@@ -623,7 +608,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
             if claims_conflict(checker, i, clause) {
                 return Verdict::IncorrectEmptyClause;
             }
-            if !check_inference(checker) {
+            if !check_inference(checker, i) {
                 return Verdict::IncorrectLemma;
             }
             if add_lemma(checker, clause) == CONFLICT {
@@ -677,23 +662,18 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
             watch_invariants(checker);
         }
     }
-    if skipped {
-        log!(
-            checker,
-            1,
-            "del (skipped) {}",
-            checker.clause_to_string(clause)
-        );
-    } else if shrinks_trail_by == 0 {
-        log!(checker, 1, "del {}", checker.clause_to_string(clause));
-    } else {
-        log!(
-            checker,
-            1,
-            "del (shrinking trail by {}) {}",
-            shrinks_trail_by,
-            checker.clause_to_string(clause)
-        );
+    if checker.flags.verbose {
+        if skipped {
+            puts!("del (skipped) ");
+            checker.puts_clause_with_id(clause);
+        } else if shrinks_trail_by == 0 {
+            puts!("del ");
+            checker.puts_clause_with_id(clause);
+        } else {
+            puts!("del (shrinking trail by {}) ", shrinks_trail_by);
+            checker.puts_clause_with_id(clause);
+        }
+        puts!("\n");
     }
 }
 
@@ -963,7 +943,7 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Vector<Cl
 }
 
 /// Check the current inference.
-fn check_inference(checker: &mut Checker) -> bool {
+fn check_inference(checker: &mut Checker, proof_step: usize) -> bool {
     checker.soft_propagation = true;
     let ok = match checker.redundancy_property {
         RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
@@ -995,6 +975,9 @@ fn check_inference(checker: &mut Checker) -> bool {
         checker.grat_pending.clear();
     }
     checker.soft_propagation = false;
+    if !ok {
+        checker.rejection.proof_step = Some(proof_step);
+    }
     ok
 }
 
@@ -1094,7 +1077,11 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     if rup(checker, lemma, None) == CONFLICT {
         checker.rup_introductions += 1;
-        log!(checker, 1, "lemma RUP {}", checker.clause_to_string(lemma));
+        if checker.flags.verbose {
+            puts!("lemma RUP ");
+            checker.puts_clause_with_id(lemma);
+            puts!("\n");
+        }
         if checker.flags.grat_filename.is_some() {
             checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
             checker.grat_pending.push(GRATLiteral::from_clause(lemma));
@@ -1122,7 +1109,11 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
                 checker.grat_rat_counts[pivot] += 1;
             }
             clause_db().swap(head, head + pivot_index);
-            log!(checker, 1, "lemma RAT {}", checker.clause_to_string(lemma));
+            if checker.flags.verbose {
+                puts!("lemma RAT ");
+                checker.puts_clause_with_id(lemma);
+                puts!("\n");
+            }
             if checker.flags.grat_filename.is_some() {
                 for position in trail_length_forced..trail_length_after_rup {
                     let reason = checker.assignment.trail_at(position).1;
@@ -1601,18 +1592,21 @@ fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
 
 /// Add a clause that is part of the input formula.
 fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
-    log!(
-        checker,
-        1,
-        "add premise {}",
-        checker.clause_to_string(clause)
-    );
+    if checker.flags.verbose {
+        puts!("add premise ");
+        checker.puts_clause_with_id(clause);
+        puts!("\n");
+    }
     add_clause(checker, clause)
 }
 
 /// Add a lemma to the formula.
 fn add_lemma(checker: &mut Checker, lemma: Clause) -> MaybeConflict {
-    log!(checker, 1, "add lemma {}", checker.clause_to_string(lemma));
+    if checker.flags.verbose {
+        puts!("add lemma ");
+        checker.puts_clause_with_id(lemma);
+        puts!("\n");
+    }
     add_clause(checker, lemma)
 }
 
@@ -1752,19 +1746,17 @@ fn verify(checker: &mut Checker) -> bool {
             watches_remove(checker, checker.clause_mode(lemma), lemma);
             unpropagate_unit(checker, lemma);
             if !checker.fields(lemma).is_in_core() {
-                log!(
-                    checker,
-                    1,
-                    "lemma skipped (not in core) {}",
-                    checker.clause_to_string(lemma)
-                );
+                if checker.flags.verbose {
+                    puts!("lemma skipped (not in core) ");
+                    checker.puts_clause_with_id(lemma);
+                    puts!("\n");
+                }
                 continue;
             }
             move_falsified_literals_to_end(checker, lemma);
-            check_inference(checker)
+            check_inference(checker, i)
         };
         if !accepted {
-            checker.rejection.proof_step = Some(i);
             return false;
         }
         if checker.flags.lrat_filename.is_some() {
@@ -1838,12 +1830,16 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
 fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
-    checker.rejected_lemma.clear();
+    if checker.flags.sick_filename.is_some() {
+        checker.rejected_lemma.clear();
+    }
     for offset in checker.clause_range(clause) {
         let literal = clause_db()[offset];
         // The SICK witness would be incorrect when discarding falsified
         // literals like here. Copy the lemma to checker.rejected_lemma.
-        checker.rejected_lemma.push(literal);
+        if checker.flags.sick_filename.is_some() {
+            checker.rejected_lemma.push(literal);
+        }
         if checker.flags.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
         }
@@ -2227,7 +2223,7 @@ fn assignment_invariants(checker: &Checker) {
                 "current lemma is {}, but literal {} is assigned because of lemma {} in {}",
                 checker.lemma,
                 literal,
-                checker.clause_to_string(clause),
+                clause,
                 checker.assignment
             );
         }
@@ -2286,7 +2282,7 @@ fn watch_invariant(checker: &Checker, lit: Literal, head: usize) {
     invariant!(
         stable_under_unit_propagation(&checker.assignment, checker.clause(clause)),
         "Model is not stable for {}",
-        checker.clause_colorized(clause)
+        clause
     );
 }
 

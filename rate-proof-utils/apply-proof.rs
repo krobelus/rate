@@ -1,7 +1,6 @@
 //! Apply a clausal proof up to a given line number and output the accumulated
 //! formula and the remaining proof.
 
-use ansi_term;
 use clap::Arg;
 use std::io::{Result, Write};
 
@@ -13,7 +12,6 @@ use rate_common::{
         clause_db, is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
         run_parser_on_formula, FixedSizeHashTable, HashTable, Parser, ProofParserState,
     },
-    write_to_stdout,
 };
 
 /// Run `apply-proof`.

@@ -1,7 +1,7 @@
 //! DIMACS and DRAT/DPR parser
 
 use crate::{
-    clause::{Clause, ProofStep, RedundancyProperty},
+    clause::{puts_clause, Clause, ProofStep, RedundancyProperty},
     clausedatabase::{ClauseDatabase, WitnessDatabase},
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, SmallVector, Vector},
@@ -574,10 +574,11 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
     match clause_ids.find_equal_clause(clause, /*delete=*/ true) {
         None => {
             if parser.verbose {
-                warn!(
-                    "Deleted clause is not present in the formula: {}",
-                    clause_db().clause_to_string(clause)
-                );
+                as_warning!({
+                    puts!("Deleted clause is not present in the formula: ");
+                    puts_clause(clause_db().clause(clause));
+                    puts!("\n");
+                });
             }
             // Need this for sickcheck
             parser
@@ -978,7 +979,7 @@ pub fn print_db(have_witnesses: bool) {
     let clause_db = &clause_db();
     let witness_db = &witness_db();
     for clause in Clause::range(0, clause_db.last_clause() + 1) {
-        write_to_stdout!(
+        puts!(
             "{}{} fields: {:?}\n",
             clause_db.clause_to_string(clause),
             if have_witnesses {
