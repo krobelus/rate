@@ -2044,9 +2044,9 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     let mut clause_deleted = Array::new(false, num_clauses);
     let empty_clause_as_premise =
         Clause::range(0, checker.lemma).any(|clause| checker.clause(clause).is_empty());
-    // TODO
     if empty_clause_as_premise {
-        // write an empty LRAT certificate, this is accepted by lratcheck
+        // write an empty LRAT certificate, this is accepted by lratcheck that comes with rupee
+        // it doesn't seem to be possible to produce a correct one for the ACL2 lrat-check
         return Ok(());
     }
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
