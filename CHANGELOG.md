@@ -1,3 +1,7 @@
+# Unreleased
+
+- Rewrite logging (flag -v) to print one line for each processed lemma
+
 # 0.2.2 (2019-09-30)
 
 - Fix unsound rejections by `rate --forward`

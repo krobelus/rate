@@ -10,7 +10,7 @@ use rate_common::{
         write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral, ProofStep, Reason,
         RedundancyProperty,
     },
-    comment, config, defer_log, die, invariant,
+    config, die, invariant,
     literal::{Literal, Variable},
     log,
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
@@ -23,7 +23,6 @@ use rate_common::{
     warn, write_to_stdout,
 };
 use rate_macros::{self, HeapSpace};
-use scopeguard::defer;
 use std::{
     cmp, fmt, io,
     io::Write,
@@ -79,12 +78,7 @@ fn run_frontend() -> i32 {
     ;
 
     if config::ENABLE_LOGGING {
-        app = app.arg(
-            Arg::with_name("v")
-                .short("v")
-                .multiple(true)
-                .help("Set the verbosity level (use up to four times)"),
-        );
+        app = app.arg(Arg::with_name("v").short("v").help("Verbose output"));
     }
 
     let flags = Flags::new(app.get_matches());
@@ -116,7 +110,14 @@ fn run_frontend() -> i32 {
     match result {
         Verdict::NoEmptyClause => warn!("no conflict"),
         Verdict::IncorrectEmptyClause => warn!("conflict claimed but not detected"),
-        Verdict::IncorrectLemma => warn!("incorrect lemma"),
+        Verdict::IncorrectLemma => {
+            let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
+            if checker.flags.verbosity > 0 {
+                write_to_stdout!("c redundancy check failed for [{}] ", lemma);
+                write_clause(&mut io::stdout(), checker.rejected_lemma.iter()).unwrap();
+                write_to_stdout!("\n");
+            }
+        }
         Verdict::Verified => (),
     }
     print_solution(if result == Verdict::Verified {
@@ -221,13 +222,7 @@ impl Flags {
             pivot_is_first_literal: rupee || pivot_is_first_literal,
             memory_usage_breakdown: matches.is_present("MEMORY_USAGE_BREAKDOWN"),
             forward,
-            verbosity: match matches.occurrences_of("v") {
-                i if i > 4 => {
-                    warn!("verbosity can be at most 4");
-                    4
-                }
-                i => i,
-            },
+            verbosity: if matches.is_present("v") { 1 } else { 0 },
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
             proof_filename,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
@@ -619,7 +614,6 @@ fn forward_check(checker: &mut Checker) -> Verdict {
             return Verdict::Verified;
         }
     }
-    log!(checker, 1, "[forward check] added premise");
     for i in 0..checker.proof.len() {
         let proof_step = checker.proof[i];
         let clause = proof_step.clause();
@@ -632,7 +626,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
             if !check_inference(checker) {
                 return Verdict::IncorrectLemma;
             }
-            if add_premise(checker, clause) == CONFLICT {
+            if add_lemma(checker, clause) == CONFLICT {
                 close_proof_after_steps(checker, i + 1);
                 return Verdict::Verified;
             }
@@ -647,16 +641,12 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
     if clause == Clause::DOES_NOT_EXIST {
         return;
     }
-    log!(
-        checker,
-        1,
-        "[forward check] del {}",
-        checker.clause_to_string(clause)
-    );
     checker.deletions += 1;
     if checker.fields(clause).is_reason() {
         checker.reason_deletions += 1;
     }
+    let mut shrinks_trail_by = 0;
+    let mut skipped = false;
     if checker.flags.skip_unit_deletions {
         let is_unit = checker
             .clause(clause)
@@ -667,12 +657,7 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
         if is_unit {
             checker.fields_mut(clause).set_deletion_ignored(true);
             checker.skipped_deletions += 1;
-            if checker.flags.verbosity > 0 {
-                warn!(
-                    "Ignoring deletion of (pseudo) unit clause {}",
-                    checker.clause_to_string(clause)
-                );
-            }
+            skipped = true;
         } else {
             watches_remove(checker, checker.clause_mode(clause), clause);
         }
@@ -686,17 +671,29 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
             invariant!(no_conflict == NO_CONFLICT);
             if trail_length_after_propagating < trail_length_before_creating_revision {
                 checker.reason_deletions_shrinking_trail += 1;
-                log!(
-                    checker,
-                    1,
-                    "reason deletion, created {}",
-                    checker.revisions.last()
-                );
-            } else {
-                log!(checker, 1, "reason deletion, but trail is unchanged");
+                shrinks_trail_by =
+                    trail_length_before_creating_revision - trail_length_after_propagating;
             }
             watch_invariants(checker);
         }
+    }
+    if skipped {
+        log!(
+            checker,
+            1,
+            "del (skipped) {}",
+            checker.clause_to_string(clause)
+        );
+    } else if shrinks_trail_by == 0 {
+        log!(checker, 1, "del {}", checker.clause_to_string(clause));
+    } else {
+        log!(
+            checker,
+            1,
+            "del (shrinking trail by {}) {}",
+            shrinks_trail_by,
+            checker.clause_to_string(clause)
+        );
     }
 }
 
@@ -708,9 +705,7 @@ fn claims_conflict(checker: &mut Checker, step: usize, clause: Clause) -> bool {
     if !checker.clause(clause).is_empty() {
         return false;
     }
-    if checker.flags.sick_filename.is_some() {
-        checker.rejection.proof_step = Some(step);
-    }
+    checker.rejection.proof_step = Some(step);
     extract_natural_model(checker, checker.assignment.len());
     true
 }
@@ -1099,6 +1094,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     if rup(checker, lemma, None) == CONFLICT {
         checker.rup_introductions += 1;
+        log!(checker, 1, "lemma RUP {}", checker.clause_to_string(lemma));
         if checker.flags.grat_filename.is_some() {
             checker.grat_pending.push(GRATLiteral::RUP_LEMMA);
             checker.grat_pending.push(GRATLiteral::from_clause(lemma));
@@ -1126,6 +1122,7 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
                 checker.grat_rat_counts[pivot] += 1;
             }
             clause_db().swap(head, head + pivot_index);
+            log!(checker, 1, "lemma RAT {}", checker.clause_to_string(lemma));
             if checker.flags.grat_filename.is_some() {
                 for position in trail_length_forced..trail_length_after_rup {
                     let reason = checker.assignment.trail_at(position).1;
@@ -1146,7 +1143,6 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
         }
         None => {
             extract_natural_model(checker, trail_length_after_rup);
-            comment!("RAT check failed for {}", checker.clause_to_string(lemma));
             false
         }
     }
@@ -1188,11 +1184,6 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
     let pivot = checker.clause_pivot[lemma];
     let pivot_falsified = checker.assignment.position_in_trail(-pivot) < trail_length_forced;
     if pivot_falsified {
-        comment!(
-            "RAT check on {} failed due to falsified pivot {}",
-            checker.clause_to_string(lemma),
-            pivot
-        );
         return None;
     }
     let grat_pending_length = checker.grat_pending.len();
@@ -1228,14 +1219,6 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
 /// Returns true if the clause is a RAT inference on the given pivot.
 fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: usize) -> bool {
     let lemma = checker.lemma;
-    log!(
-        checker,
-        2,
-        "RAT check on {} with pivot {}, {}",
-        checker.clause_to_string(lemma),
-        pivot,
-        checker.assignment
-    );
     invariant!(checker.assignment[-pivot]);
     let resolution_candidates = collect_resolution_candidates(checker, pivot);
     rat(
@@ -1264,12 +1247,6 @@ fn rat(
     resolution_candidates.iter().all(|&resolution_candidate| {
         preserve_assignment!(checker, {
             watch_invariants(checker);
-            log!(
-                checker,
-                2,
-                "Resolving with {}",
-                checker.clause_to_string(resolution_candidate)
-            );
             if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
                 if checker.flags.sick_filename.is_some() {
                     let failing_clause = Vector::from_iter(
@@ -1442,19 +1419,11 @@ fn extract_dependencies(
                 });
         }
     }
-    log!(checker, 3, "Resolution chain:");
     for position in 1..checker.assignment.len() {
-        let (literal, reason) = checker.assignment.trail_at(position);
+        let (_literal, reason) = checker.assignment.trail_at(position);
         if reason.is_assumed() || !is_in_conflict_graph(checker, reason) {
             continue;
         }
-        log!(
-            checker,
-            3,
-            "{}:\t{}",
-            literal,
-            checker.clause_to_string(checker.offset2clause(reason.offset()))
-        );
         remove_from_conflict_graph(checker, reason);
     }
 }
@@ -1582,12 +1551,6 @@ fn first_two_non_falsified(checker: &Checker, clause: Clause) -> NonFalsified {
 /// Assigns the unit literal if the clause is unit.
 /// Returns a conflict if the clause is falsified.
 fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConflict {
-    log!(
-        checker,
-        2,
-        "initializing watches for {}",
-        checker.clause_to_string(clause)
-    );
     let head = checker.clause_range(clause).start;
     let mode = match stage {
         Stage::Preprocessing => Mode::NonCore,
@@ -1637,16 +1600,27 @@ fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
 }
 
 /// Add a clause that is part of the input formula.
-///
-/// Assigns the unit literal if the clause is unit.
-/// Returns a conflict if the clause is falsified.
 fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     log!(
         checker,
         1,
-        "[preprocess] add {}",
+        "add premise {}",
         checker.clause_to_string(clause)
     );
+    add_clause(checker, clause)
+}
+
+/// Add a lemma to the formula.
+fn add_lemma(checker: &mut Checker, lemma: Clause) -> MaybeConflict {
+    log!(checker, 1, "add lemma {}", checker.clause_to_string(lemma));
+    add_clause(checker, lemma)
+}
+
+/// Add a clause to the formula.
+///
+/// Assigns the unit literal if the clause is unit.
+/// Returns a conflict if the clause is falsified.
+fn add_clause(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     let already_satisfied = if checker.flags.skip_unit_deletions {
         clause_is_satisfied(checker, clause)
     } else {
@@ -1708,15 +1682,12 @@ fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
 /// soon as it arises.
 fn preprocess(checker: &mut Checker) -> Verdict {
     let _timer = Timer::name("preprocessing proof");
-    log!(checker, 1, "[preprocess]");
-    defer_log!(checker, 1, "[preprocess] done\n");
     for clause in Clause::range(0, checker.lemma) {
         if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
             close_proof_trivially_unsat(checker, clause);
             return Verdict::Verified;
         }
     }
-    log!(checker, 1, "[preprocess] done adding premise");
     for i in 0..checker.proof.len() {
         watch_invariants(checker);
         let proof_step = checker.proof[i];
@@ -1728,7 +1699,7 @@ fn preprocess(checker: &mut Checker) -> Verdict {
                 return Verdict::IncorrectEmptyClause;
             }
             checker.lemma += 1;
-            if add_premise(checker, clause) == CONFLICT {
+            if add_lemma(checker, clause) == CONFLICT {
                 close_proof_after_steps(checker, i + 1);
                 return Verdict::Verified;
             }
@@ -1740,8 +1711,6 @@ fn preprocess(checker: &mut Checker) -> Verdict {
 /// Check inferences (backward pass).
 #[allow(clippy::cognitive_complexity)]
 fn verify(checker: &mut Checker) -> bool {
-    log!(checker, 1, "[verify]");
-    defer_log!(checker, 1, "[verify] done\n");
     let _timer = Timer::name("verifying proof");
     for i in (0..checker.proof_steps_until_conflict).rev() {
         let proof_step = checker.proof[i];
@@ -1750,12 +1719,6 @@ fn verify(checker: &mut Checker) -> bool {
             if clause == Clause::DOES_NOT_EXIST {
                 continue;
             }
-            log!(
-                checker,
-                1,
-                "[verify] del {}",
-                checker.clause_to_string(clause)
-            );
             // Undo the deletion by adding the clause to the watchlists.
             if checker.flags.skip_unit_deletions {
                 // If the clause was a unit during the forward pass, then
@@ -1788,29 +1751,20 @@ fn verify(checker: &mut Checker) -> bool {
             invariant!(clause == lemma);
             watches_remove(checker, checker.clause_mode(lemma), lemma);
             unpropagate_unit(checker, lemma);
-            if checker.fields(lemma).is_in_core() {
-                move_falsified_literals_to_end(checker, lemma);
+            if !checker.fields(lemma).is_in_core() {
                 log!(
                     checker,
                     1,
-                    "[verify] add {}",
-                    checker.clause_to_string(lemma)
-                );
-                check_inference(checker)
-            } else {
-                log!(
-                    checker,
-                    2,
-                    "[verify] skip {}",
+                    "lemma skipped (not in core) {}",
                     checker.clause_to_string(lemma)
                 );
                 continue;
             }
+            move_falsified_literals_to_end(checker, lemma);
+            check_inference(checker)
         };
         if !accepted {
-            if checker.flags.sick_filename.is_some() {
-                checker.rejection.proof_step = Some(i);
-            }
+            checker.rejection.proof_step = Some(i);
             return false;
         }
         if checker.flags.lrat_filename.is_some() {
@@ -1884,16 +1838,12 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
 fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
-    if checker.flags.sick_filename.is_some() {
-        checker.rejected_lemma.clear();
-    }
+    checker.rejected_lemma.clear();
     for offset in checker.clause_range(clause) {
         let literal = clause_db()[offset];
         // The SICK witness would be incorrect when discarding falsified
         // literals like here. Copy the lemma to checker.rejected_lemma.
-        if checker.flags.sick_filename.is_some() {
-            checker.rejected_lemma.push(literal);
-        }
+        checker.rejected_lemma.push(literal);
         if checker.flags.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
         }
@@ -2412,7 +2362,6 @@ fn is_in_cone(checker: &Checker, literal: Literal, reason: Reason) -> bool {
 fn revision_create(checker: &mut Checker, clause: Clause) {
     assignment_invariants(checker);
     watch_invariants(checker);
-    log!(checker, 2, "{}", checker.assignment);
     let unit = *checker
         .clause(clause)
         .iter()
@@ -2546,8 +2495,6 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             introductions += 1;
         }
     }
-    log!(checker, 1, "applying {}", revision);
-    log!(checker, 2, "{}", checker.assignment);
     let length_after_adding_cone = checker.assignment.len() + introductions;
     let mut right_position = length_after_adding_cone - 1;
     let mut left_position = right_position - literals_to_revise + 1;
@@ -2575,7 +2522,6 @@ fn revision_apply(checker: &mut Checker, revision: &mut Revision) {
             .set_trail_at(right_position, literal, reason);
         right_position -= 1;
     }
-    log!(checker, 2, "applied revision:\n{}", checker.assignment);
     watches_reset(checker, revision);
     assignment_invariants(checker);
 }
