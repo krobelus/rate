@@ -592,7 +592,7 @@ fn run(checker: &mut Checker) -> Verdict {
 
 /// Perform a forward check.
 fn forward_check(checker: &mut Checker) -> Verdict {
-    let _timer = Timer::name("forward check");
+    let _timer = Timer::name("forward verification time");
     for clause in Clause::range(0, checker.lemma) {
         if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
             close_proof_trivially_unsat(checker, clause);
@@ -1675,7 +1675,7 @@ fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
 /// Propagate exhaustively after each proof step and return a conflict as
 /// soon as it arises.
 fn preprocess(checker: &mut Checker) -> Verdict {
-    let _timer = Timer::name("preprocessing proof");
+    let _timer = Timer::name("preprocessing time");
     for clause in Clause::range(0, checker.lemma) {
         if checker.clause(clause).is_empty() || add_premise(checker, clause) == CONFLICT {
             close_proof_trivially_unsat(checker, clause);
@@ -1705,7 +1705,7 @@ fn preprocess(checker: &mut Checker) -> Verdict {
 /// Check inferences (backward pass).
 #[allow(clippy::cognitive_complexity)]
 fn verify(checker: &mut Checker) -> bool {
-    let _timer = Timer::name("verifying proof");
+    let _timer = Timer::name("verification time");
     for i in (0..checker.proof_steps_until_conflict).rev() {
         let proof_step = checker.proof[i];
         let clause = proof_step.clause();

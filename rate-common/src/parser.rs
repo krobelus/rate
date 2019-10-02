@@ -351,7 +351,7 @@ pub fn run_parser_on_formula(
     if parser.verbose {
         comment!("mode: {}", parser.redundancy_property);
     }
-    let mut _timer = Timer::name("parsing formula");
+    let mut _timer = Timer::name("formula-parsing time");
     if !parser.verbose {
         _timer.disabled = true;
     }
@@ -372,7 +372,7 @@ pub fn run_parser(
 ) {
     let binary = is_binary_drat(proof_file);
     run_parser_on_formula(parser, formula, proof_file, clause_ids);
-    let mut _timer = Timer::name("parsing proof");
+    let mut _timer = Timer::name("proof-parsing time");
     if !parser.verbose {
         _timer.disabled = true;
     }
