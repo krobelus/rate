@@ -9,7 +9,7 @@ use rate_common::{
         puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral,
         ProofStep, Reason, RedundancyProperty,
     },
-    config, die, invariant,
+    comment, config, die, invariant,
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{install_signal_handler, unreachable},
@@ -106,8 +106,8 @@ fn run_frontend() -> i32 {
     print_memory_usage(&checker);
     as_warning!({
         match result {
-            Verdict::NoEmptyClause => puts!("no conflict\n"),
-            Verdict::IncorrectEmptyClause => puts!("conflict claimed but not detected\n"),
+            Verdict::NoEmptyClause => puts!("c no conflict\n"),
+            Verdict::IncorrectEmptyClause => puts!("c conflict claimed but not detected\n"),
             Verdict::IncorrectLemma => {
                 let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
                 puts!("c redundancy check failed for ");
@@ -167,24 +167,24 @@ impl Flags {
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
         if drat_trim {
-            as_warning!(puts!(
+            as_warning!(comment!(
                 "option --drat-trim is deprecated, use --skip-unit-deletions instead"
             ));
         }
         if rupee {
-            as_warning!(puts!(
+            as_warning!(comment!(
                 "option --rupee is deprecated, use --assume-pivot-is-first instead"
             ));
         }
         if no_terminating_empty_clause {
-            as_warning!(puts!(
+            as_warning!(comment!(
                 "option --no-terminating-empty-clause is deprecated, please remove the flag"
             ));
         }
         if sick_filename.is_none() {
             sick_filename = matches.value_of("SICK_FILE_LEGACY").map(String::from);
             if sick_filename.is_some() {
-                as_warning!(puts!(
+                as_warning!(comment!(
                     "option -i/--recheck is deprecated, use -S/--sick instead"
                 ));
             }
@@ -201,12 +201,12 @@ impl Flags {
             }
         }
         if skip_unit_deletions && sick_filename.is_some() {
-            as_warning!(puts!(
+            as_warning!(comment!(
                 "--sick can produce an incorrect SICK witness when used along --skip-unit-deletions."
             ));
         }
         if !skip_unit_deletions && grat {
-            as_warning!(puts!(
+            as_warning!(comment!(
                 "GRAT does not support unit deletions, I might generated invalid certificates."
             ));
         }

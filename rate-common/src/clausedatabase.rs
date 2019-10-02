@@ -136,7 +136,7 @@ impl ClauseDatabase {
         self.push_sentinel(self.data.len());
         if duplicate {
             as_warning!({
-                puts!("Removed duplicate literals in ");
+                puts!("c removed duplicate literals in ");
                 puts_clause_with_id(clause, self.clause(clause));
                 puts!("\n");
             });

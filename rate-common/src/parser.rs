@@ -575,7 +575,7 @@ fn add_deletion(parser: &mut Parser, clause_ids: &mut impl HashTable) {
         None => {
             if parser.verbose {
                 as_warning!({
-                    puts!("Deleted clause is not present in the formula: ");
+                    puts!("c deleted clause is not present in the formula: ");
                     puts_clause(clause_db().clause(clause));
                     puts!("\n");
                 });
