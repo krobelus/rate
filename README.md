@@ -5,8 +5,8 @@
 ![](https://img.shields.io/crates/l/rate.svg)
 
 This is a DRAT/DPR proof checker written in Rust, similar to
-[`drat-trim`](https://github.com/marijnheule/drat-trim) or `gratgen` from the
-[GRAT toolchain](http://www21.in.tum.de/~lammich/grat/). The notable
+[`drat-trim`](https://github.com/marijnheule/drat-trim) or
+[`gratgen`](http://www21.in.tum.de/~lammich/grat/). The notable
 difference is that it does not [ignore deletions of unit
 clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details) by
 default.
@@ -87,7 +87,7 @@ working with clausal proofs:
   and vice versa.
 - `apply-proof` applies a proof up to a given proof step, and outputs the
   accumulated formula as well as the rest of the proof. This can be very
-  useful for delta-debugging a tool that works with proofs
+  useful for delta-debugging a tool that works with proofs.
 
 [Binary DRAT Format]: <https://github.com/marijnheule/drat-trim#binary-drat-format>
 
@@ -96,10 +96,11 @@ working with clausal proofs:
 Please note that `rate` accepts proof that are technically not fully correct,
 Just like other checkers, we perform some transformations on the proof before
 actually verifying the individual steps.  This is done to improve performance.
-Some transformations on the proof virtually ignore some clauses in the
-formula and some instructions in the proof. They are effectively removed.
-This means that `rate` might accept a proof that contains lemmas that are
-not correct inferences, but this should never happen for satisfiable formulas.
+Some transformations on the proof ignore some clauses in the formula and some
+instructions in the proof. These are effectively removed from the formula
+or proof.  This means that `rate` might accept a proof that contains lemmas
+that are not correct inferences, but this should never happen for satisfiable
+formulas.
 
 Here are the transformations we do:
 - If `--skip-unit-deletions` is specified, then deletions of clauses that
@@ -125,7 +126,7 @@ cargo test && ./test.py
 ```
 
 If you're in a hurry use `pytest test.py -k quick` to only run the system
-tests with small input files.
+tests with tiny input files.
 
 Above tests require
 - `python3` (version 3.6 or above)
@@ -137,6 +138,11 @@ Above tests require
   - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
     run on the benchmarks and their results will be compared to the output of
     `rate` in the appropriate compatibility mode.
+
+You can use the [docker
+image](https://cloud.docker.com/repository/docker/krobelus/rate-test-environment)
+used by our [CI](.circleci/config.yml) which contains [builds of above
+dependencies](scripts/test-environment/).
 
 # Documentation
 
@@ -155,7 +161,7 @@ $ cargo doc --document-private-items
 Please let us know if `rate` behaves in a way that is unexpected to you,
 or if you need some feature.  We currently do not guarantee stability of the
 library modules in `rate-common` (only the binaries are considered an API),
-so all tools that use these modules should be integrated in this repository.
+so all tools using these modules should be integrated in this repository.
 
 # Roadmap
 
