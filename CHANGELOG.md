@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fix PR check ignoring deletions
+
+# 0.2.2 (2019-09-30)
+
 - Fix unsound rejections by `rate --forward`
 - Correctly implement flag `--noncore-rat-candidates`
 
