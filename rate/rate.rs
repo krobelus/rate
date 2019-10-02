@@ -1013,36 +1013,56 @@ fn reduct(
     }
 }
 
+/// Return all clauses that are not deleted; for a PR check.
+fn collect_active_clauses(checker: &Checker) -> Vector<Clause> {
+    let mut clauses = Vector::new();
+    for &mode in &[Mode::Core, Mode::NonCore] {
+        if mode == Mode::NonCore && !checker.flags.noncore_rat_candidates {
+            continue;
+        }
+        for lit in Literal::all(checker.maxvar) {
+            for &head in &watchlist(checker, mode)[lit] {
+                if clause_db()[head] == lit {
+                    clauses.push(checker.offset2clause(head));
+                }
+            }
+        }
+    }
+    clauses
+}
+
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
-    let mut tmp = Vector::from_vec(checker.clause(lemma).to_vec());
-    let lemma_length = tmp.len();
-    for clause in Clause::range(0, lemma) {
-        for offset in checker.witness_range(lemma) {
-            let literal = witness_db()[offset];
-            invariant!(!checker.is_in_witness[literal]);
-            checker.is_in_witness[literal] = true;
-        }
-        // C u D|w is a rup
+    // This can surely be improved
+    let mut lemma_union_reduct = Vector::from_vec(checker.clause(lemma).to_vec());
+    for offset in checker.witness_range(lemma) {
+        let literal = witness_db()[offset];
+        invariant!(!checker.is_in_witness[literal]);
+        checker.is_in_witness[literal] = true;
+    }
+    for clause in collect_active_clauses(checker) {
+        // Let lemma be C and clause be D, returns whether C u D|w is a RUP.
         match reduct(checker, &checker.is_in_witness, clause) {
             Reduct::Top => (),
             Reduct::Clause(reduct_by_witness) => {
                 for &literal in &reduct_by_witness {
-                    tmp.push(literal);
+                    lemma_union_reduct.push(literal);
                 }
-                let ok = preserve_assignment!(checker, slice_rup(checker, &tmp)) == CONFLICT;
-                tmp.truncate(lemma_length);
+                let ok = preserve_assignment!(checker, slice_rup(checker, &lemma_union_reduct))
+                    == CONFLICT;
+                lemma_union_reduct.truncate(checker.clause(checker.lemma).len());
                 if !ok {
+                    // No need to unset the values in checker.is_in_witness ... for now.
                     return false;
                 }
             }
         }
-        for offset in checker.witness_range(lemma) {
-            let literal = witness_db()[offset];
-            invariant!(checker.is_in_witness[literal]);
-            checker.is_in_witness[literal] = false;
-        }
+    }
+    for offset in checker.witness_range(lemma) {
+        let literal = witness_db()[offset];
+        invariant!(checker.is_in_witness[literal]);
+        checker.is_in_witness[literal] = false;
     }
     true
 }
