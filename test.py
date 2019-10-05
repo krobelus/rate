@@ -210,8 +210,15 @@ def compare_acceptance(a, b, *, instances):
             ):
                 continue
 
-        assert accepts(a + args, name) == accepts(b + args, name)
+        assert accepts(a + args + [f'--proof-format={proof_format(proof)}'], name) == accepts(b + args, name)
 
+# NOTE file extension .pr is disallowed, use dpr TODO adjust docs
+def proof_format(filename):
+    basename, extension = os.path.splitext(filename)
+    extension = extension[1:] # .
+    if extension not in ('rup', 'drat', 'dpr', 'dsr'):
+        extension = os.path.splitext(basename)[1][1:]
+    return extension
 
 def double_check(drat_checker,
                  lrat_checker=['lrat-check'],
@@ -240,13 +247,6 @@ def double_check(drat_checker,
             args += [f'{name}.dpr']
         else:
             args += [proof]
-        # NOTE file extension .pr is disallowed, use dpr TODO adjust docs
-        def proof_format(filename):
-            basename, extension = os.path.splitext(filename)
-            extension = extension[1:] # .
-            if extension not in ('rup', 'drat', 'dpr', 'dsr'):
-                extension = os.path.splitext(basename)[1][1:]
-            return extension
         args += [f'--proof-format={proof_format(proof)}']
         if not pr:
             if lrat:
