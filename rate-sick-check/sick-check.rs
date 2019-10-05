@@ -10,7 +10,7 @@ use rate_common::{
     clause::{Reason, RedundancyProperty},
     clausedatabase::{clause_db, witness_db},
     comment, die,
-    hashtable::{FixedSizeHashTable, HashTable},
+    hashtable::HashTable,
     literal::Literal,
     memory::{Array, Vector},
     output::{install_signal_handler, print_solution},
@@ -64,7 +64,6 @@ fn main() -> Result<(), ()> {
         format => die!("Unsupported proof format: {}", format),
     };
     requires!(redundancy_property == proof_file_redundancy_property);
-    let mut clause_ids = FixedSizeHashTable::new();
     let mut parser = Parser::new(ProofSyntax::Drat);        // todo: change this into option
     parser.max_proof_steps = Some(sick.proof_step);
     run_parser(
@@ -105,8 +104,8 @@ fn main() -> Result<(), ()> {
         }
     }
     // Delete the lemma, so it is not considered to be part of the formula.
-    clause_ids.delete_clause(lemma);
-    for &clause in &clause_ids {
+    parser.table.delete_clause(lemma);
+    for &clause in &parser.table {
         if clause < lemma && !stable_under_unit_propagation(&assignment, clause_db().clause(clause))
         {
             die!(
@@ -158,7 +157,7 @@ fn main() -> Result<(), ()> {
         }
         clause_db().push_literal(Literal::new(0));
         let failing_clause_tmp = clause_db().last_clause();
-        let failing_clause = clause_ids
+        let failing_clause = parser.table
             .find_equal_clause(failing_clause_tmp, /*delete=*/ false)
             .unwrap_or_else(|| {
                 die!(
@@ -224,7 +223,7 @@ fn main() -> Result<(), ()> {
                 );
             }
         }
-        for &clause in &clause_ids {
+        for &clause in &parser.table {
             if clause < lemma
                 && !stable_under_unit_propagation(&assignment, clause_db().clause(clause))
             {
