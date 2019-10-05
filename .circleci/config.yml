@@ -19,7 +19,6 @@ jobs:
                     - /usr/local/cargo/.package-cache
 
             - run: |
-                cargo fmt -- --check
                 cargo build --release --offline --frozen
                 cargo test --release --offline --frozen
                 pytest-3 test.py
