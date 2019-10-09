@@ -150,8 +150,8 @@ Find some background information and a performance evaluation in the [master's t
 
 [master's thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
-The source code includes an abundance of doc comments. They can be turned
-to developer documentation in `target/doc/rate*/index.html` like so:
+The source code includes an abundance of doc comments. Use this command to
+turn them into developer documentation at `target/doc/rate*/index.html`.
 ```sh
 $ cargo doc --document-private-items
 ```
@@ -161,7 +161,7 @@ $ cargo doc --document-private-items
 Please let us know if `rate` behaves in a way that is unexpected to you,
 or if you need some feature.  We currently do not guarantee stability of the
 library modules in `rate-common` (only the binaries are considered an API),
-so all tools using these modules should be integrated in this repository.
+but we can integrate more tools that work on proofs in this repository.
 
 # Roadmap
 

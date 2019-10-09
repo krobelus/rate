@@ -38,6 +38,7 @@ impl PartialEq for Assignment {
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl Assignment {
     /// Create an empty assignment.
     pub fn new(maxvar: Variable) -> Assignment {

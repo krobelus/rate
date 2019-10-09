@@ -69,9 +69,9 @@ impl ClauseStorage for ClauseDatabase {
     }
 }
 
-impl ClauseDatabase {
+impl Default for ClauseDatabase {
     /// Create an empty clause database.
-    pub fn new() -> ClauseDatabase {
+    fn default() -> ClauseDatabase {
         let mut db = ClauseDatabase {
             data: Vector::new(),
             offset: Vector::new(),
@@ -80,6 +80,9 @@ impl ClauseDatabase {
         db.push_sentinel(db.data.len());
         db
     }
+}
+
+impl ClauseDatabase {
     /// Create a database from raw elements; used only for tests.
     #[cfg(test)]
     pub fn from(data: Vector<Literal>, offset: Vector<usize>) -> ClauseDatabase {
@@ -283,9 +286,9 @@ impl ClauseStorage for WitnessDatabase {
     }
 }
 
-impl WitnessDatabase {
+impl Default for WitnessDatabase {
     /// Create an empty witness database.
-    pub fn new() -> WitnessDatabase {
+    fn default() -> WitnessDatabase {
         let mut db = WitnessDatabase {
             data: Vector::new(),
             offset: Vector::new(),
@@ -293,6 +296,9 @@ impl WitnessDatabase {
         db.offset.push(0);
         db
     }
+}
+
+impl WitnessDatabase {
     /// Create a database from raw elements; used only for tests.
     #[cfg(test)]
     pub fn from(data: Vector<Literal>, offset: Vector<usize>) -> WitnessDatabase {

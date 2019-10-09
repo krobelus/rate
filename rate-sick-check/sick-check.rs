@@ -59,7 +59,7 @@ fn main() -> Result<(), ()> {
     };
     requires!(redundancy_property == proof_file_redundancy_property);
     let mut clause_ids = HashTable::new();
-    let mut parser = Parser::new();
+    let mut parser = Parser::default();
     parser.max_proof_steps = sick.proof_step;
     run_parser(
         &mut parser,

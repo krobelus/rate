@@ -9,7 +9,7 @@ use rate_common::{
         puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral,
         ProofStep, Reason, RedundancyProperty,
     },
-    clausedatabase::{ClauseDatabase, WitnessDatabase},
+    clausedatabase::{ClauseDatabase, ClauseStorage, WitnessDatabase},
     comment, config, die, invariant,
     literal::{Literal, Variable},
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
@@ -105,18 +105,16 @@ fn run_frontend() -> i32 {
     );
     drop(timer);
     print_memory_usage(&checker);
-    as_warning!({
-        match result {
-            Verdict::NoEmptyClause => puts!("c no conflict\n"),
-            Verdict::IncorrectEmptyClause => puts!("c conflict claimed but not detected\n"),
-            Verdict::IncorrectLemma => {
-                let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
-                puts!("c redundancy check failed for ");
-                puts_clause_with_id(lemma, checker.clause(lemma));
-                puts!("\n");
-            }
-            Verdict::Verified => (),
+    as_warning!(match result {
+        Verdict::NoEmptyClause => puts!("c no conflict\n"),
+        Verdict::IncorrectEmptyClause => puts!("c conflict claimed but not detected\n"),
+        Verdict::IncorrectLemma => {
+            let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
+            puts!("c redundancy check failed for ");
+            puts_clause_with_id(lemma, checker.clause(lemma));
+            puts!("\n");
         }
+        Verdict::Verified => (),
     });
     print_solution(if result == Verdict::Verified {
         "VERIFIED"
@@ -154,6 +152,7 @@ pub struct Flags {
 }
 
 impl Flags {
+    #[allow(clippy::cognitive_complexity)]
     /// Create a flags instance from commandline arguments.
     pub fn new(matches: ArgMatches) -> Flags {
         let drat_trim = matches.is_present("DRAT_TRIM");
@@ -576,10 +575,8 @@ fn run(checker: &mut Checker) -> Verdict {
         forward_check(checker)
     } else {
         let mut verdict = preprocess(checker);
-        if verdict == Verdict::Verified {
-            if !verify(checker) {
-                verdict = Verdict::IncorrectLemma;
-            }
+        if verdict == Verdict::Verified && !verify(checker) {
+            verdict = Verdict::IncorrectLemma;
         }
         verdict
     };
@@ -2203,13 +2200,12 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
     }
     writeln!(file, " 0")?;
     writeln!(file, "proof_format   = \"{}\"", proof_format)?;
-    match checker.rejection.proof_step {
-        Some(proof_step) => writeln!(
+    if let Some(proof_step) = checker.rejection.proof_step {
+        writeln!(
             file,
             "proof_step     = {} # Failed line in the proof",
             proof_step + 1
-        )?,
-        None => (),
+        )?;
     }
     write!(file, "natural_model  = [")?;
     for &literal in &checker.rejection.natural_model {

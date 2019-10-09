@@ -70,11 +70,11 @@ pub struct Parser {
     pub witness_db: WitnessDatabase,
 }
 
-impl Parser {
+impl Default for Parser {
     /// Create a new parser.
     ///
     /// *Note*: this allocates the static clause and witness databases, so this should only be called once.
-    pub fn new() -> Parser {
+    fn default() -> Parser {
         Parser {
             redundancy_property: RedundancyProperty::RAT,
             maxvar: Variable::new(0),
@@ -83,10 +83,13 @@ impl Parser {
             proof: Vector::new(),
             max_proof_steps: None,
             verbose: true,
-            clause_db: ClauseDatabase::new(),
-            witness_db: WitnessDatabase::new(),
+            clause_db: ClauseDatabase::default(),
+            witness_db: WitnessDatabase::default(),
         }
     }
+}
+
+impl Parser {
     /// Returns true if we are parsing a (D)PR proof.
     pub fn is_pr(&self) -> bool {
         self.redundancy_property == RedundancyProperty::PR
@@ -203,7 +206,7 @@ impl HeapSpace for HashTable {
 
 /// Parse a formula and a proof file.
 pub fn parse_files(formula_file: &str, proof_file: &str, memory_usage_breakdown: bool) -> Parser {
-    let mut parser = Parser::new();
+    let mut parser = Parser::default();
     let mut clause_ids = HashTable::new();
     run_parser(&mut parser, formula_file, proof_file, &mut clause_ids);
     if memory_usage_breakdown {
@@ -861,7 +864,7 @@ mod tests {
     }
 
     fn sample_formula(clause_ids: &mut HashTable) -> Parser {
-        let mut parser = Parser::new();
+        let mut parser = Parser::default();
         parser.redundancy_property = RedundancyProperty::RAT;
         let example = r#"c comment
 p cnf 2 2
