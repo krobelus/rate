@@ -1,7 +1,8 @@
 # Unreleased
 
-- Fix PR check ignoring deletions
-- Rewrite logging (flag -v) to print one line for each processed lemma
+- Fix bug in PR check where deletions would be ignored
+- Rewrite logging (flag -v) to print one line for each processed lemma;
+  see tracking issue at https://github.com/krobelus/rate/issues/9
 
 # 0.2.2 (2019-09-30)
 
