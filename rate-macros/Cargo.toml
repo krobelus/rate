@@ -1,6 +1,6 @@
 [package]
 name = "rate-macros"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
 edition = "2018"
 description = "Internal macros for rate"

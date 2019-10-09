@@ -1,4 +1,4 @@
-# Unreleased
+# 0.2.3 (2019-10-09)
 
 - Fix bug in PR check where deletions would be ignored
 - Rewrite logging (flag -v) to print one line for each processed lemma;
