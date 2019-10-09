@@ -16,34 +16,6 @@ use std::{
     panic, slice,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum ProofSyntax {
-    Dimacs,
-    Rup,
-    Drat,
-    Dpr,
-    Dsr,
-}
-
-#[allow(dead_code)]
-impl ProofSyntax {
-    fn has_header(self) -> bool {
-        self == ProofSyntax::Dimacs
-    }
-    fn has_deletion(self) -> bool {
-        match self {
-            ProofSyntax::Dimacs | ProofSyntax::Rup => false,
-            _ => true,
-        }
-    }
-    fn has_pr(self) -> bool {
-        self == ProofSyntax::Dpr
-    }
-    fn has_sr(self) -> bool {
-        self == ProofSyntax::Dsr
-    }
-}
-
 /// CNF and DRAT/DPR parser.
 #[derive(Debug, PartialEq)]
 pub struct Parser {
