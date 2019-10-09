@@ -37,7 +37,7 @@ sed -E -i '/(^version|^rate)/s/version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "'$r
 	script='sed -i rate*/Cargo.toml'
 	while read package equals version
 	do
-		script="$script -e 's/^$package .*/$package = $version/'"
+		script="$script -e 's/^$package = .*\$/$package = $version/'"
 		:
 	done
 	eval $script

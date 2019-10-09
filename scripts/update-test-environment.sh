@@ -4,7 +4,7 @@ set -eu
 
 cd "$(dirname "$0")"/test-environment
 
-docker login --password-stdin
+docker login --username krobelus --password-stdin
 
 for image in drat-trim grat rupee rate-test-environment; do
     echo $image
