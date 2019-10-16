@@ -370,7 +370,7 @@ dependencies = [
  "static_assertions 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "xz2 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "zstd 0.4.28+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zstd 0.5.0+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -656,24 +656,24 @@ dependencies = [
 
 [[package]]
 name = "zstd"
-version = "0.4.28+zstd.1.4.3"
+version = "0.5.0+zstd.1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "zstd-safe 1.4.13+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zstd-safe 2.0.0+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "zstd-safe"
-version = "1.4.13+zstd.1.4.3"
+version = "2.0.0+zstd.1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.62 (registry+https://github.com/rust-lang/crates.io-index)",
- "zstd-sys 1.4.13+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zstd-sys 1.4.14+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "zstd-sys"
-version = "1.4.13+zstd.1.4.3"
+version = "1.4.14+zstd.1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -760,6 +760,6 @@ dependencies = [
 "checksum winapi-util 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7168bab6e1daee33b4557efd0e95d5ca70a03706d39fa5f3fe7a236f584b03c9"
 "checksum winapi-x86_64-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 "checksum xz2 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c179869f34fc7c01830d3ce7ea2086bc3a07e0d35289b667d0a8bf910258926c"
-"checksum zstd 0.4.28+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "f4e716acaad66f2daf2526f37a1321674a8814c0b37a366ebe6c97a699f85ddc"
-"checksum zstd-safe 1.4.13+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bfe4d3b26a0790201848865663e8ffabf091e126e548bc9710ccfa95621ece48"
-"checksum zstd-sys 1.4.13+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "fadc8ebe858f056ab82dffb9d93850b841603bdf663db7cf5e3dbd7f34cc55b2"
+"checksum zstd 0.5.0+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "1037b895b3d7460a70a1087e5f0e1524f3e77edb4a815a5fb6fc38f5aac6a8c8"
+"checksum zstd-safe 2.0.0+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "360e2e46f7bd770395ca3845f777c0dbe634f615d14eddd3bfbc492f9df62b13"
+"checksum zstd-sys 1.4.14+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "e224151b5d5d59d272be121a8e742c15a8be45013168466165a64843241e5a05"
