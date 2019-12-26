@@ -1046,6 +1046,9 @@ fn collect_active_clauses(checker: &Checker) -> Vector<Clause> {
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
+    if checker.witness(lemma).is_empty() {
+        return preserve_assignment!(checker, rup_or_rat(checker));
+    }
     let mut lemma_union_reduct: Vector<Literal> = checker.clause(lemma).iter().cloned().collect();
     for offset in checker.witness_range(lemma) {
         let literal = checker.witness_db[offset];
