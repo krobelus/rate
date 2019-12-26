@@ -6,8 +6,8 @@ use rate_common::{
     as_warning,
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{
-        puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency, LRATLiteral,
-        ProofStep, Reason, RedundancyProperty,
+        puts_clause, puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency,
+        LRATLiteral, ProofStep, Reason, RedundancyProperty,
     },
     clausedatabase::{ClauseDatabase, ClauseStorage, WitnessDatabase},
     comment, config, die, invariant,
@@ -517,7 +517,6 @@ impl Checker {
         self.clause_db.clause(clause)
     }
     /// Access the witness by clause ID.
-    #[allow(dead_code)]
     fn witness(&self, clause: Clause) -> &[Literal] {
         self.witness_db.witness(clause)
     }
@@ -1041,15 +1040,14 @@ fn collect_active_clauses(checker: &Checker) -> Vector<Clause> {
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
-    // This can surely be improved
-    let mut lemma_union_reduct = Vector::from_vec(checker.clause(lemma).to_vec());
+    let mut lemma_union_reduct: Vector<Literal> = checker.clause(lemma).iter().cloned().collect();
     for offset in checker.witness_range(lemma) {
         let literal = checker.witness_db[offset];
         invariant!(!checker.is_in_witness[literal]);
         checker.is_in_witness[literal] = true;
     }
     for clause in collect_active_clauses(checker) {
-        // Let lemma be C and clause be D, returns whether C u D|w is a RUP.
+        // `lemma u clause|witness` must be a RUP inference.
         match reduct(checker, &checker.is_in_witness, clause) {
             Reduct::Top => (),
             Reduct::Clause(reduct_by_witness) => {
@@ -1058,9 +1056,9 @@ fn pr(checker: &mut Checker) -> bool {
                 }
                 let ok = preserve_assignment!(checker, slice_rup(checker, &lemma_union_reduct))
                     == CONFLICT;
-                lemma_union_reduct.truncate(checker.clause(checker.lemma).len());
+                lemma_union_reduct.truncate(checker.clause(lemma).len());
                 if !ok {
-                    // No need to unset the values in checker.is_in_witness ... for now.
+                    // No need to clear checker.is_in_witness because checking stops here.
                     return false;
                 }
             }
@@ -1070,6 +1068,13 @@ fn pr(checker: &mut Checker) -> bool {
         let literal = checker.witness_db[offset];
         invariant!(checker.is_in_witness[literal]);
         checker.is_in_witness[literal] = false;
+    }
+    if checker.flags.verbose {
+        puts!("lemma PR ");
+        checker.puts_clause_with_id(lemma);
+        puts!(" witness ");
+        puts_clause(checker.witness(lemma));
+        puts!("\n");
     }
     true
 }
