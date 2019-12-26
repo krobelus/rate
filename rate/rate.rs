@@ -1063,8 +1063,15 @@ fn pr(checker: &mut Checker) -> bool {
                 for &literal in &reduct_by_witness {
                     lemma_union_reduct.push(literal);
                 }
-                let ok = preserve_assignment!(checker, slice_rup(checker, &lemma_union_reduct))
-                    == CONFLICT;
+                let ok = preserve_assignment!(checker, {
+                    let trail_length = checker.assignment.len();
+                    if slice_rup(checker, &lemma_union_reduct) == CONFLICT {
+                        extract_dependencies(checker, trail_length, None);
+                        true
+                    } else {
+                        false
+                    }
+                });
                 lemma_union_reduct.truncate(checker.clause(lemma).len());
                 if !ok {
                     // No need to clear checker.is_in_witness because checking stops here.
