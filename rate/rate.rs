@@ -100,6 +100,9 @@ fn run_frontend() -> i32 {
     print_key_value("skipped tautologies", checker.satisfied_count);
     print_key_value("RUP introductions", checker.rup_introductions);
     print_key_value("RAT introductions", checker.rat_introductions);
+    if checker.redundancy_property == RedundancyProperty::PR {
+        print_key_value("PR introductions", checker.pr_introductions);
+    }
     print_key_value("deletions", checker.deletions);
     print_key_value("skipped deletions", checker.skipped_deletions);
     print_key_value("reason deletions", checker.reason_deletions);
@@ -358,6 +361,8 @@ pub struct Checker {
     rup_introductions: usize,
     /// Number of verified RAT inferences.
     rat_introductions: usize,
+    /// Number of verified PR inferences.
+    pr_introductions: usize,
     /// Number of deletions that were applied.
     deletions: usize,
     /// Number of deletions that were skipped.
@@ -491,6 +496,7 @@ impl Checker {
             premise_length: parser.proof_start.as_offset(),
             rup_introductions: 0,
             rat_introductions: 0,
+            pr_introductions: 0,
             deletions: 0,
             skipped_deletions: 0,
             reason_deletions: 0,
@@ -1069,6 +1075,7 @@ fn pr(checker: &mut Checker) -> bool {
         invariant!(checker.is_in_witness[literal]);
         checker.is_in_witness[literal] = false;
     }
+    checker.pr_introductions += 1;
     if checker.flags.verbose {
         puts!("lemma PR ");
         checker.puts_clause_with_id(lemma);
