@@ -957,11 +957,8 @@ fn collect_resolution_candidates(checker: &Checker, pivot: Literal) -> Vector<Cl
 /// Check the current inference.
 fn check_inference(checker: &mut Checker, proof_step: usize) -> bool {
     checker.soft_propagation = true;
-    let ok = match checker.redundancy_property {
-        RedundancyProperty::RAT => preserve_assignment!(checker, rup_or_rat(checker)),
-        RedundancyProperty::PR => pr(checker),
-    };
-    if checker.flags.grat_filename.is_some() {
+    let ok = preserve_assignment!(checker, redundancy_check(checker));
+    if ok && checker.flags.grat_filename.is_some() {
         if !checker.grat_pending_deletions.is_empty() {
             if !checker.grat_in_deletion {
                 checker.grat.push(GRATLiteral::DELETION);
@@ -1046,10 +1043,6 @@ fn collect_active_clauses(checker: &Checker) -> Vector<Clause> {
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
-    if checker.witness(lemma).is_empty() {
-        return preserve_assignment!(checker, rup_or_rat(checker));
-    }
-    let mut lemma_union_reduct: Vector<Literal> = checker.clause(lemma).iter().cloned().collect();
     for offset in checker.witness_range(lemma) {
         let literal = checker.witness_db[offset];
         invariant!(!checker.is_in_witness[literal]);
@@ -1059,21 +1052,16 @@ fn pr(checker: &mut Checker) -> bool {
         // `lemma u clause|witness` must be a RUP inference.
         match reduct(checker, &checker.is_in_witness, clause) {
             Reduct::Top => (),
-            Reduct::Clause(reduct_by_witness) => {
-                for &literal in &reduct_by_witness {
-                    lemma_union_reduct.push(literal);
-                }
-                let ok = preserve_assignment!(checker, {
+            Reduct::Clause(the_reduct) => {
+                if !preserve_assignment!(checker, {
                     let trail_length = checker.assignment.len();
-                    if slice_rup(checker, &lemma_union_reduct) == CONFLICT {
+                    if slice_rup(checker, &the_reduct) == CONFLICT {
                         extract_dependencies(checker, trail_length, None);
                         true
                     } else {
                         false
                     }
-                });
-                lemma_union_reduct.truncate(checker.clause(lemma).len());
-                if !ok {
+                }) {
                     // No need to clear checker.is_in_witness because checking stops here.
                     return false;
                 }
@@ -1118,7 +1106,7 @@ fn add_rup_conflict_for_grat(checker: &mut Checker) {
 }
 
 /// Return true if the lemma is a RUP or RAT inference.
-fn rup_or_rat(checker: &mut Checker) -> bool {
+fn redundancy_check(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
     assignment_invariants(checker);
     requires!(checker.processed == checker.assignment.len());
@@ -1140,6 +1128,12 @@ fn rup_or_rat(checker: &mut Checker) -> bool {
             add_rup_conflict_for_grat(checker);
         }
         write_dependencies_for_lrat(checker, lemma, false);
+        return true;
+    }
+    if checker.redundancy_property == RedundancyProperty::PR
+        && !checker.witness(lemma).is_empty()
+        && pr(checker)
+    {
         return true;
     }
     let trail_length_after_rup = checker.assignment.len();

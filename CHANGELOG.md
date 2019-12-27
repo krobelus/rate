@@ -1,3 +1,8 @@
+# Unreleased
+- Fix PR check false positives given empty witnesses
+- Fix PR check not adding clauses to the core
+- Optimize PR checking
+
 # 0.2.3 (2019-10-09)
 
 - Fix bug in PR check where deletions would be ignored
