@@ -1053,18 +1053,38 @@ fn pr(checker: &mut Checker) -> bool {
         match reduct(checker, &checker.is_in_witness, clause) {
             Reduct::Top => (),
             Reduct::Clause(the_reduct) => {
-                if !preserve_assignment!(checker, {
+                preserve_assignment!(checker, {
                     let trail_length = checker.assignment.len();
                     if slice_rup(checker, &the_reduct) == CONFLICT {
                         extract_dependencies(checker, trail_length, None);
-                        true
                     } else {
-                        false
+                        if checker.flags.sick_filename.is_some() {
+                            extract_natural_model(checker, trail_length);
+                            let failing_clause = Vector::from_iter(
+                                checker
+                                    .clause(clause)
+                                    .iter()
+                                    .filter(|&literal| literal != &Literal::BOTTOM)
+                                    .cloned(),
+                            );
+                            let failing_model = checker
+                                .assignment
+                                .iter()
+                                .skip(trail_length)
+                                .map(|&(literal, _reason)| literal)
+                                .collect();
+                            if let Some(witnesses) = checker.rejection.witness.as_mut() {
+                                witnesses.push(Witness {
+                                    failing_clause,
+                                    failing_model,
+                                    pivot: None,
+                                })
+                            }
+                        }
+                        // No need to clear checker.is_in_witness because checking stops here.
+                        return false;
                     }
-                }) {
-                    // No need to clear checker.is_in_witness because checking stops here.
-                    return false;
-                }
+                })
             }
         }
     }
@@ -1528,7 +1548,7 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_in
 }
 
 /// After failing to find a conflict in an inference check, copy the state
-/// of the natural from immediately after the RUP check.
+/// of the natural model from immediately after the RUP check.
 fn extract_natural_model(checker: &mut Checker, trail_length_after_rup: usize) {
     if checker.flags.sick_filename.is_some() {
         checker.rejection.natural_model = checker
