@@ -1130,12 +1130,49 @@ fn redundancy_check(checker: &mut Checker) -> bool {
         write_dependencies_for_lrat(checker, lemma, false);
         return true;
     }
-    if checker.redundancy_property == RedundancyProperty::PR
-        && !checker.witness(lemma).is_empty()
-        && pr(checker)
-    {
-        return true;
+    if checker.redundancy_property == RedundancyProperty::PR {
+        if checker.witness(lemma).is_empty() {
+            rat(checker, trail_length_forced)
+        } else {
+            pr(checker)
+        }
+    } else {
+        rat(checker, trail_length_forced)
     }
+}
+
+/// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
+fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeConflict {
+    // NOTE: rupee's lratcheck/sickcheck might require us to first assign all units before
+    // returning.
+    for offset in checker.clause_range(clause) {
+        let unit = checker.clause_db[offset];
+        if pivot.map_or(false, |pivot| unit == -pivot) {
+            continue;
+        }
+        if !checker.assignment[-unit] {
+            invariant!(unit != Literal::BOTTOM);
+            if assign(checker, -unit, Reason::assumed()) == CONFLICT {
+                return CONFLICT;
+            }
+        }
+    }
+    propagate(checker)
+}
+
+/// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
+fn slice_rup(checker: &mut Checker, clause: &[Literal]) -> MaybeConflict {
+    for &unit in clause {
+        if !checker.assignment[-unit] && assign(checker, -unit, Reason::assumed()) == CONFLICT {
+            return CONFLICT;
+        }
+    }
+    propagate(checker)
+}
+
+/// Returns true if the clause is a resolution asymmetric tautology (RAT) inference.
+fn rat(checker: &mut Checker, trail_length_forced: usize) -> bool {
+    let lemma = checker.lemma;
     let trail_length_after_rup = checker.assignment.len();
     if checker.flags.grat_filename.is_some() {
         checker.grat_pending_prerat.push(GRATLiteral::RAT_LEMMA);
@@ -1182,35 +1219,6 @@ fn redundancy_check(checker: &mut Checker) -> bool {
     }
 }
 
-/// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
-fn rup(checker: &mut Checker, clause: Clause, pivot: Option<Literal>) -> MaybeConflict {
-    // NOTE: rupee's lratcheck/sickcheck might require us to first assign all units before
-    // returning.
-    for offset in checker.clause_range(clause) {
-        let unit = checker.clause_db[offset];
-        if pivot.map_or(false, |pivot| unit == -pivot) {
-            continue;
-        }
-        if !checker.assignment[-unit] {
-            invariant!(unit != Literal::BOTTOM);
-            if assign(checker, -unit, Reason::assumed()) == CONFLICT {
-                return CONFLICT;
-            }
-        }
-    }
-    propagate(checker)
-}
-
-/// Returns a conflict if the clause is a reverse unit propagation (RUP) inference.
-fn slice_rup(checker: &mut Checker, clause: &[Literal]) -> MaybeConflict {
-    for &unit in clause {
-        if !checker.assignment[-unit] && assign(checker, -unit, Reason::assumed()) == CONFLICT {
-            return CONFLICT;
-        }
-    }
-    propagate(checker)
-}
-
 /// Returns the index of the pivot if the clause is a resolution asymmetric
 /// tautology (RAT) inference.
 fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<usize> {
@@ -1255,7 +1263,7 @@ fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: 
     let lemma = checker.lemma;
     invariant!(checker.assignment[-pivot]);
     let resolution_candidates = collect_resolution_candidates(checker, pivot);
-    rat(
+    rat_given_resolution_candidates(
         checker,
         pivot,
         resolution_candidates,
@@ -1269,7 +1277,7 @@ fn rat_on_pivot(checker: &mut Checker, pivot: Literal, trail_length_before_rat: 
 
 /// Returns true if the clause is a RAT inference on the given pivot with
 /// respect to the resolution candidates.
-fn rat(
+fn rat_given_resolution_candidates(
     checker: &mut Checker,
     pivot: Literal,
     resolution_candidates: Vector<Clause>,
