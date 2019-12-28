@@ -2,7 +2,7 @@
 
 set -e -u
 
-cnf="$(realpath "$1")'
+cnf="$(realpath "$1")"
 shift
 lrat="$(realpath "$1")"
 shift
