@@ -6,17 +6,18 @@ import distutils.spawn
 from subprocess import Popen, PIPE
 import sys
 
+def popen(command, **kwargs):
+    print(' '.join(command))
+    return Popen(command, **kwargs)
+
 benchmark_location = 'benchmarks'
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+assert popen(['cargo', 'build', '--release']).wait() == 0
 
 cnfs = [f'{dirpath}/{file}'
-            for dirpath, _, files in os.walk(benchmark_location)
-            for file in files
-            if file.endswith('.cnf') and '/excluded' not in dirpath]
-
-def build_release():
-    cargo_release = ['cargo', 'build', '--release']
-    run(cargo_release)
+        for dirpath, _, files in os.walk(benchmark_location)
+        for file in files
+        if file.endswith('.cnf')]
 
 
 def rate(flags=[]):
@@ -45,10 +46,13 @@ def small_drat_inputs():
 
 
 def pr_inputs():
-    return [
-        (cnf, cnf[:-len('cnf')] + 'dpr') for cnf in sorted(cnfs, key=size)
-        if os.path.exists(cnf[:-len('cnf')] + 'dpr')
-    ]
+    prs = []
+    for cnf in sorted(cnfs, key=size):
+        name = cnf[:-len('.cnf')]
+        for ext in 'pr', 'dpr':
+            if os.path.isfile(f'{name}.{ext}'):
+                prs += [(cnf, f'{name}.{ext}')]
+    return prs
 
 
 def executable(name):
@@ -58,14 +62,6 @@ def executable(name):
 def ensure_executable(command):
     assert executable(command[0]), f'{command[0]} not found in PATH'
 
-
-def popen(command, **kwargs):
-    print(' '.join(command))
-    return Popen(command, **kwargs)
-
-
-def run(command):
-    assert popen(command).wait() == 0
 
 
 def process_expansion(command, input=None):
@@ -78,6 +74,8 @@ def process_expansion(command, input=None):
 
 
 process_expansion_cache = {}
+
+
 def process_expansion_cached(command):
     assert isinstance(command, tuple)
     if command in process_expansion_cache:
@@ -127,7 +125,6 @@ def sick_checker_accepts(checker, name):
 
 
 def compare_acceptance(a, b, *, instances):
-    build_release()
     [ensure_executable(command) for command in (a, b)]
     for cnf, proof in instances:
         name = cnf[:-len('.cnf')]
@@ -177,7 +174,6 @@ def double_check(drat_checker,
                  grat_checker=['gratchk', 'unsat'],
                  *,
                  instances):
-    build_release()
     ensure_executable(drat_checker)
     if lrat_checker is not None:
         if not executable(lrat_checker[0]):
@@ -193,12 +189,12 @@ def double_check(drat_checker,
     lrat = not forward
     for cnf, proof in instances:
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
-        pr = os.path.exists(f'{name}.dpr')
+        pr = proof.endswith('.dpr') or proof.endswith('.pr')
         args = [cnf]
+        args += [proof]
         if pr:
-            args += [f'{name}.dpr']
+            pass
         else:
-            args += [proof]
             if lrat:
                 args += ['-L', f'{name}.lrat']
             if grat:
@@ -276,6 +272,7 @@ def test_forward():
             drat_inputs()) | set(
                 pr_inputs()))
 
+
 def test_acceptance_drat_trim():
     if executable('drat-trim'):
         compare_acceptance(
@@ -312,7 +309,6 @@ def test_acceptance_dpr_trim():
 
 
 def test_drat2bdrat_bdrat2drat():
-    build_release()
     drat2bdrat = './target/release/drat2bdrat'
     bdrat2drat = './target/release/bdrat2drat'
     for benchmark in ('crafted/example1b', ):
