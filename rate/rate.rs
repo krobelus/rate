@@ -90,8 +90,12 @@ fn run_frontend() -> i32 {
         &flags.proof_filename,
         flags.memory_usage_breakdown,
     );
+    // TODO check these before parsing the whole file
     if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
-        die!("LRAT and GRAT generation is not possible for PR")
+        die!("LRAT or GRAT generation is not yet supported for PR")
+    }
+    if parser.is_pr() && flags.skip_unit_deletions {
+        die!("Flag -d/--skip-unit-deletions is not yet supported for PR")
     }
     let mut checker = Checker::new(parser, flags);
     let result = run(&mut checker);

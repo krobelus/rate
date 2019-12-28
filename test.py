@@ -353,8 +353,7 @@ def test_acceptance_gratgen():
 def test_acceptance_dpr_trim():
     if executable('dpr-trim'):
         compare_acceptance(
-            rate(
-                flags=['--skip-unit-deletions']),
+            rate(),
             ['dpr-trim'],
             instances=pr_inputs())
 
