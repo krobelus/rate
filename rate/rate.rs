@@ -1022,24 +1022,6 @@ fn reduct(
     }
 }
 
-/// Return all clauses that are not deleted; for a PR check.
-fn collect_active_clauses(checker: &Checker) -> Vector<Clause> {
-    let mut clauses = Vector::new();
-    for &mode in &[Mode::Core, Mode::NonCore] {
-        if mode == Mode::NonCore && !checker.flags.noncore_rat_candidates {
-            continue;
-        }
-        for lit in Literal::all(checker.maxvar) {
-            for &head in &watchlist(checker, mode)[lit] {
-                if checker.clause_db[head] == lit {
-                    clauses.push(checker.offset2clause(head));
-                }
-            }
-        }
-    }
-    clauses
-}
-
 /// Return true if the lemma is a propagation redundancy (PR) inference.
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
@@ -1048,7 +1030,32 @@ fn pr(checker: &mut Checker) -> bool {
         invariant!(!checker.is_in_witness[literal]);
         checker.is_in_witness[literal] = true;
     }
-    for clause in collect_active_clauses(checker) {
+    let mut clauses = Vector::new();
+    for &mode in &[Mode::Core, Mode::NonCore] {
+        if mode == Mode::NonCore && !checker.flags.noncore_rat_candidates {
+            continue;
+        }
+        for lit in Literal::all(checker.maxvar) {
+            for &head in &watchlist(checker, mode)[lit] {
+                if checker.clause_db[head] != lit {
+                    continue;
+                }
+                let clause = checker.offset2clause(head);
+                let satisfied = checker
+                    .clause(clause)
+                    .iter()
+                    .any(|&literal| checker.is_in_witness[literal]);
+                let reduced = checker
+                    .clause(clause)
+                    .iter()
+                    .any(|&literal| checker.is_in_witness[-literal]);
+                if !satisfied && reduced {
+                    clauses.push(clause);
+                }
+            }
+        }
+    }
+    for clause in clauses {
         // `lemma u clause|witness` must be a RUP inference.
         match reduct(checker, &checker.is_in_witness, clause) {
             Reduct::Top => (),
@@ -1654,11 +1661,11 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
 }
 
 /// Returns true if the clause is satisfied.
-fn clause_is_satisfied(checker: &Checker, clause: Clause) -> bool {
-    checker
-        .clause(clause)
-        .iter()
-        .any(|&literal| checker.assignment[literal])
+fn clause_is_satisfied<'a>(
+    assignment: &impl Index<Literal, Output = bool>,
+    clause: impl IntoIterator<Item = &'a Literal>,
+) -> bool {
+    clause.into_iter().any(|&literal| assignment[literal])
 }
 
 /// Add a clause that is part of the input formula.
@@ -1687,7 +1694,7 @@ fn add_lemma(checker: &mut Checker, lemma: Clause) -> MaybeConflict {
 /// Returns a conflict if the clause is falsified.
 fn add_clause(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     let already_satisfied = if checker.flags.skip_unit_deletions {
-        clause_is_satisfied(checker, clause)
+        clause_is_satisfied(&checker.assignment, checker.clause(clause))
     } else {
         false
     };
