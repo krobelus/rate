@@ -1747,7 +1747,9 @@ fn close_proof_after_steps(checker: &mut Checker, steps_until_conflict: usize) {
 /// Add an empty clause to the proof (as it might be missing) and to the core.
 fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
     let empty_clause = checker.clause_db.open_clause();
-    checker.clause_db.push_literal(Literal::new(0));
+    checker
+        .clause_db
+        .push_literal(Literal::new(0), /*verbose=*/ true);
     let grat_pending_length = checker.grat_pending.len();
     extract_dependencies(checker, checker.assignment.len(), None);
     checker.grat_pending.truncate(grat_pending_length);

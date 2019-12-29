@@ -401,20 +401,20 @@ fn add_literal(
     parser.maxvar = cmp::max(parser.maxvar, literal.variable());
     match state {
         ProofParserState::Clause => {
-            parser.clause_db.push_literal(literal);
+            parser.clause_db.push_literal(literal, parser.verbose);
             if parser.is_pr() && literal.is_zero() {
-                parser.witness_db.push_literal(literal);
+                parser.witness_db.push_literal(literal, parser.verbose);
             }
         }
         ProofParserState::Witness => {
             invariant!(parser.is_pr());
-            parser.witness_db.push_literal(literal);
+            parser.witness_db.push_literal(literal, parser.verbose);
             if literal.is_zero() {
-                parser.clause_db.push_literal(literal);
+                parser.clause_db.push_literal(literal, parser.verbose);
             }
         }
         ProofParserState::Deletion => {
-            parser.clause_db.push_literal(literal);
+            parser.clause_db.push_literal(literal, parser.verbose);
             if literal.is_zero() {
                 add_deletion(parser, clause_ids);
             }

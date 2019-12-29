@@ -181,9 +181,9 @@ fn check_incorrectness_certificate_aux(
     for witness in witnesses {
         parser.clause_db.open_clause();
         for &literal in &witness.failing_clause {
-            parser.clause_db.push_literal(literal);
+            parser.clause_db.push_literal(literal, verbose);
         }
-        parser.clause_db.push_literal(Literal::new(0));
+        parser.clause_db.push_literal(Literal::new(0), verbose);
         let failing_clause_tmp = parser.clause_db.last_clause();
         let failing_clause = match clause_ids.find_equal_clause(
             &parser.clause_db,

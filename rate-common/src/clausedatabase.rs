@@ -24,7 +24,7 @@ pub trait ClauseStorage {
     /// If passed literal 0, the clause will be finished and
     /// [`open_clause()`](#tymethod.open_clause) must be called before adding
     /// literals to the next clause.
-    fn push_literal(&mut self, literal: Literal);
+    fn push_literal(&mut self, literal: Literal, verbose: bool);
 }
 
 /// Size of metadata that precede the literals of a clause
@@ -60,9 +60,9 @@ impl ClauseStorage for ClauseDatabase {
         self.data.push(Literal::from_raw(0)); // fields
         clause
     }
-    fn push_literal(&mut self, literal: Literal) {
+    fn push_literal(&mut self, literal: Literal, verbose: bool) {
         if literal.is_zero() {
-            self.close_clause()
+            self.close_clause(verbose)
         } else {
             self.data.push(literal)
         }
@@ -127,7 +127,7 @@ impl ClauseDatabase {
         self.have_sentinel = false;
     }
     /// Finish the current clause.
-    fn close_clause(&mut self) {
+    fn close_clause(&mut self, verbose: bool) {
         requires!(!self.have_sentinel);
         let clause = self.last_clause_no_sentinel();
         let start = self.offset[clause.as_offset()] + PADDING_START;
@@ -149,7 +149,7 @@ impl ClauseDatabase {
         }
         self.data.push(Literal::new(0));
         self.push_sentinel(self.data.len());
-        if duplicate {
+        if verbose && duplicate {
             as_warning!({
                 puts!("c removed duplicate literals in ");
                 puts_clause_with_id(clause, self.clause(clause));
@@ -277,7 +277,7 @@ impl ClauseStorage for WitnessDatabase {
         self.offset.push(self.data.len());
         witness
     }
-    fn push_literal(&mut self, literal: Literal) {
+    fn push_literal(&mut self, literal: Literal, _verbose: bool) {
         if literal.is_zero() {
             self.close_witness();
         } else {
