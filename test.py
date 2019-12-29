@@ -1,23 +1,36 @@
-#!/usr/bin/env -S python3 -m pytest
+#!/usr/bin/env python3
 
-import time
+import argparse
 import os
 import distutils.spawn
+import inspect
 from subprocess import Popen, PIPE
 import sys
+from functools import lru_cache
 
-def popen(command, **kwargs):
-    print(' '.join(command))
+LOG = []
+VERBOSE = False
+
+def log(s=''):
+    global LOG
+    if s == '':
+        LOG = []
+    else:
+        LOG += [s]
+    if VERBOSE:
+        print(s)
+
+def require(ok, message=None, fatal=True):
+    if ok:
+        return
+    print('# failed commands:')
+    print('\n'.join(LOG))
+    if fatal:
+        sys.exit(1)
+
+def popen(command, input=None, **kwargs):
+    log(' '.join(command))
     return Popen(command, **kwargs)
-
-benchmark_location = 'benchmarks'
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-assert popen(['cargo', 'build', '--release']).wait() == 0
-
-cnfs = [f'{dirpath}/{file}'
-        for dirpath, _, files in os.walk(benchmark_location)
-        for file in files
-        if file.endswith('.cnf')]
 
 
 def rate(flags=[]):
@@ -55,18 +68,20 @@ def pr_inputs():
     return prs
 
 
+@lru_cache(maxsize=None)
 def executable(name):
     return distutils.spawn.find_executable(name)
 
 
 def ensure_executable(command):
-    assert executable(command[0]), f'{command[0]} not found in PATH'
-
+    log()
+    log(f'# trying to find executable {command[0]}')
+    require(executable(command[0]), f'{command[0]} not found in PATH')
 
 
 def process_expansion(command, input=None):
     # we need to redirect stderr for gratgen
-    p = popen(command, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p = popen(command, input=input, stdin=PIPE, stdout=PIPE, stderr=PIPE)
     if input is not None:
         return p.communicate(input=input)
     else:
@@ -95,7 +110,7 @@ def accepts(checker, name):
         ('rupee' in checker[0])
         and b's REJECTED' in stdout) or ('gratgen' in checker[0]
                                          and b's VERIFIED' not in stderr)
-    assert accepted != rejected, str(stdout, 'utf8') + str(stderr, 'utf8')
+    require(accepted != rejected, 'checker must either accept or reject', str(stdout, 'utf8') + str(stderr, 'utf8'))
     return accepted
 
 
@@ -127,6 +142,7 @@ def sick_checker_accepts(checker, name):
 def compare_acceptance(a, b, *, instances):
     [ensure_executable(command) for command in (a, b)]
     for cnf, proof in instances:
+        log()
         name = cnf[:-len('.cnf')]
         args = [cnf, proof]
 
@@ -165,8 +181,7 @@ def compare_acceptance(a, b, *, instances):
             ):
                 continue
 
-        assert accepts(a + args, name) == accepts(b + args, name)
-        print()
+        require(accepts(a + args, name) == accepts(b + args, name), "checkers give different answer")
 
 
 def double_check(drat_checker,
@@ -182,18 +197,22 @@ def double_check(drat_checker,
         if not executable(grat_checker[0]):
             grat_checker = None
     skip_unit_deletions = any(
-        '--skip-unit-deletions' in arg for arg in drat_checker)
+        '-d' in arg for arg in drat_checker)
     forward = any('--forward' in arg for arg in drat_checker)
     sick = not skip_unit_deletions and not forward
     grat = not forward
-    lrat = not forward
+    lrat = not forward and lrat_checker is not None
     for cnf, proof in instances:
+        log()
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = proof.endswith('.dpr') or proof.endswith('.pr')
         args = [cnf]
         args += [proof]
         if pr:
-            pass
+            if executable('pr2drat') and executable('drat-trim'):
+                args += ['-l', f'{name}.core.pr']
+            if sick:
+                args += ['-S', f'{name}.sick']
         else:
             if lrat:
                 args += ['-L', f'{name}.lrat']
@@ -201,30 +220,51 @@ def double_check(drat_checker,
                 args += ['-G', f'{name}.grat']
             if sick:
                 args += ['-S', f'{name}.sick']
-        if pr:
-            assert accepts(drat_checker + args, name)
-            return
-        if accepts(drat_checker + args, name):
-            if lrat and (lrat_checker is not None and
-                         name not in {f'benchmarks/crafted/{x}' for x in (
-                             'tautological',
-                             'duplicate-literals',
-                             'bottom',
-                         )}):
-                assert 'lrat-check' in lrat_checker[0]
-                assert lrat_checker_accepts(
-                    lrat_checker + [args[0], args[3], 'nil', 't'], name)
+        if pr and accepts(drat_checker + args, name):
+            if executable('pr2drat') and executable('drat-trim'):
+                if (name in ({
+                    f'benchmarks/sadical/{x}'
+                    # TODO investigate these failures!
+                    for x in ('ph5', 'add4', 'tph3', 'ph6', 'add8', 'tph4', 'urq3b1', 'urq3b3', 'urq3b2', 'add16',
+                              'urq3b4', 'add32', 'add64', 'prime65537'
+                              )
+                } | {'benchmarks/crafted/mchess10.1'})):
+                    continue
+                stdout, stderr = process_expansion(
+                    ['pr2drat', cnf, f'{name}.core.pr'])
+                # require(not stderr, name)
+                with open(f'{name}.core.drat', 'wb') as f:
+                    f.write(stdout)
+                # TODO this should not do core first
+                stdout, stderr = process_expansion(
+                    rate() + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
+                # stdout, stderr = process_expansion(['drat-trim', cnf, f'{name}.core.drat', '-f', '-L', f'{name}.core.lrat'])
+                require(not stderr, 'rate stderr should be empty')
+                require(b's VERIFIED' in stdout, 'rate should verify the converted DRAT proof, just like the PR one')
+                if lrat and (name not in {f'benchmarks/sadical/{x}'
+                                          for x in (
+                                              'emptyclause', 'unit4', 'regr1',
+                                          )}):
+                    require(lrat_checker_accepts(
+                        lrat_checker + [cnf, f'{name}.core.lrat', 'nil', 't'], 'lrat check failed'))
+        elif accepts(drat_checker + args, name):
+            if lrat and (name not in {f'benchmarks/crafted/{x}' for x in (
+                'tautological',
+                'duplicate-literals',
+                'bottom',
+            )}):
+                require(lrat_checker_accepts(
+                    lrat_checker + [args[0], args[3], 'nil', 't'], 'lrat check failed'))
             if grat and (grat_checker is not None and (
                 ('rate' not in drat_checker[0]) or skip_unit_deletions or
                 (name not in {f'benchmarks/rupee/{x}' for x in (
                     'tricky-2',  # looks like gratchk cannot delete units
                 )})
             )):
-                assert gratchk_accepts(grat_checker + [args[0], args[5]], name)
+                require(gratchk_accepts(grat_checker + [args[0], args[5]], 'gratchk failed'))
         elif sick:
-            assert sick_checker_accepts(
-                ['target/release/sick-check'] + args[:2] + [args[-1]], name)
-        print()
+            require(sick_checker_accepts(
+                ['target/release/sick-check'] + args[:2] + [args[-1]], name))
 
 
 def test_pr():
@@ -243,7 +283,7 @@ def test_quick_pivot_is_first():
 
 def test_quick_skip_unit_deletions():
     double_check(
-        rate(flags=['--skip-unit-deletions']),
+        rate(flags=['-d']),
         instances=small_drat_inputs())
 
 
@@ -277,7 +317,7 @@ def test_acceptance_drat_trim():
     if executable('drat-trim'):
         compare_acceptance(
             rate(
-                flags=['--skip-unit-deletions']),
+                flags=['-d']),
             ['drat-trim'],
             instances=drat_inputs())
 
@@ -295,7 +335,7 @@ def test_acceptance_gratgen():
     if executable('gratgen'):
         compare_acceptance(
             rate(
-                flags=['--skip-unit-deletions', '--noncore-rat-candidates']),
+                flags=['-d', '--noncore-rat-candidates']),
             ['gratgen'],
             instances=drat_inputs())
 
@@ -312,27 +352,56 @@ def test_drat2bdrat_bdrat2drat():
     drat2bdrat = './target/release/drat2bdrat'
     bdrat2drat = './target/release/bdrat2drat'
     for benchmark in ('crafted/example1b', ):
+        log()
         filename = f'benchmarks/{benchmark}.drat'
-        print(filename)
         with open(filename) as f:
             content = f.read().encode()
         stdout1, stderr1 = process_expansion([bdrat2drat], input=content)
-        assert stderr1 == b''
+        require(stderr1 == b'', name)
         stdout2, stderr2 = process_expansion([drat2bdrat], input=stdout1)
-        assert stderr2 == b''
-        assert content == stdout2
+        require(stderr2 == b'', name)
+        require(content == stdout2, name)
     for benchmark in (
         'crafted/uuf',
         'crafted/example1',
         'crafted/wrong-deletion',
         'crafted/strange',
     ):
+        log()
         filename = f'benchmarks/{benchmark}.drat'
-        print(filename)
         with open(filename) as f:
             content = f.read().encode()
         stdout1, stderr1 = process_expansion([drat2bdrat], input=content)
-        assert stderr1 == b''
+        require(stderr1 == b'', name)
         stdout2, stderr2 = process_expansion([bdrat2drat], input=stdout1)
-        assert stderr2 == b''
-        assert content == stdout2
+        require(stderr2 == b'', name)
+        require(content == stdout2, name)
+
+if __name__ == '__main__':
+    benchmark_location = 'benchmarks'
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    require(popen(['cargo', 'build', '--release']).wait() == 0)
+
+    cnfs = [f'{dirpath}/{file}'
+            for dirpath, _, files in os.walk(benchmark_location)
+            for file in files
+            if file.endswith('.cnf')]
+
+
+    testfunctions = [(name, obj) for name, obj in inspect.getmembers(sys.modules[__name__]) 
+                     if inspect.isfunction(obj) and name.startswith('test')]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-k", type=str, help="only run matching tests")
+    parser.add_argument("-v", action='store_true', help="Print all executed commands")
+    args = parser.parse_args()
+
+    if args.k:
+        testfunctions = [(name, f) for name, f in testfunctions if args.k in name]
+    if args.v:
+        VERBOSE = True
+
+    for name, f in testfunctions:
+        print(name)
+        log()
+        f()

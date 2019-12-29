@@ -220,12 +220,16 @@ fn main() -> Result<(), ()> {
                     .collect()
             }
         };
-        for &literal in &resolvent {
-            if !assignment[-literal] {
-                die!(
-                    "Failing model does not falsify resolvent literal {}",
-                    literal
-                );
+        // TODO also for PR
+        if redundancy_property == RedundancyProperty::RAT {
+            for &literal in &resolvent {
+                println!("LITERALL {}", literal);
+                if !assignment[-literal] {
+                    die!(
+                        "Failing model does not falsify resolvent literal {}",
+                        literal
+                    );
+                }
             }
         }
         for &clause in &clause_ids {
