@@ -10,6 +10,8 @@ from functools import lru_cache
 
 LOG = []
 VERBOSE = False
+CNFS = []
+
 
 def log(s=''):
     global LOG
@@ -20,6 +22,7 @@ def log(s=''):
     if VERBOSE:
         print(s)
 
+
 def require(ok, message=None, fatal=True):
     if ok:
         return
@@ -27,6 +30,7 @@ def require(ok, message=None, fatal=True):
     print('\n'.join(LOG))
     if fatal:
         sys.exit(1)
+
 
 def popen(command, input=None, **kwargs):
     log(' '.join(command))
@@ -45,7 +49,7 @@ def size(cnf):
 def drat_inputs():
     return [
         (cnf, (cnf[:-len('cnf')] + 'drat'))
-        for cnf in sorted(cnfs, key=size)
+        for cnf in sorted(CNFS, key=size)
         if os.path.exists(cnf[:-len('cnf')] + 'drat')
     ]
 
@@ -60,7 +64,7 @@ def small_drat_inputs():
 
 def pr_inputs():
     prs = []
-    for cnf in sorted(cnfs, key=size):
+    for cnf in sorted(CNFS, key=size):
         name = cnf[:-len('.cnf')]
         for ext in 'pr', 'dpr':
             if os.path.isfile(f'{name}.{ext}'):
@@ -110,7 +114,8 @@ def accepts(checker, name):
         ('rupee' in checker[0])
         and b's REJECTED' in stdout) or ('gratgen' in checker[0]
                                          and b's VERIFIED' not in stderr)
-    require(accepted != rejected, 'checker must either accept or reject', str(stdout, 'utf8') + str(stderr, 'utf8'))
+    require(accepted != rejected, 'checker must either accept or reject',
+            str(stdout, 'utf8') + str(stderr, 'utf8'))
     return accepted
 
 
@@ -181,7 +186,13 @@ def compare_acceptance(a, b, *, instances):
             ):
                 continue
 
-        require(accepts(a + args, name) == accepts(b + args, name), "checkers give different answer")
+        require(
+            accepts(
+                a + args,
+                name) == accepts(
+                b + args,
+                name),
+            "checkers give different answer")
 
 
 def double_check(drat_checker,
@@ -240,7 +251,9 @@ def double_check(drat_checker,
                     rate() + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
                 # stdout, stderr = process_expansion(['drat-trim', cnf, f'{name}.core.drat', '-f', '-L', f'{name}.core.lrat'])
                 require(not stderr, 'rate stderr should be empty')
-                require(b's VERIFIED' in stdout, 'rate should verify the converted DRAT proof, just like the PR one')
+                require(
+                    b's VERIFIED' in stdout,
+                    'rate should verify the converted DRAT proof, just like the PR one')
                 if lrat and (name not in {f'benchmarks/sadical/{x}'
                                           for x in (
                                               'emptyclause', 'unit4', 'regr1',
@@ -253,15 +266,16 @@ def double_check(drat_checker,
                 'duplicate-literals',
                 'bottom',
             )}):
-                require(lrat_checker_accepts(
-                    lrat_checker + [args[0], args[3], 'nil', 't'], 'lrat check failed'))
+                require(lrat_checker_accepts(lrat_checker +
+                                             [args[0], args[3], 'nil', 't'], 'lrat check failed'))
             if grat and (grat_checker is not None and (
                 ('rate' not in drat_checker[0]) or skip_unit_deletions or
                 (name not in {f'benchmarks/rupee/{x}' for x in (
                     'tricky-2',  # looks like gratchk cannot delete units
                 )})
             )):
-                require(gratchk_accepts(grat_checker + [args[0], args[5]], 'gratchk failed'))
+                require(gratchk_accepts(grat_checker +
+                                        [args[0], args[5]], 'gratchk failed'))
         elif sick:
             require(sick_checker_accepts(
                 ['target/release/sick-check'] + args[:2] + [args[-1]], name))
@@ -377,30 +391,47 @@ def test_drat2bdrat_bdrat2drat():
         require(stderr2 == b'', name)
         require(content == stdout2, name)
 
+
 if __name__ == '__main__':
-    benchmark_location = 'benchmarks'
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    require(popen(['cargo', 'build', '--release']).wait() == 0)
+    description = '''
+Without options, run all tests.  Pass some paths to CNF files, or
+directories containing CNF files and proofs to run tests only on those
+instances. Limit the tests with -k.
 
-    cnfs = [f'{dirpath}/{file}'
-            for dirpath, _, files in os.walk(benchmark_location)
-            for file in files
-            if file.endswith('.cnf')]
+    '''
+    epilog = f'''Example:
+    $ {sys.argv[0]} -k test_pr benchmarks/crafted benchmarks/sadical/add4.cnf
+    '''
+    parser = argparse.ArgumentParser(description=description, epilog=epilog)
+    parser.add_argument(
+        "-k",
+        type=str,
+        help="only run tests that contain the given string")
+    parser.add_argument("-v", action='store_true', help="log all commands")
+    opts, args = parser.parse_known_args()
 
+    if not args:
+        args = ['benchmarks']
+    for arg in args:
+        if arg.endswith('.cnf'):
+            CNFS += [arg]
+        else:
+            arg = arg.rstrip('/')
+            CNFS += [f'{dirpath}/{file}'
+                     for dirpath, _, files in os.walk(arg)
+                     for file in files
+                     if file.endswith('.cnf')]
 
-    testfunctions = [(name, obj) for name, obj in inspect.getmembers(sys.modules[__name__]) 
-                     if inspect.isfunction(obj) and name.startswith('test')]
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-k", type=str, help="only run matching tests")
-    parser.add_argument("-v", action='store_true', help="Print all executed commands")
-    args = parser.parse_args()
-
-    if args.k:
-        testfunctions = [(name, f) for name, f in testfunctions if args.k in name]
-    if args.v:
+    testfunctions = [(name, obj) for name, obj in inspect.getmembers(
+        sys.modules[__name__]) if inspect.isfunction(obj) and name.startswith('test')]
+    if opts.k:
+        testfunctions = [(name, f)
+                         for name, f in testfunctions if opts.k in name]
+    if opts.v:
         VERBOSE = True
 
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    require(popen(['cargo', 'build', '--release']).wait() == 0)
     for name, f in testfunctions:
         print(name)
         log()
