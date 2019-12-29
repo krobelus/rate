@@ -141,7 +141,7 @@ fn check_incorrectness_certificate_aux(
             ));
         }
     }
-    let witnesses = sick.witness.unwrap_or_else(|| Vector::new());
+    let witnesses = sick.witness.unwrap_or_else(Vector::new);
     const PIVOT: &str = "RAT requires to specify a pivot for each witness";
     if redundancy_property == RedundancyProperty::RAT {
         let mut specified_pivots: Vec<Literal> = witnesses

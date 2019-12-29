@@ -31,7 +31,7 @@ of stable Rust are supported (e.g. 1.36 or later).
 
 ## Stable version
 
-Releases and hosted on [crates.io](https://crates.io/) and can be
+Releases are hosted on [crates.io](https://crates.io/) and can be
 installed using `cargo`, Rust's package manager.
 
 ```sh

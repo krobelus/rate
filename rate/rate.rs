@@ -38,6 +38,7 @@ fn main() {
 ///
 /// This is a separate function because `std::process::exit` does not
 /// call destructors.
+#[allow(clippy::cognitive_complexity)]
 fn run_frontend() -> i32 {
     install_signal_handler();
     let mut app = clap::App::new("rate")
@@ -1049,6 +1050,7 @@ fn reduct(
 }
 
 /// Return true if the lemma is a propagation redundancy (PR) inference.
+#[allow(clippy::cognitive_complexity)]
 fn pr(checker: &mut Checker) -> bool {
     let lemma = checker.lemma;
     for offset in checker.witness_range(lemma) {
@@ -1520,11 +1522,10 @@ fn extract_dependencies(
 
 /// Write a line of LRAT justifying a single inference.
 fn write_dependencies_for_lrat(checker: &mut Checker, clause: Clause, rat_inference: bool) {
-    if !checker.flags.lrat_filename.is_some() {
-        return;
+    if checker.flags.lrat_filename.is_some() {
+        write_dependencies_for_lrat_aux(checker, clause, rat_inference);
+        checker.lrat.push(LRATLiteral::zero());
     }
-    write_dependencies_for_lrat_aux(checker, clause, rat_inference);
-    checker.lrat.push(LRATLiteral::zero());
 }
 
 /// Write a line of LRAT justifying a single inference (implementation).
@@ -2268,7 +2269,7 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         None => Box::new(io::stdout()),
     };
     let mut file = BufWriter::new(writer);
-    write!(file, "### Incorrectness certificate:\n")?;
+    writeln!(file, "### Incorrectness certificate:")?;
     write!(file, "# Failed to prove lemma")?;
     for &literal in &checker.rejected_lemma {
         if literal != Literal::BOTTOM {
