@@ -64,7 +64,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("MEMORY_USAGE_BREAKDOWN").short("m").long("--memory-breakdown")
          .help("Output detailed memory usage metrics.").hidden(true))
     .arg(Arg::with_name("LEMMAS_FILE").takes_value(true).short("l").long("lemmas")
-         .help("Write the core lemmas to this file."))
+         .help("Write the core lemmas to this file (includes witness if PR)."))
     .arg(Arg::with_name("LRAT_FILE").takes_value(true).short("L").long("lrat")
          .help("Write the core lemmas as LRAT certificate to this file."))
     .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
@@ -1107,8 +1107,13 @@ fn pr(checker: &mut Checker) -> bool {
     checker.pr_introductions += 1;
     if checker.flags.verbose {
         puts!("lemma PR ");
-        checker.puts_clause_with_id(lemma);
-        puts!(" witness ");
+        puts!("[{}] ", lemma);
+        let literals = checker.clause(lemma);
+        for &literal in literals {
+            if literal != Literal::BOTTOM {
+                puts!("{} ", literal);
+            }
+        }
         puts_clause(checker.witness(lemma));
         puts!("\n");
     }
@@ -1946,12 +1951,21 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
-    for lemma in Clause::range(
-        checker.lemma,
-        checker.lemma.as_offset() + checker.proof_steps_until_conflict,
-    ) {
-        if checker.fields(lemma).is_in_core() {
-            write_clause(&mut file, checker.clause(lemma).iter())?;
+    for i in 0..checker.proof_steps_until_conflict {
+        let proof_step = checker.proof[i];
+        let lemma = proof_step.clause();
+        if !proof_step.is_deletion() && checker.fields(lemma).is_in_core() {
+            if checker.redundancy_property == RedundancyProperty::PR {
+                let literals = checker.clause(lemma);
+                for &literal in literals {
+                    if literal != Literal::BOTTOM {
+                        write!(file, "{} ", literal)?;
+                    }
+                }
+                write_clause(&mut file, checker.witness(lemma).iter())?;
+            } else {
+                write_clause(&mut file, checker.clause(lemma).iter())?;
+            }
             writeln!(file)?;
         }
     }
