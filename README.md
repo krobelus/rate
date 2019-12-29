@@ -5,7 +5,7 @@
 ![](https://img.shields.io/crates/l/rate.svg)
 
 This is a DRAT/DPR proof checker, similar to
-[`drat-trim`](https://github.com/marijnheule/drat-trim)/
+[`drat-trim`](https://github.com/marijnheule/drat-trim),
 [`dpr-trim`](https://www.cs.utexas.edu/~marijn/pr/) or
 [`gratgen`](http://www21.in.tum.de/~lammich/grat/). The
 notable difference is that it does not [ignore deletions of unit
@@ -14,8 +14,8 @@ by default.
 
 # Features
 - check DRAT proofs (default) and DPR proofs (file extension`.pr` or `.dpr`)
-- competitive performance for DRAT (faster than `drat-trim`, almost as
-  fast as `gratgen`) - PR still needs to be optimized
+- competitive performance (faster than `drat-trim` and `dpr-trim`, almost as
+  fast as `gratgen`)
 - output core lemmas as DIMACS, LRAT or GRAT after verifying a proof
 - check and output SICK certificate of incorrectness after rejecting a proof
 - optionally ignore unit deletions for compatibility with `drat-trim`
