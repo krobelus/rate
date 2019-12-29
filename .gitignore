@@ -1,4 +1,5 @@
 /target
+rate*/target
 **/*.rs.bk
 /crate
 __pycache__

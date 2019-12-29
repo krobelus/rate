@@ -54,7 +54,7 @@ def small_drat_inputs():
     return [
         (cnf, proof) for cnf, proof in drat_inputs()
         # only use small formulas
-        if size(cnf) < 10_0000
+        if size(cnf) < 100_000
     ]
 
 
