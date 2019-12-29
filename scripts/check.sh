@@ -32,6 +32,6 @@ if echo "$output" | grep -q '^s VERIFIED$'; then
 	fi
 fi
 
-echo "$output" | grep -q '^s NOT VERIFIED$' && {
-    exec cargo run --bin sick-check "$name".{cnf,"$prext",sick}
-}
+echo "$output" | grep -q '^s NOT VERIFIED$' && exit 0
+
+exit 127

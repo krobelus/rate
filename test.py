@@ -79,7 +79,6 @@ def executable(name):
 
 def ensure_executable(command):
     log()
-    log(f'# trying to find executable {command[0]}')
     require(executable(command[0]), f'{command[0]} not found in PATH')
 
 
