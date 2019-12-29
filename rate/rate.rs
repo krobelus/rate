@@ -18,12 +18,13 @@ use rate_common::{
     parser::parse_files,
     parser::{open_file_for_writing, Parser},
     puts, requires,
-    sick::{Sick, Witness},
+    sick::{check_incorrectness_certificate, Sick, Witness},
 };
 use rate_macros::{self, HeapSpace};
 use std::{
-    cmp, fmt, io,
-    io::Write,
+    cmp, fmt,
+    fs::File,
+    io::{self, BufWriter, Write},
     iter::FromIterator,
     ops::{self, Index},
 };
@@ -70,7 +71,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
          .help("Write the GRAT certificate to this file."))
     .arg(Arg::with_name("SICK_FILE").takes_value(true).short("S").long("sick")
-         .help("Write the SICK incorrectness witness to this file."))
+         .help("Write the SICK incorrectness witness to this file (instead of standard output)."))
     .arg(Arg::with_name("SICK_FILE_LEGACY").takes_value(true).short("i").long("recheck")
          .help("Write the SICK incorrectness witness to this file.").hidden(true))
     ;
@@ -120,7 +121,7 @@ fn run_frontend() -> i32 {
         Verdict::NoEmptyClause => puts!("c no conflict\n"),
         Verdict::IncorrectEmptyClause => puts!("c conflict claimed but not detected\n"),
         Verdict::IncorrectLemma => {
-            let lemma = checker.proof[checker.rejection.proof_step.unwrap()].clause();
+            let lemma = checker.proof[checker.rejection.proof_step.unwrap() - 1].clause();
             puts!("c redundancy check failed for ");
             puts_clause_with_id(lemma, checker.clause(lemma));
             puts!("\n");
@@ -132,6 +133,19 @@ fn run_frontend() -> i32 {
     } else {
         "NOT VERIFIED"
     });
+    if result != Verdict::Verified && !checker.flags.forward && !checker.flags.skip_unit_deletions {
+        write_sick_witness(&checker).expect("Failed to write SICK incorrectness witness.");
+        if check_incorrectness_certificate(
+            &checker.flags.formula_filename,
+            &checker.flags.proof_filename,
+            checker.rejection,
+            /*verbose=*/ false,
+        )
+        .is_err()
+        {
+            return 2;
+        }
+    }
     if result == Verdict::Verified {
         0
     } else {
@@ -206,10 +220,12 @@ impl Flags {
             if lrat {
                 incompatible_options("--forward --lrat");
             }
+            // TODO
             if sick_filename.is_some() {
                 incompatible_options("--forward --sick");
             }
         }
+        // TODO
         if skip_unit_deletions && sick_filename.is_some() {
             as_warning!(comment!(
                 "--sick can produce an incorrect SICK witness when used along --skip-unit-deletions."
@@ -513,9 +529,18 @@ impl Checker {
                 checker.clause_lrat_id[clause] = checker.lrat_id;
             }
         }
-        if checker.flags.sick_filename.is_some() {
-            checker.rejection.witness = Some(Vector::new())
+        checker.rejection.witness = Some(Vector::new());
+        checker.rejection.proof_format = match checker.redundancy_property {
+            RedundancyProperty::RAT => {
+                if checker.flags.pivot_is_first_literal {
+                    "DRAT-pivot-is-first-literal"
+                } else {
+                    "DRAT-arbitrary-pivot"
+                }
+            }
+            RedundancyProperty::PR => "PR",
         }
+        .to_string();
         checker
     }
     /// Write the clause ID and literals to stdout, like [<ID] <literals> 0.
@@ -599,11 +624,8 @@ fn run(checker: &mut Checker) -> Verdict {
             .unwrap_or_else(|err| die!("Failed to write LRAT certificate: {}", err));
         write_grat_certificate(checker)
             .unwrap_or_else(|err| die!("Failed to write GRAT certificate: {}", err));
-        Verdict::Verified
-    } else {
-        write_sick_witness(checker).expect("Failed to write SICK incorrectness witness.");
-        verdict
     }
+    verdict
 }
 
 /// Perform a forward check.
@@ -701,7 +723,7 @@ fn claims_conflict(checker: &mut Checker, step: usize, clause: Clause) -> bool {
     if !checker.clause(clause).is_empty() {
         return false;
     }
-    checker.rejection.proof_step = Some(step);
+    checker.rejection.proof_step = Some(step + 1);
     extract_natural_model(checker, checker.assignment.len());
     true
 }
@@ -989,7 +1011,7 @@ fn check_inference(checker: &mut Checker, proof_step: usize) -> bool {
     }
     checker.soft_propagation = false;
     if !ok {
-        checker.rejection.proof_step = Some(proof_step);
+        checker.rejection.proof_step = Some(proof_step + 1);
     }
     ok
 }
@@ -1069,29 +1091,25 @@ fn pr(checker: &mut Checker) -> bool {
                     if slice_rup(checker, &the_reduct) == CONFLICT {
                         extract_dependencies(checker, trail_length, None);
                     } else {
-                        if checker.flags.sick_filename.is_some() {
-                            extract_natural_model(checker, trail_length);
-                            let failing_clause = Vector::from_iter(
-                                checker
-                                    .clause(clause)
-                                    .iter()
-                                    .filter(|&literal| literal != &Literal::BOTTOM)
-                                    .cloned(),
-                            );
-                            let failing_model = checker
-                                .assignment
+                        extract_natural_model(checker, trail_length);
+                        let failing_clause = Vector::from_iter(
+                            checker
+                                .clause(clause)
                                 .iter()
-                                .skip(trail_length)
-                                .map(|&(literal, _reason)| literal)
-                                .collect();
-                            if let Some(witnesses) = checker.rejection.witness.as_mut() {
-                                witnesses.push(Witness {
-                                    failing_clause,
-                                    failing_model,
-                                    pivot: None,
-                                })
-                            }
-                        }
+                                .filter(|&literal| literal != &Literal::BOTTOM)
+                                .cloned(),
+                        );
+                        let failing_model = checker
+                            .assignment
+                            .iter()
+                            .skip(trail_length)
+                            .map(|&(literal, _reason)| literal)
+                            .collect();
+                        checker.rejection.witness.as_mut().unwrap().push(Witness {
+                            failing_clause,
+                            failing_model,
+                            pivot: None,
+                        });
                         // No need to clear checker.is_in_witness because checking stops here.
                         return false;
                     }
@@ -1266,9 +1284,7 @@ fn rat_pivot_index(checker: &mut Checker, trail_length_forced: usize) -> Option<
     }
     let grat_pending_length = checker.grat_pending.len();
     let grat_pending_deletions_length = checker.grat_pending_deletions.len();
-    if let Some(witnesses) = checker.rejection.witness.as_mut() {
-        witnesses.clear();
-    }
+    checker.rejection.witness.as_mut().unwrap().clear();
     if rat_on_pivot(checker, pivot, trail_length_forced) {
         let pivot_index = checker
             .clause(lemma)
@@ -1326,29 +1342,25 @@ fn rat_given_resolution_candidates(
         preserve_assignment!(checker, {
             watch_invariants(checker);
             if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
-                if checker.flags.sick_filename.is_some() {
-                    let failing_clause = Vector::from_iter(
-                        checker
-                            .clause(resolution_candidate)
-                            .iter()
-                            .filter(|&literal| literal != &Literal::BOTTOM)
-                            .cloned(),
-                    );
-                    let failing_model = checker
-                        .assignment
+                let failing_clause = Vector::from_iter(
+                    checker
+                        .clause(resolution_candidate)
                         .iter()
-                        .skip(trail_length_before_rup)
-                        .map(|&(literal, _reason)| literal)
-                        .collect();
-                    let pivot = Some(pivot);
-                    if let Some(witnesses) = checker.rejection.witness.as_mut() {
-                        witnesses.push(Witness {
-                            failing_clause,
-                            failing_model,
-                            pivot,
-                        })
-                    }
-                }
+                        .filter(|&literal| literal != &Literal::BOTTOM)
+                        .cloned(),
+                );
+                let failing_model = checker
+                    .assignment
+                    .iter()
+                    .skip(trail_length_before_rup)
+                    .map(|&(literal, _reason)| literal)
+                    .collect();
+                let pivot = Some(pivot);
+                checker.rejection.witness.as_mut().unwrap().push(Witness {
+                    failing_clause,
+                    failing_model,
+                    pivot,
+                });
                 false
             } else {
                 if checker.flags.lrat_filename.is_some() {
@@ -1566,15 +1578,13 @@ fn write_dependencies_for_lrat_aux(checker: &mut Checker, clause: Clause, rat_in
 /// After failing to find a conflict in an inference check, copy the state
 /// of the natural model from immediately after the RUP check.
 fn extract_natural_model(checker: &mut Checker, trail_length_after_rup: usize) {
-    if checker.flags.sick_filename.is_some() {
-        checker.rejection.natural_model = checker
-            .assignment
-            .iter()
-            .skip(1) // Literal::TOP
-            .take(trail_length_after_rup - 1)
-            .map(|&(literal, _reason)| literal)
-            .collect();
-    }
+    checker.rejection.natural_model = checker
+        .assignment
+        .iter()
+        .skip(1) // Literal::TOP
+        .take(trail_length_after_rup - 1)
+        .map(|&(literal, _reason)| literal)
+        .collect();
 }
 
 /// The current phase of double-sweep checking
@@ -1917,16 +1927,12 @@ fn unpropagate_unit(checker: &mut Checker, clause: Clause) {
 fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usize {
     let head = checker.clause_range(clause).start;
     let mut effective_end = head;
-    if checker.flags.sick_filename.is_some() {
-        checker.rejected_lemma.clear();
-    }
+    checker.rejected_lemma.clear();
     for offset in checker.clause_range(clause) {
         let literal = checker.clause_db[offset];
         // The SICK witness would be incorrect when discarding falsified
         // literals like here. Copy the lemma to checker.rejected_lemma.
-        if checker.flags.sick_filename.is_some() {
-            checker.rejected_lemma.push(literal);
-        }
+        checker.rejected_lemma.push(literal);
         if checker.flags.skip_unit_deletions {
             invariant!(!checker.assignment[literal]);
         }
@@ -2251,20 +2257,16 @@ fn write_lrat_deletion(
 
 /// Write the SICK incorrectness witness to a file.
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
-    let mut file = match &checker.flags.sick_filename {
-        Some(filename) => open_file_for_writing(filename),
-        None => return Ok(()),
+    let writer: Box<dyn Write> = match &checker.flags.sick_filename {
+        // TODO clone of open_file_for_writing
+        Some(filename) => Box::new(
+            File::create(filename)
+                .unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
+        ),
+        None => Box::new(io::stdout()),
     };
-    let proof_format = match checker.redundancy_property {
-        RedundancyProperty::RAT => {
-            if checker.flags.pivot_is_first_literal {
-                "DRAT-pivot-is-first-literal"
-            } else {
-                "DRAT-arbitrary-pivot"
-            }
-        }
-        RedundancyProperty::PR => "PR",
-    };
+    let mut file = BufWriter::new(writer);
+    write!(file, "### Incorrectness certificate:\n")?;
     write!(file, "# Failed to prove lemma")?;
     for &literal in &checker.rejected_lemma {
         if literal != Literal::BOTTOM {
@@ -2272,12 +2274,16 @@ fn write_sick_witness(checker: &Checker) -> io::Result<()> {
         }
     }
     writeln!(file, " 0")?;
-    writeln!(file, "proof_format   = \"{}\"", proof_format)?;
+    writeln!(
+        file,
+        "proof_format   = \"{}\"",
+        checker.rejection.proof_format
+    )?;
     if let Some(proof_step) = checker.rejection.proof_step {
         writeln!(
             file,
             "proof_step     = {} # Failed line in the proof",
-            proof_step + 1
+            proof_step
         )?;
     }
     write!(file, "natural_model  = [")?;

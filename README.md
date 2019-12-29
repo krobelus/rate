@@ -4,18 +4,20 @@
 [![CircleCI branch](https://img.shields.io/circleci/project/github/krobelus/rate/master.svg)](https://circleci.com/gh/krobelus/rate/tree/master)
 ![](https://img.shields.io/crates/l/rate.svg)
 
-This is a DRAT/DPR proof checker written in Rust, similar to
-[`drat-trim`](https://github.com/marijnheule/drat-trim) or
-[`gratgen`](http://www21.in.tum.de/~lammich/grat/). The notable
-difference is that it does not [ignore deletions of unit
-clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details) by
-default.
+This is a DRAT/DPR proof checker, similar to
+[`drat-trim`](https://github.com/marijnheule/drat-trim)/
+[`dpr-trim`](https://www.cs.utexas.edu/~marijn/pr/) or
+[`gratgen`](http://www21.in.tum.de/~lammich/grat/). The
+notable difference is that it does not [ignore deletions of unit
+clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details)
+by default.
 
 # Features
-- check DRAT proofs and DPR proofs
-- competitive performance (faster than `drat-trim`, almost as fast as `gratgen`)
+- check DRAT proofs (default) and DPR proofs (file extension`.pr` or `.dpr`)
+- competitive performance for DRAT (faster than `drat-trim`, almost as
+  fast as `gratgen`) - PR still needs to be optimized
 - output core lemmas as DIMACS, LRAT or GRAT after verifying a proof
-- output SICK certificate of incorrectness after rejecting a proof
+- check and output SICK certificate of incorrectness after rejecting a proof
 - optionally ignore unit deletions for compatibility with `drat-trim`
   (flag `--skip-unit-deletions`)
 - transparently read compressed input files (Gzip, Zstandard, Bzip2, XZ, LZ4)
@@ -29,8 +31,8 @@ of stable Rust are supported (e.g. 1.36 or later).
 
 ## Stable version
 
-Releases are hosted on [crates.io](https://crates.io/) and can be installed
-using `cargo`, Rust's package manager.
+Releases and hosted on [crates.io](https://crates.io/) and can be
+installed using `cargo`, Rust's package manager.
 
 ```sh
 $ cargo install rate --force
@@ -47,7 +49,7 @@ repository:
 ```sh
 $ git clone https://github.com/krobelus/rate
 $ cd rate
-$ cargo install --path rate --force
+$ cargo install --path ./rate --force
 ```
 
 # Usage
@@ -62,25 +64,18 @@ Whenever the proof is accepted, this will exit with code 0 after printing
 
 ## SICK certificates
 
-If `rate` rejects a proof, it can output a certificate of incorrectness that
-tells you which proof step failed and why.  The certificate can also be
-checked by the `sick-check` binary which tries to make sure that the rejection
-of the proof is justified.
-
-```sh
-$ cargo install rate-sick-check
-$ rate formula.cnf proof.drat --sick failure.sick ||
-  sick-check formula.cnf proof.drat failure.sick
-```
-
-If `rate` rejects the proof, it prints `s NOT VERIFIED` exits with status 1.
-Subsequently, if `sick-check` prints `s VERIFIED`, it means that the proof is
-also incorrect according to `sick-check`.  If `sick-check` prints `s NOT
-VERIFIED`, that is likely a bug in either tool.
+If `rate` rejects a proof, it outputs and checks a certificate
+of incorrectness that tells you which proof step failed and why..
+The certificate can also be checked again with the `sick-check` binary
+which is much faster than a full proof checker (install `sick-check`
+using `cargo install rate-sick-check` for a stable version, or `cargo
+install --path rate-sick-check` to install from a local checkout). These
+certificates are useful to protect against bugs checker code.
 
 ## Other utilities
 
-Crate `rate-proof-utils` contains several binaries that can be useful when
+Crate `rate-proof-utils` (install analoguosly to `rate` or
+`rate-sick-check`) contains several binaries that can be useful when
 working with clausal proofs:
 
 - `drat2bdrat` and `bdrat2drat` convert a DRAT proof to the [Binary DRAT Format]
@@ -95,7 +90,7 @@ working with clausal proofs:
 
 Please note that `rate` accepts proof that are technically not fully correct,
 Just like other checkers, we perform some transformations on the proof before
-actually verifying the individual steps.  This is done to improve performance.
+actually verifying the proofs steps.  This is done to improve performance.
 Some transformations on the proof ignore some clauses in the formula and some
 instructions in the proof. These are effectively removed from the formula
 or proof.  This means that `rate` might accept a proof that contains lemmas
@@ -133,7 +128,10 @@ Above tests require
 - optionally any of the following executables:
   - [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat)
     to validate the produced LRAT proofs.
-  - `gratchk` is used to validate produced GRAT proofs.
+  - [`pr2drat`](https://github.com/marijnheule/pr2drat) to produce
+    LRAT proofs from PR proofs.
+    unsatisfiable core of PR proofs to DRAT and LRAT 
+  - `gratchk` to validate produced GRAT proofs.
   - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
     run on the benchmarks and their results will be compared to the output of
     `rate` in the appropriate compatibility mode.
@@ -145,9 +143,9 @@ dependencies](scripts/test-environment/).
 
 # Documentation
 
-Find some background information and a performance evaluation in the [master's thesis].
+Find some background information and a performance evaluation in my [thesis].
 
-[master's thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
+[thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
 The source code includes an abundance of doc comments. Use this command to
 turn them into developer documentation at `target/doc/rate*/index.html`.
@@ -171,4 +169,4 @@ Some possible improvements:
 - compute other features about clausal proofs (e.g. the lifespan of clauses)
 - speed up handling of reason clauses that do not shrink the trail
 - speed up RAT checks by caching resolution candidates
-- improve compilation times
+- improve compile times
