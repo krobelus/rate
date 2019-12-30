@@ -1042,7 +1042,7 @@ fn reduct(
             checker
                 .clause(clause)
                 .iter()
-                .filter(|&literal| !assignment[-*literal] && *literal != Literal::BOTTOM)
+                .filter(|&literal| !assignment[-*literal])
                 .cloned()
                 .collect(),
         )
