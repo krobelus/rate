@@ -1997,8 +1997,9 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
 
 /// Write core lemmas to a file.
 fn write_lemmas(checker: &Checker) -> io::Result<()> {
+    let stdout = io::stdout();
     let mut file = match &checker.flags.lemmas_filename {
-        Some(filename) => open_file_for_writing(filename),
+        Some(filename) => open_file_for_writing(filename, &stdout),
         None => return Ok(()),
     };
     let empty_clause_as_premise =
@@ -2047,8 +2048,9 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
 
 /// Write the GRAT certificate to a file.
 fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
+    let stdout = io::stdout();
     let mut file = match &checker.flags.grat_filename {
-        Some(filename) => open_file_for_writing(filename),
+        Some(filename) => open_file_for_writing(filename, &stdout),
         None => return Ok(()),
     };
     writeln!(file, "GRATbt {} 0", std::mem::size_of::<Literal>())?; // NB this needs to fit clause IDs
@@ -2201,8 +2203,9 @@ fn write_grat_certificate(checker: &mut Checker) -> io::Result<()> {
 
 /// Write the LRAT certificate to a file.
 fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
+    let stdout = io::stdout();
     let mut file = match &checker.flags.lrat_filename {
-        Some(filename) => open_file_for_writing(filename),
+        Some(filename) => open_file_for_writing(filename, &stdout),
         None => return Ok(()),
     };
     let num_clauses = checker.optimized_proof.first().clause().as_offset() + 1;
@@ -2324,8 +2327,9 @@ fn write_lrat_deletion(
 
 /// Write the SICK incorrectness witness to a file.
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
+    let stdout = io::stdout();
     let mut file = match &checker.flags.sick_filename {
-        Some(filename) => open_file_for_writing(filename),
+        Some(filename) => open_file_for_writing(filename, &stdout),
         None => return Ok(()),
     };
     write!(file, "# Failed to prove lemma")?;

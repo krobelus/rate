@@ -269,11 +269,12 @@ pub fn open_file(filename: &str) -> File {
 }
 
 /// Open a file for writing.
+/// Returns a locked stdout if the filename is "-".
 /// # Panics
 /// Panics on error.
-pub fn open_file_for_writing(filename: &str) -> Box<dyn Write> {
+pub fn open_file_for_writing<'a>(filename: &str, stdout: &'a io::Stdout) -> Box<dyn Write + 'a> {
     if filename == "-" {
-        Box::new(BufWriter::new(io::stdout()))
+        Box::new(BufWriter::new(stdout.lock()))
     } else {
         Box::new(BufWriter::new(File::create(filename).unwrap_or_else(
             |err| die!("cannot open file for writing: {}", err),

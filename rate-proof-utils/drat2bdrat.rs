@@ -47,10 +47,7 @@ fn main() -> Result<()> {
         /*binary=*/ false,
         stdin.lock(),
     );
-    let mut output: Box<dyn Write> = match matches.value_of("OUTPUT") {
-        None => Box::new(stdout.lock()),
-        Some(filename) => Box::new(open_file_for_writing(filename)),
-    };
+    let mut output = open_file_for_writing(matches.value_of("OUTPUT").unwrap_or("-"), &stdout);
     while let Some(c) = input.peek() {
         output.write_all(&[if c == b'd' {
             input.next();

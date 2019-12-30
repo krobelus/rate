@@ -152,10 +152,11 @@ Find some background information and a performance evaluation in my [thesis].
 
 [thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
-The source code includes an abundance of doc comments. Use this command to
-turn them into internal documentation at `target/doc/rate*/index.html`.
+The source code includes an abundance of doc comments. Use
+this command to turn them into internal documentation at
+`target/doc/{rate*,sick_check,apply_proof,bdrat2drat,drat2bdrat}/index.html`.
 ```sh
-$ cargo doc --document-private-items
+$ cargo doc --document-private-items --no-deps
 ```
 
 # Contributing

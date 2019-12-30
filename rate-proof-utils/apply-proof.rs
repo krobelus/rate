@@ -2,7 +2,7 @@
 //! formula and the remaining proof.
 
 use clap::Arg;
-use std::io::{Result, Write};
+use std::io::{self, Result, Write};
 
 use rate_common::{
     clause::{write_clause, Clause},
@@ -70,8 +70,11 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
     );
     let mut state = ProofParserState::Start;
     let mut proof_input = read_compressed_file(&proof_filename, binary);
-    let mut formula_output = open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap());
-    let mut proof_output = open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap());
+    let stdout = io::stdout();
+    let mut formula_output =
+        open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap(), &stdout);
+    let mut proof_output =
+        open_file_for_writing(matches.value_of("PROOF_OUTPUT").unwrap(), &stdout);
     for _ in 0..line_number {
         let _result = parse_proof_step(
             &mut parser,
