@@ -708,7 +708,7 @@ pub fn is_binary_drat(filename: &str) -> bool {
 }
 /// Implementation of `is_binary_drat`.
 fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
-    for c in buffer {
+    for c in buffer.take(10) {
         if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
         {
             return true;
