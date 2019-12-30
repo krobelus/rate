@@ -202,6 +202,7 @@ impl Flags {
         let forward = matches.is_present("FORWARD");
         let no_terminating_empty_clause = matches.is_present("NO_TERMINATING_EMPTY_CLAUSE");
         let lrat = matches.is_present("LRAT_FILE");
+        let lemmas = matches.is_present("LEMMAS_FILE");
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
         if drat_trim {
@@ -231,6 +232,9 @@ impl Flags {
             if grat {
                 incompatible_options("--forward --grat");
             }
+            if lemmas {
+                incompatible_options("--forward --lemmas");
+            }
             if lrat {
                 incompatible_options("--forward --lrat");
             }
@@ -238,6 +242,9 @@ impl Flags {
             if sick_filename.is_some() {
                 incompatible_options("--forward --sick");
             }
+        }
+        if lrat && noncore_rat_candidates {
+            incompatible_options("--lrat --noncore-rat-candidates");
         }
         // TODO
         if skip_unit_deletions && sick_filename.is_some() {
@@ -277,6 +284,13 @@ impl Flags {
             grat_filename: matches.value_of("GRAT_FILE").map(String::from),
             sick_filename,
         }
+    }
+
+    /// Whether we are computing an "optimized proof". Which deletes
+    /// clauses as early as possible and only includes a minimal set
+    /// of lemmas.
+    fn need_optimized_proof(&self) -> bool {
+        self.lemmas_filename.is_some() || self.lrat_filename.is_some()
     }
 }
 
@@ -454,6 +468,7 @@ impl Checker {
         let assignment = Assignment::new(maxvar);
         let lrat = flags.lrat_filename.is_some();
         let grat = flags.grat_filename.is_some();
+        let optimized_proof = flags.need_optimized_proof();
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
@@ -495,7 +510,7 @@ impl Checker {
             } else {
                 StackMapping::default()
             },
-            optimized_proof: if lrat {
+            optimized_proof: if optimized_proof {
                 BoundedVector::with_capacity(2 * num_lemmas + num_clauses)
             } else {
                 BoundedVector::default()
@@ -771,7 +786,7 @@ const NO_CONFLICT: MaybeConflict = MaybeConflict(false);
 /// Add the clause to the core (schedule it for verification).
 fn add_to_core(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.fields(clause).is_in_core() {
-        if checker.flags.lrat_filename.is_some() {
+        if checker.flags.need_optimized_proof() {
             checker.optimized_proof.push(ProofStep::deletion(clause));
         }
         if checker.flags.grat_filename.is_some() {
@@ -1766,15 +1781,21 @@ fn close_proof_after_steps(checker: &mut Checker, steps_until_conflict: usize) {
 /// Add an empty clause to the proof (as it might be missing) and to the core.
 fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
     let empty_clause = checker.clause_db.open_clause();
+    // TODO clone of parser::open_clause and parser::add_literal
+    if checker.redundancy_property == RedundancyProperty::PR {
+        let witness = checker.witness_db.open_clause();
+        invariant!(empty_clause == witness);
+        checker.witness_db.push_literal(Literal::new(0), /*verbose=*/true);
+    }
     checker
         .clause_db
-        .push_literal(Literal::new(0), /*verbose=*/ true);
+        .push_literal(Literal::new(0), /*verbose=*/true);
     let grat_pending_length = checker.grat_pending.len();
     extract_dependencies(checker, checker.assignment.len(), None);
     checker.grat_pending.truncate(grat_pending_length);
     write_dependencies_for_lrat(checker, empty_clause, false);
     add_to_core(checker, empty_clause);
-    if checker.flags.lrat_filename.is_some() {
+    if checker.flags.need_optimized_proof() {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
     if checker.flags.grat_filename.is_some() {
@@ -1872,7 +1893,7 @@ fn verify(checker: &mut Checker) -> bool {
         if !accepted {
             return false;
         }
-        if checker.flags.lrat_filename.is_some() {
+        if checker.flags.need_optimized_proof() {
             checker.optimized_proof.push(proof_step)
         }
     }
@@ -1973,30 +1994,46 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         Some(filename) => open_file_for_writing(filename),
         None => return Ok(()),
     };
-    for i in 0..checker.proof_steps_until_conflict {
-        let proof_step = checker.proof[i];
-        let lemma = proof_step.clause();
-        if !proof_step.is_deletion() && checker.fields(lemma).is_in_core() {
-            if checker.redundancy_property == RedundancyProperty::PR {
-                let literals = checker.clause(lemma);
-                // The order of literals in the lemma may have changed,
+    let empty_clause_as_premise =
+        Clause::range(0, checker.lemma).any(|clause| checker.clause(clause).is_empty());
+    if empty_clause_as_premise {
+        // write an empty LRAT certificate, this is accepted by lratcheck that comes with rupee
+        // it doesn't seem to be possible to produce a correct one for the ACL2 lrat-check
+        return Ok(());
+    }
+    for clause in Clause::range(0, checker.lemma) {
+        if !checker.fields(clause).is_in_core() {
+            write!(&mut file, "d ")?;
+            write_clause(&mut file, checker.clause(clause).iter())?;
+            writeln!(&mut file, "")?;
+        }
+    }
+    for i in (0..checker.optimized_proof.len()).rev() {
+        let proof_step = checker.optimized_proof[i];
+        let clause = proof_step.clause();
+        if proof_step.is_deletion() {
+            write!(&mut file, "d ")?;
+            write_clause(&mut file, checker.clause(clause).iter())?;
+        } else {
+            if checker.redundancy_property != RedundancyProperty::PR {
+                write_clause(&mut file, checker.clause(clause).iter())?;
+            } else {
+                // The order of literals in the clause may have changed,
                 // but not in the witness. Make sure to print the first
                 // literal in the witness first to maintain the PR format.
-                let witness_head = checker.witness(lemma).first().cloned();
+                let witness_head = checker.witness(clause).first().cloned();
                 if let Some(literal) = witness_head {
                     write!(file, "{} ", literal)?;
                 }
-                for &literal in literals {
+                for &literal in checker.clause(clause) {
                     if literal != Literal::BOTTOM && Some(literal) != witness_head {
                         write!(file, "{} ", literal)?;
                     }
                 }
-                write_clause(&mut file, checker.witness(lemma).iter())?;
-            } else {
-                write_clause(&mut file, checker.clause(lemma).iter())?;
+                write_clause(&mut file, checker.witness(clause).iter())?;
             }
-            writeln!(file)?;
         }
+        writeln!(&mut file, "")?;
     }
     Ok(())
 }

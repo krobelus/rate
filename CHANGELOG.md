@@ -3,10 +3,14 @@
 - Fix PR check giving false positives due to not adding clauses to the
   core (except for the root conflict).
 - Fix PR checking with flag -d/--skip-unit-deletions.
-- Incorrectness certificates are now always checked when a proof is
-  rejected. In that case the formula and proof files are opened again
-  when checking the certificate.
+- Incorrectness certificates are now always checked internally when a
+  proof is rejected. In that case the formula and proof files are
+  opened again when checking the certificate.
 - Improve output for rejected proofs (print the line of failed step).
+- Fix wrong literal order in --lemmas output for PR
+- Make --lemmas print the optimized proof instead of simply all core
+  lemmas (just like drat-trim); this makes the output a core also for
+  non-monotonic proof formats RAT and PR.
 
 # 0.2.3 (2019-10-09)
 

@@ -4,7 +4,12 @@
 [![CircleCI branch](https://img.shields.io/circleci/project/github/krobelus/rate/master.svg)](https://circleci.com/gh/krobelus/rate/tree/master)
 ![](https://img.shields.io/crates/l/rate.svg)
 
-This is a DRAT/DPR proof checker, similar to
+This is a proof checker that can verify proofs produced by a
+[SAT](https://en.wikipedia.org/wiki/Boolean_satisfiability_problem)
+solver.  It supports proofs in the
+[DRAT](http://www.cs.cmu.edu/~mheule/publications/drat-trim.pdf)
+or [DPR](http://www.cs.cmu.edu/~mheule/publications/spr.pdf)
+format; `rate` is very similar to
 [`drat-trim`](https://github.com/marijnheule/drat-trim),
 [`dpr-trim`](https://www.cs.utexas.edu/~marijn/pr/) or
 [`gratgen`](http://www21.in.tum.de/~lammich/grat/). The notable

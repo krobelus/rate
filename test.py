@@ -202,8 +202,8 @@ def double_check(drat_checker,
             grat_checker = None
     skip_unit_deletions = any(
         '-d' in arg for arg in drat_checker)
-    forward = any('--forward' in arg for arg in drat_checker)
-    forward = forward or any('-f' in arg for arg in drat_checker)
+    forward = any(arg in ('--forward', '-f') for arg in drat_checker)
+    noncore_rat_candidates = any(arg in ('-r', '--noncore-rat-candidates') for arg in drat_checker)
     sick = not skip_unit_deletions and not forward
     grat = not forward
     lrat = not forward and lrat_checker is not None
@@ -211,11 +211,12 @@ def double_check(drat_checker,
         log()
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = proof.endswith('.dpr') or proof.endswith('.pr')
+        pr2drat = pr and executable('pr2drat') and not forward and not noncore_rat_candidates
         args = [cnf]
         args += [proof]
         if pr:
-            if executable('pr2drat') and executable('drat-trim'):
-                args += ['-l', f'{name}.core.pr']
+            if pr2drat:
+                args += ['-l', f'{name}.core.dpr']
             if sick:
                 args += ['-S', f'{name}.sick']
         else:
@@ -226,22 +227,16 @@ def double_check(drat_checker,
             if sick:
                 args += ['-S', f'{name}.sick']
         if pr and accepts(drat_checker + args, name):
-            if executable('pr2drat') and executable('drat-trim'):
-                proofs_with_deletions = {f'benchmarks/sadical/{x}' for x
-                in ('add16', 'add32', 'add4', 'add64', 'add8', 'eight',
-                'full4', 'full5', 'full6', 'full7', 'ph3', 'ph4', 'ph5',
-                    'ph6', 'prime65537', 'regr2', 'tph2', 'tph3', 'tph4',
-                    'unit4', 'urq3b1', 'urq3b2', 'urq3b3', 'urq3b4')}
-                if name in  proofs_with_deletions:
-                    continue
+            if pr2drat:
                 stdout, stderr = process_expansion(
-                    ['pr2drat', cnf, f'{name}.core.pr'])
+                    ['pr2drat', cnf, f'{name}.core.dpr'])
                 require(not stderr, name)
                 with open(f'{name}.core.drat', 'wb') as f:
                     f.write(stdout)
-                # TODO this should not do core first
+                # drat_checker is rate with some flags, use it to convert
+                # the output of pr2drat to LRAT
                 stdout, stderr = process_expansion(
-                    rate() + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
+                    drat_checker + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
                 # stdout, stderr = process_expansion(['drat-trim', cnf, f'{name}.core.drat', '-f', '-L', f'{name}.core.lrat'])
                 require(not stderr, 'rate stderr should be empty')
                 require(
