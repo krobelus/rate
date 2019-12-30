@@ -1,7 +1,9 @@
 # Unreleased
 - Fix PR check false positives given empty witnesses
-- Fix PR check not adding clauses to the core
-- Optimize PR checking
+- Fix PR check false positives due to not adding clauses to the core
+- Incorrectness certificates are now always checked when a proof is
+  rejected.
+- Improve output for rejected proofs (print the line of failed step)
 
 # 0.2.3 (2019-10-09)
 

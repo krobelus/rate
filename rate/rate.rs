@@ -120,11 +120,24 @@ fn run_frontend() -> i32 {
     print_memory_usage(&checker);
     as_warning!(match result {
         Verdict::NoEmptyClause => puts!("c no conflict\n"),
-        Verdict::IncorrectEmptyClause => puts!("c conflict claimed but not detected\n"),
+        Verdict::IncorrectEmptyClause => {
+            let proof_step_line = checker.rejection.proof_step.unwrap();
+            puts!(
+                "c {}:{} conflict claimed but not detected\n",
+                &checker.flags.proof_filename,
+                proof_step_line
+            );
+        }
         Verdict::IncorrectLemma => {
-            let lemma = checker.proof[checker.rejection.proof_step.unwrap() - 1].clause();
-            puts!("c redundancy check failed for ");
-            puts_clause_with_id(lemma, checker.clause(lemma));
+            let proof_step_line = checker.rejection.proof_step.unwrap();
+            let lemma = checker.proof[proof_step_line - 1].clause();
+            puts!(
+                "c {}:{} redundancy check failed for ",
+                &checker.flags.proof_filename,
+                proof_step_line
+            );
+            // TODO include witness
+            puts_clause_with_id(lemma, &checker.rejected_lemma);
             puts!("\n");
         }
         Verdict::Verified => (),
@@ -135,7 +148,8 @@ fn run_frontend() -> i32 {
         "NOT VERIFIED"
     });
     if result != Verdict::Verified && !checker.flags.forward && !checker.flags.skip_unit_deletions {
-        write_sick_witness(&checker).expect("Failed to write SICK incorrectness witness.");
+        write_sick_witness(&checker)
+            .unwrap_or_else(|err| die!("Failed to write SICK incorrectness witness: {}", err));
         if check_incorrectness_certificate(
             &checker.flags.formula_filename,
             &checker.flags.proof_filename,
