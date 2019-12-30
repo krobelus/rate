@@ -23,8 +23,7 @@ use rate_common::{
 use rate_macros::{self, HeapSpace};
 use std::{
     cmp, fmt,
-    fs::File,
-    io::{self, BufWriter, Write},
+    io::{self, Write},
     iter::FromIterator,
     ops::{self, Index},
 };
@@ -44,7 +43,10 @@ fn run_frontend() -> i32 {
     let mut app = clap::App::new("rate")
     .version(env!("CARGO_PKG_VERSION"))
     .about(env!("CARGO_PKG_DESCRIPTION"))
-    .after_help("Input files may be compressed - supported file extensions are: zst, gz, bz2, xz and lz4.")
+    .after_help(
+        "Input files may be compressed - supported file extensions are: zst, gz, bz2, xz and lz4.
+Use \"-\" for an output file to write it to standard output."
+        )
     .arg(Arg::with_name("INPUT").required(true).help("input file in DIMACS format"))
     .arg(Arg::with_name("PROOF").required(true).help("proof file in DRAT or DPR format (file extensions drat or dpr)"))
 
@@ -72,7 +74,7 @@ fn run_frontend() -> i32 {
     .arg(Arg::with_name("GRAT_FILE").takes_value(true).short("G").long("grat")
          .help("Write the GRAT certificate to this file."))
     .arg(Arg::with_name("SICK_FILE").takes_value(true).short("S").long("sick")
-         .help("Write the SICK incorrectness witness to this file (instead of standard output)."))
+         .help("Write the SICK incorrectness witness to this file."))
     .arg(Arg::with_name("SICK_FILE_LEGACY").takes_value(true).short("i").long("recheck")
          .help("Write the SICK incorrectness witness to this file.").hidden(true))
     ;
@@ -2274,16 +2276,10 @@ fn write_lrat_deletion(
 
 /// Write the SICK incorrectness witness to a file.
 fn write_sick_witness(checker: &Checker) -> io::Result<()> {
-    let writer: Box<dyn Write> = match &checker.flags.sick_filename {
-        // TODO clone of open_file_for_writing
-        Some(filename) => Box::new(
-            File::create(filename)
-                .unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
-        ),
-        None => Box::new(io::stdout()),
+    let mut file = match &checker.flags.sick_filename {
+        Some(filename) => open_file_for_writing(filename),
+        None => return Ok(()),
     };
-    let mut file = BufWriter::new(writer);
-    writeln!(file, "### Incorrectness certificate:")?;
     write!(file, "# Failed to prove lemma")?;
     for &literal in &checker.rejected_lemma {
         if literal != Literal::BOTTOM {

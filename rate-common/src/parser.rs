@@ -11,7 +11,10 @@ use std::{
     cmp,
     convert::TryInto,
     fs::File,
-    io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, Seek, SeekFrom, StdinLock},
+    io::{
+        self, BufReader, BufWriter, Error, ErrorKind, Read, Result, Seek, SeekFrom, StdinLock,
+        Write,
+    },
     iter::Peekable,
     panic, slice,
 };
@@ -267,10 +270,14 @@ pub fn open_file(filename: &str) -> File {
 /// Open a file for writing.
 /// # Panics
 /// Panics on error.
-pub fn open_file_for_writing(filename: &str) -> BufWriter<File> {
-    BufWriter::new(
-        File::create(filename).unwrap_or_else(|err| die!("cannot open file for writing: {}", err)),
-    )
+pub fn open_file_for_writing(filename: &str) -> Box<dyn Write> {
+    if filename == "-" {
+        Box::new(BufWriter::new(io::stdout()))
+    } else {
+        Box::new(BufWriter::new(File::create(filename).unwrap_or_else(
+            |err| die!("cannot open file for writing: {}", err),
+        )))
+    }
 }
 
 /// File extension of Zstandard archives.
