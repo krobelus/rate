@@ -7,8 +7,8 @@
 This is a DRAT/DPR proof checker, similar to
 [`drat-trim`](https://github.com/marijnheule/drat-trim),
 [`dpr-trim`](https://www.cs.utexas.edu/~marijn/pr/) or
-[`gratgen`](http://www21.in.tum.de/~lammich/grat/). The
-notable difference is that it does not [ignore deletions of unit
+[`gratgen`](http://www21.in.tum.de/~lammich/grat/). The notable
+difference is that `rate` does not [ignore deletions of unit
 clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details)
 by default.
 
@@ -120,9 +120,9 @@ Run unit tests and the system test suite, respectively:
 cargo test && ./test.py
 ```
 
-You can also selectively run tests, for example use `./test.py -k pr
-benchmarks/crafted benchmarks/sadical/add4.cnf` to only run PR tests
-on the crafted benchmarks and on `add4.{cnf,dpr}`.
+You can also selectively run tests, for example use `./test.py -k default
+benchmarks/crafted benchmarks/sadical/add4.cnf` to only run test functions
+matching `default` on the crafted benchmarks and on `add4.{cnf,dpr}`.
 
 Above tests require
 - `python3` (version 3.6 or above)
@@ -148,7 +148,7 @@ Find some background information and a performance evaluation in my [thesis].
 [thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
 The source code includes an abundance of doc comments. Use this command to
-turn them into developer documentation at `target/doc/rate*/index.html`.
+turn them into internal documentation at `target/doc/rate*/index.html`.
 ```sh
 $ cargo doc --document-private-items
 ```
@@ -164,9 +164,9 @@ but we can integrate more tools that work on proofs in this repository.
 
 Some possible improvements:
 
-- expose a subset of the library modules as Rust (and possibly C) API
+- expose a Rust (and possibly C) API
 - support other clausal proof formats
 - compute other features about clausal proofs (e.g. the lifespan of clauses)
-- speed up handling of reason clauses that do not shrink the trail
+- speed up handling of reason clause deletions that do not shrink the trail
 - speed up RAT checks by caching resolution candidates
 - improve compile times
