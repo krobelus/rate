@@ -2,7 +2,7 @@
 # dep grat
 # dep rupee
 
-FROM circleci/rust:1.37-buster
+FROM circleci/rust:1.40-buster
 USER root
 
 COPY --from=jixone/rust-ci:check-lrat \
