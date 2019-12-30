@@ -1049,7 +1049,7 @@ fn check_inference(checker: &mut Checker, proof_step: usize) -> bool {
     ok
 }
 
-/// The reduct of a clause with respect to some assignment.
+/// The reduct of a clause with respect to some assignment
 enum Reduct {
     /// The clause is satisified by that assignment.
     Top,
@@ -1995,7 +1995,7 @@ fn move_falsified_literals_to_end(checker: &mut Checker, clause: Clause) -> usiz
     effective_end - head
 }
 
-/// Write core lemmas to a file.
+/// Write the trimmed proof to a file.
 fn write_lemmas(checker: &Checker) -> io::Result<()> {
     let stdout = io::stdout();
     let mut file = match &checker.flags.lemmas_filename {

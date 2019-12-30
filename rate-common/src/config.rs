@@ -1,3 +1,5 @@
+//! Compile-time constants
+
 /// Add command line flag `-v`.
 pub const ENABLE_LOGGING: bool = true;
 /// Whether to do bounds checking when accessing array elements.

@@ -6,6 +6,8 @@ extern crate proc_macro2;
 use quote::quote;
 use syn;
 
+/// Default implementation of [HeapSpace](../rate_common/memory/trait.HeapSpace.html).
+/// Use by adding `#[derive(HeapSpace)]` to your struct.
 #[proc_macro_derive(HeapSpace)]
 pub fn heap_space(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();

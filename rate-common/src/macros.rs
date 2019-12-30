@@ -1,4 +1,4 @@
-//! Macros and other utility code.
+//! Macros and other utility code
 
 /// This should be used for every write to stdout.
 #[macro_export]

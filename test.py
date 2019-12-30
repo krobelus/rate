@@ -203,7 +203,8 @@ def double_check(drat_checker,
     skip_unit_deletions = any(
         '-d' in arg for arg in drat_checker)
     forward = any(arg in ('--forward', '-f') for arg in drat_checker)
-    noncore_rat_candidates = any(arg in ('-r', '--noncore-rat-candidates') for arg in drat_checker)
+    noncore_rat_candidates = any(
+        arg in ('-r', '--noncore-rat-candidates') for arg in drat_checker)
     sick = not skip_unit_deletions and not forward
     grat = not forward
     lrat = not forward and lrat_checker is not None and not noncore_rat_candidates
@@ -211,7 +212,8 @@ def double_check(drat_checker,
         log()
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = proof.endswith('.dpr') or proof.endswith('.pr')
-        pr2drat = pr and executable('pr2drat') and not forward and not noncore_rat_candidates
+        pr2drat = pr and executable(
+            'pr2drat') and not forward and not noncore_rat_candidates
         args = [cnf]
         args += [proof]
         if pr:

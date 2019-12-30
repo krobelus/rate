@@ -1,4 +1,12 @@
-//! Unified routines to print data.
+//! Unified routines to print data
+//!
+//! We choose to print everything to stdout. This makes sense for a
+//! tool like a proof checker whose output consists of error messages
+//! and diagnostics, not data. It is less suited for pure data
+//! processing programs like `drat2bdrat`, however those fail only
+//! on fatal errors where we cannot guarantee that they did not
+//! print garbage (e.g., incomplete clauses), so the user needs
+//! to handle the exit code anyway.
 
 use atty::{self, Stream};
 use libc::{self, signal};
