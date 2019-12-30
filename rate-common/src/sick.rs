@@ -49,6 +49,8 @@ impl HeapSpace for Witness {
     }
 }
 
+/// Check a SICK certificate and prints an appropriate error message.
+/// Returns Ok(()) if accepted.
 pub fn check_incorrectness_certificate(
     formula_filename: &str,
     proof_filename: &str,
@@ -67,6 +69,8 @@ pub fn check_incorrectness_certificate(
     }
 }
 
+/// Parses both formula and proof and checks the SICK certificate.
+/// Returns an error of what went wrong.
 fn check_incorrectness_certificate_aux(
     formula_filename: &str,
     proof_filename: &str,

@@ -6,8 +6,7 @@ use std::io::{self, Result, Write};
 
 use rate_common::{
     clause::{write_clause, Clause},
-    die,
-    output::install_signal_handler,
+    die, output,
     parser::{
         is_binary_drat, open_file_for_writing, parse_proof_step, read_compressed_file,
         run_parser_on_formula, HashTable, Parser, ProofParserState,
@@ -15,8 +14,13 @@ use rate_common::{
 };
 
 /// Run `apply-proof`.
-fn main() -> Result<()> {
-    install_signal_handler();
+fn main() {
+    output::panic_on_error(run())
+}
+
+/// Run `apply-proof`, possible returning an `io::Error`.
+fn run() -> Result<()> {
+    output::install_signal_handler();
     let matches = clap::App::new("apply-proof")
         .version(env!("CARGO_PKG_VERSION"))
         .about(

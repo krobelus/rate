@@ -4,6 +4,23 @@ use atty::{self, Stream};
 use libc::{self, signal};
 use std::{fmt::Display, time::SystemTime};
 
+/// The basename of the current executable.
+pub fn current_executable() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|abspath| {
+            abspath
+                .file_name()
+                .map(|f| f.to_str().unwrap_or("").to_string())
+        })
+        .unwrap_or("".to_string())
+}
+
+/// Unwraps a result, panicking on error.
+pub fn panic_on_error<T>(result: std::io::Result<T>) -> T {
+    result.unwrap_or_else(|error| die!("{}: {}", current_executable(), error))
+}
+
 /// Write a solution line (`"s ..."`) to stdout.
 pub fn print_solution(verdict: &str) {
     puts!("s {}\n", verdict);

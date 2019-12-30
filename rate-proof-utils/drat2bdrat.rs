@@ -30,7 +30,12 @@ fn write_number(output: &mut dyn Write, number: i32) -> Result<()> {
 }
 
 /// Run `drat2bdrat`.
-fn main() -> Result<()> {
+fn main() {
+    output::panic_on_error(run())
+}
+
+/// Run `drat2bdrat`, possibly returning an `io::Error`.
+fn run() -> Result<()> {
     output::install_signal_handler();
     let matches = clap::App::new("drat2bdrat")
         .version(env!("CARGO_PKG_VERSION"))

@@ -5,7 +5,7 @@ use crate::{
     clausedatabase::{ClauseDatabase, ClauseStorage, WitnessDatabase},
     literal::{Literal, Variable},
     memory::{format_memory_usage, HeapSpace, Offset, Vector},
-    output::{print_key_value, unreachable, Timer},
+    output::{panic_on_error, print_key_value, unreachable, Timer},
 };
 use std::{
     cmp,
@@ -391,11 +391,6 @@ fn read_from_compressed_file(file: File, filename: &str) -> Box<dyn Iterator<Ite
         }
         _ => unreachable(),
     }
-}
-
-/// Unwraps a result, panicking on error.
-pub fn panic_on_error<T>(result: Result<T>) -> T {
-    result.unwrap_or_else(|error| die!("{}", error))
 }
 
 /// Add a literal to the clause or witness database.

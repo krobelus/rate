@@ -6,13 +6,18 @@ use clap::Arg;
 use std::io::{self, Result, Write};
 
 use rate_common::{
-    output::install_signal_handler,
+    output,
     parser::{open_file_for_writing, parse_literal_binary, read_compressed_file_or_stdin},
 };
 
 /// Run `bdrat2drat`.
-fn main() -> Result<()> {
-    install_signal_handler();
+fn main() {
+    output::panic_on_error(run())
+}
+
+/// Run `bdrat2drat`, possibly returning an `io::Error`.
+fn run() -> Result<()> {
+    output::install_signal_handler();
     let matches = clap::App::new("bdrat2drat")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Read a binary proof from stdin and write its textual version to stdout")
