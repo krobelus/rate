@@ -206,7 +206,7 @@ def double_check(drat_checker,
     noncore_rat_candidates = any(arg in ('-r', '--noncore-rat-candidates') for arg in drat_checker)
     sick = not skip_unit_deletions and not forward
     grat = not forward
-    lrat = not forward and lrat_checker is not None
+    lrat = not forward and lrat_checker is not None and not noncore_rat_candidates
     for cnf, proof in instances:
         log()
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
@@ -237,7 +237,6 @@ def double_check(drat_checker,
                 # the output of pr2drat to LRAT
                 stdout, stderr = process_expansion(
                     drat_checker + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
-                # stdout, stderr = process_expansion(['drat-trim', cnf, f'{name}.core.drat', '-f', '-L', f'{name}.core.lrat'])
                 require(not stderr, 'rate stderr should be empty')
                 require(
                     b's VERIFIED' in stdout,
@@ -255,7 +254,7 @@ def double_check(drat_checker,
                 'bottom',
             )}):
                 require(lrat_checker_accepts(lrat_checker +
-                                             [args[0], args[3], 'nil', 't'], 'lrat check failed'))
+                                             [cnf, f'{name}.lrat', 'nil', 't'], 'lrat check failed'))
             if grat and (grat_checker is not None and (
                 ('rate' not in drat_checker[0]) or skip_unit_deletions or
                 (name not in {f'benchmarks/rupee/{x}' for x in (
@@ -263,36 +262,36 @@ def double_check(drat_checker,
                 )})
             )):
                 require(gratchk_accepts(grat_checker +
-                                        [args[0], args[5]], 'gratchk failed'))
+                                        [cnf, f'{name}.grat'], 'gratchk failed'))
         elif sick:
             require(sick_checker_accepts(
-                ['target/release/sick-check'] + args[:2] + [args[-1]], name))
+                ['target/release/sick-check', cnf, proof, f'{name}.sick'], name))
 
 
 def test_flags00_default():
-    double_check(rate(), instances=pr_inputs())
+    double_check(rate(), instances=inputs())
 
 
 def test_flags01_skip_unit_deletions():
-    double_check(rate(flags=['-d']), instances=pr_inputs())
+    double_check(rate(flags=['-d']), instances=inputs())
 
 
 def test_flags02_forward():
-    double_check(rate(flags=['-f']), instances=pr_inputs())
+    double_check(rate(flags=['-f']), instances=inputs())
 
 
 def test_flags03_assume_pivot_is_first():
     double_check(
         rate(
             flags=['--assume-pivot-is-first']),
-        instances=pr_inputs())
+        instances=drat_inputs())
 
 
 def test_flags04_noncore_rat_candidates():
     double_check(
         rate(
             flags=['--noncore-rat-candidates']),
-        instances=pr_inputs())
+        instances=inputs())
 
 
 def test_compression():
