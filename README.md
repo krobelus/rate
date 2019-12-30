@@ -120,8 +120,9 @@ Run unit tests and the system test suite, respectively:
 cargo test && ./test.py
 ```
 
-If you're in a hurry use `./test.py -k quick` to only run tests with
-tiny input files.
+You can also selectively run tests, for example use `./test.py -k pr
+benchmarks/crafted benchmarks/sadical/add4.cnf` to only run PR tests
+on the crafted benchmarks and on `add4.{cnf,dpr}`.
 
 Above tests require
 - `python3` (version 3.6 or above)
@@ -129,8 +130,7 @@ Above tests require
   - [`lrat-check`](https://github.com/acl2/acl2/tree/master/books/projects/sat/lrat)
     to validate the produced LRAT proofs.
   - [`pr2drat`](https://github.com/marijnheule/pr2drat) to produce
-    LRAT proofs from PR proofs.
-    unsatisfiable core of PR proofs to DRAT and LRAT 
+    DRAT and LRAT proofs from PR proofs.
   - `gratchk` to validate produced GRAT proofs.
   - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
     run on the benchmarks and their results will be compared to the output of

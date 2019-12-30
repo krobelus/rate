@@ -98,9 +98,6 @@ Use \"-\" for an output file to write it to standard output."
     if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
         die!("LRAT or GRAT generation is not yet supported for PR")
     }
-    if parser.is_pr() && flags.skip_unit_deletions {
-        die!("Flag -d/--skip-unit-deletions is not yet supported for PR")
-    }
     let mut checker = Checker::new(parser, flags);
     let result = run(&mut checker);
     print_key_value("premise clauses", checker.premise_length);
@@ -1675,7 +1672,12 @@ fn watches_add(checker: &mut Checker, stage: Stage, clause: Clause) -> MaybeConf
                 let conflict = assign(checker, w1, Reason::forced(head));
                 invariant!(conflict == NO_CONFLICT);
             }
-            if !checker.flags.skip_unit_deletions {
+            // If deletions are fully honored, we need to add this clause to the watchlists,
+            // because it may become not-unit after some deletion.
+            // Also if we are doing PR, we need to add it to be able to find it in `fn pr()`.
+            if !checker.flags.skip_unit_deletions
+                || checker.redundancy_property == RedundancyProperty::PR
+            {
                 checker.fields_mut(clause).set_in_watchlist(true);
                 checker.clause_db.swap(head, i1);
                 watch_add(checker, mode, w1, head);
@@ -1831,13 +1833,8 @@ fn verify(checker: &mut Checker) -> bool {
             }
             // Undo the deletion by adding the clause to the watchlists.
             if checker.flags.skip_unit_deletions {
-                // If the clause was a unit during the forward pass, then
-                // the deletion was ignored.  In that case, we do not need to
-                // add it to the watches because it was never deleted. Since
-                // adding watches for a unit (or reason) clause is basically
-                // a no-op, this condition can probably be removed.
-                if !checker.fields(clause).is_reason() {
-                    invariant!(checker.clause_mode(clause) == Mode::NonCore);
+                // It may already be present (if deletion was skipped).
+                if !checker.fields(clause).is_in_watchlist() {
                     watches_add(checker, Stage::Verification, clause);
                 }
             } else {
@@ -2445,7 +2442,7 @@ fn watches_find_and_remove(checker: &mut Checker, mode: Mode, lit: Literal, head
                 .filter(|&h| *h == head)
                 .count()
                 <= 1,
-            "duplicate clause [@{}] in watchlist of {}",
+            "duplicate clause [{}] in watchlist of {}",
             head,
             lit
         );

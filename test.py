@@ -46,30 +46,24 @@ def size(cnf):
     return os.path.getsize(cnf)
 
 
-def drat_inputs():
-    return [
-        (cnf, (cnf[:-len('cnf')] + 'drat'))
-        for cnf in sorted(CNFS, key=size)
-        if os.path.exists(cnf[:-len('cnf')] + 'drat')
-    ]
-
-
-def small_drat_inputs():
-    return [
-        (cnf, proof) for cnf, proof in drat_inputs()
-        # only use small formulas
-        if size(cnf) < 100_000
-    ]
+def inputs(*allowed_proof_extensions):
+    if not allowed_proof_extensions:
+        allowed_proof_extensions = ('pr', 'dpr', 'drat')
+    pairs = []
+    for cnf in sorted(CNFS, key=size):
+        name = cnf[:-len('.cnf')]
+        for ext in allowed_proof_extensions:
+            if os.path.isfile(f'{name}.{ext}'):
+                pairs += [(cnf, f'{name}.{ext}')]
+    return pairs
 
 
 def pr_inputs():
-    prs = []
-    for cnf in sorted(CNFS, key=size):
-        name = cnf[:-len('.cnf')]
-        for ext in 'pr', 'dpr':
-            if os.path.isfile(f'{name}.{ext}'):
-                prs += [(cnf, f'{name}.{ext}')]
-    return prs
+    return inputs('pr', 'dpr')
+
+
+def drat_inputs():
+    return inputs('drat')
 
 
 @lru_cache(maxsize=None)
@@ -209,6 +203,7 @@ def double_check(drat_checker,
     skip_unit_deletions = any(
         '-d' in arg for arg in drat_checker)
     forward = any('--forward' in arg for arg in drat_checker)
+    forward = forward or any('-f' in arg for arg in drat_checker)
     sick = not skip_unit_deletions and not forward
     grat = not forward
     lrat = not forward and lrat_checker is not None
@@ -280,29 +275,30 @@ def double_check(drat_checker,
                 ['target/release/sick-check'] + args[:2] + [args[-1]], name))
 
 
-def test_pr():
+def test_flags00_default():
     double_check(rate(), instances=pr_inputs())
 
 
-def test_quick_default():
+def test_flags01_skip_unit_deletions():
+    double_check(rate(flags=['-d']), instances=pr_inputs())
+
+
+def test_flags02_forward():
+    double_check(rate(flags=['-f']), instances=pr_inputs())
+
+
+def test_flags03_assume_pivot_is_first():
     double_check(
-        rate(), instances=small_drat_inputs())
+        rate(
+            flags=['--assume-pivot-is-first']),
+        instances=pr_inputs())
 
 
-def test_quick_pivot_is_first():
+def test_flags04_noncore_rat_candidates():
     double_check(
-        rate(flags=['--assume-pivot-is-first']), instances=small_drat_inputs())
-
-
-def test_quick_skip_unit_deletions():
-    double_check(
-        rate(flags=['-d']),
-        instances=small_drat_inputs())
-
-
-def test_full():
-    double_check(rate(),
-                 instances=set(drat_inputs()) - set(small_drat_inputs()))
+        rate(
+            flags=['--noncore-rat-candidates']),
+        instances=pr_inputs())
 
 
 def test_compression():
@@ -317,31 +313,20 @@ def test_compression():
         grat_checker=None)
 
 
-def test_forward():
-    double_check(
-        rate(
-            flags=['--forward']),
-        instances=set(
-            drat_inputs()) | set(
-                pr_inputs()))
-
-
 def test_acceptance_drat_trim():
     if executable('drat-trim'):
         compare_acceptance(
-            rate(
-                flags=['-d']),
+            rate(flags=['-d']),
             ['drat-trim'],
             instances=drat_inputs())
 
 
-def test_acceptance_rupee():
-    if executable('rupee'):
+def test_acceptance_dpr_trim():
+    if executable('dpr-trim'):
         compare_acceptance(
-            rate(
-                flags=['--assume-pivot-is-first']),
-            ['rupee'],
-            instances=drat_inputs())
+            rate(flags=['-d']),
+            ['dpr-trim'],
+            instances=pr_inputs())
 
 
 def test_acceptance_gratgen():
@@ -353,12 +338,13 @@ def test_acceptance_gratgen():
             instances=drat_inputs())
 
 
-def test_acceptance_dpr_trim():
-    if executable('dpr-trim'):
+def test_acceptance_rupee():
+    if executable('rupee'):
         compare_acceptance(
-            rate(),
-            ['dpr-trim'],
-            instances=pr_inputs())
+            rate(
+                flags=['--assume-pivot-is-first']),
+            ['rupee'],
+            instances=drat_inputs())
 
 
 def test_drat2bdrat_bdrat2drat():

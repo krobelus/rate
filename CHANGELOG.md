@@ -1,20 +1,23 @@
 # Unreleased
-- Fix PR check false positives given empty witnesses
-- Fix PR check false positives due to not adding clauses to the core
+- Fix PR check giving false positives given empty witnesses.
+- Fix PR check giving false positives due to not adding clauses to the
+  core (except for the root conflict).
+- Fix PR checking with flag -d/--skip-unit-deletions.
 - Incorrectness certificates are now always checked when a proof is
-  rejected.
-- Improve output for rejected proofs (print the line of failed step)
+  rejected. In that case the formula and proof files are opened again
+  when checking the certificate.
+- Improve output for rejected proofs (print the line of failed step).
 
 # 0.2.3 (2019-10-09)
 
-- Fix bug in PR check where deletions would be ignored
+- Fix bug in PR check where deletions would be ignored.
 - Rewrite logging (flag -v) to print one line for each processed lemma;
   see tracking issue at https://github.com/krobelus/rate/issues/9
 
 # 0.2.2 (2019-09-30)
 
-- Fix unsound rejections by `rate --forward`
-- Correctly implement flag `--noncore-rat-candidates`
+- Fix unsound rejections by `rate --forward`.
+- Correctly implement flag `--noncore-rat-candidates`.
 
 # 0.2.1 (2019-09-28)
 
