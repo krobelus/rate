@@ -227,17 +227,16 @@ def double_check(drat_checker,
                 args += ['-S', f'{name}.sick']
         if pr and accepts(drat_checker + args, name):
             if executable('pr2drat') and executable('drat-trim'):
-                if (name in ({
-                    f'benchmarks/sadical/{x}'
-                    # TODO investigate these failures!
-                    for x in ('ph5', 'add4', 'tph3', 'ph6', 'add8', 'tph4', 'urq3b1', 'urq3b3', 'urq3b2', 'add16',
-                              'urq3b4', 'add32', 'add64', 'prime65537'
-                              )
-                } | {'benchmarks/crafted/mchess10.1'})):
+                proofs_with_deletions = {f'benchmarks/sadical/{x}' for x
+                in ('add16', 'add32', 'add4', 'add64', 'add8', 'eight',
+                'full4', 'full5', 'full6', 'full7', 'ph3', 'ph4', 'ph5',
+                    'ph6', 'prime65537', 'regr2', 'tph2', 'tph3', 'tph4',
+                    'unit4', 'urq3b1', 'urq3b2', 'urq3b3', 'urq3b4')}
+                if name in  proofs_with_deletions:
                     continue
                 stdout, stderr = process_expansion(
                     ['pr2drat', cnf, f'{name}.core.pr'])
-                # require(not stderr, name)
+                require(not stderr, name)
                 with open(f'{name}.core.drat', 'wb') as f:
                     f.write(stdout)
                 # TODO this should not do core first

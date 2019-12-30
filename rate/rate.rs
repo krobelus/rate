@@ -1979,8 +1979,15 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         if !proof_step.is_deletion() && checker.fields(lemma).is_in_core() {
             if checker.redundancy_property == RedundancyProperty::PR {
                 let literals = checker.clause(lemma);
+                // The order of literals in the lemma may have changed,
+                // but not in the witness. Make sure to print the first
+                // literal in the witness first to maintain the PR format.
+                let witness_head = checker.witness(lemma).first().cloned();
+                if let Some(literal) = witness_head {
+                    write!(file, "{} ", literal)?;
+                }
                 for &literal in literals {
-                    if literal != Literal::BOTTOM {
+                    if literal != Literal::BOTTOM && Some(literal) != witness_head {
                         write!(file, "{} ", literal)?;
                     }
                 }

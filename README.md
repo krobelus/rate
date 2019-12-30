@@ -88,7 +88,7 @@ working with clausal proofs:
 
 # Caveats
 
-Please note that `rate` accepts proof that are technically not fully correct,
+Please note that `rate` accepts proof that are technically not fully correct.
 Just like other checkers, we perform some transformations on the proof before
 actually verifying the proofs steps.  This is done to improve performance.
 Some transformations on the proof ignore some clauses in the formula and some
