@@ -1785,11 +1785,13 @@ fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
     if checker.redundancy_property == RedundancyProperty::PR {
         let witness = checker.witness_db.open_clause();
         invariant!(empty_clause == witness);
-        checker.witness_db.push_literal(Literal::new(0), /*verbose=*/true);
+        checker
+            .witness_db
+            .push_literal(Literal::new(0), /*verbose=*/ true);
     }
     checker
         .clause_db
-        .push_literal(Literal::new(0), /*verbose=*/true);
+        .push_literal(Literal::new(0), /*verbose=*/ true);
     let grat_pending_length = checker.grat_pending.len();
     extract_dependencies(checker, checker.assignment.len(), None);
     checker.grat_pending.truncate(grat_pending_length);
