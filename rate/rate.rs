@@ -6,8 +6,8 @@ use rate_common::{
     as_warning,
     assignment::{stable_under_unit_propagation, Assignment},
     clause::{
-        puts_clause, puts_clause_with_id, write_clause, Clause, GRATLiteral, LRATDependency,
-        LRATLiteral, ProofStep, Reason, RedundancyProperty,
+        puts_clause_with_id, puts_clause_with_id_and_witness, write_clause, Clause, GRATLiteral,
+        LRATDependency, LRATLiteral, ProofStep, Reason, RedundancyProperty,
     },
     clausedatabase::{ClauseDatabase, ClauseStorage, WitnessDatabase},
     comment, config, die, invariant,
@@ -59,7 +59,9 @@ Use \"-\" for an output file to write it to standard output."
     .arg(Arg::with_name("NO_TERMINATING_EMPTY_CLAUSE").long("--no-terminating-empty-clause")
         .help("Do not add an empty clause at the end of the proof.").hidden(true))
     .arg(Arg::with_name("FORWARD").short("f").long("forward")
-         .help("Use naive forward checking instead of backwards checking."))
+         .help(
+             "Use naive forward checking instead of backwards checking.
+This checks every single lemma at the expense of performance."))
 
     .arg(Arg::with_name("DRAT_TRIM").long("drat-trim")
          .help("Compatibility with drat-trim; implies --skip-unit-deletions.").hidden(true))
@@ -143,8 +145,7 @@ Use \"-\" for an output file to write it to standard output."
                 &checker.flags.proof_filename,
                 proof_step_line
             );
-            // TODO include witness
-            puts_clause_with_id(lemma, &checker.rejected_lemma);
+            checker.puts_clause_with_id_and_witness(lemma, &checker.rejected_lemma);
             puts!("\n");
         }
         Verdict::Verified => (),
@@ -576,10 +577,6 @@ impl Checker {
         .to_string();
         checker
     }
-    /// Write the clause ID and literals to stdout, like [<ID] <literals> 0.
-    fn puts_clause_with_id(&self, clause: Clause) {
-        puts_clause_with_id(clause, self.clause(clause));
-    }
     /// The literals in the the clause.
     fn clause(&self, clause: Clause) -> &[Literal] {
         self.clause_db.clause(clause)
@@ -636,6 +633,16 @@ impl Checker {
     fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
         unsafe {
             &mut *(self.clause_db.fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
+        }
+    }
+
+    /// Write the clause ID, literals and a witness to stdout, like
+    /// [<ID] <literals> <witness> 0.
+    pub fn puts_clause_with_id_and_witness(&self, clause: Clause, literals: &[Literal]) {
+        if self.redundancy_property == RedundancyProperty::PR {
+            puts_clause_with_id_and_witness(clause, literals, self.witness(clause));
+        } else {
+            puts_clause_with_id(clause, literals)
         }
     }
 }
@@ -736,13 +743,13 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
     if checker.flags.verbose {
         if skipped {
             puts!("del (skipped) ");
-            checker.puts_clause_with_id(clause);
+            puts_clause_with_id(clause, checker.clause(clause));
         } else if shrinks_trail_by == 0 {
             puts!("del ");
-            checker.puts_clause_with_id(clause);
+            puts_clause_with_id(clause, checker.clause(clause));
         } else {
             puts!("del (shrinking trail by {}) ", shrinks_trail_by);
-            checker.puts_clause_with_id(clause);
+            puts_clause_with_id(clause, checker.clause(clause));
         }
         puts!("\n");
     }
@@ -1160,14 +1167,7 @@ fn pr(checker: &mut Checker) -> bool {
     checker.pr_introductions += 1;
     if checker.flags.verbose {
         puts!("lemma PR ");
-        puts!("[{}] ", lemma);
-        let literals = checker.clause(lemma);
-        for &literal in literals {
-            if literal != Literal::BOTTOM {
-                puts!("{} ", literal);
-            }
-        }
-        puts_clause(checker.witness(lemma));
+        checker.puts_clause_with_id_and_witness(lemma, checker.clause(lemma));
         puts!("\n");
     }
     true
@@ -1194,7 +1194,7 @@ fn add_rup_conflict_for_grat(checker: &mut Checker) {
         .push(GRATLiteral::from_clause(reason_clause));
 }
 
-/// Return true if the lemma is a RUP or RAT inference.
+/// Return true if the lemma is a RUP/RAT/PR inference.
 fn redundancy_check(checker: &mut Checker) -> bool {
     checker.dependencies.clear();
     assignment_invariants(checker);
@@ -1205,7 +1205,7 @@ fn redundancy_check(checker: &mut Checker) -> bool {
         checker.rup_introductions += 1;
         if checker.flags.verbose {
             puts!("lemma RUP ");
-            checker.puts_clause_with_id(lemma);
+            checker.puts_clause_with_id_and_witness(lemma, checker.clause(lemma));
             puts!("\n");
         }
         if checker.flags.grat_filename.is_some() {
@@ -1280,7 +1280,7 @@ fn rat(checker: &mut Checker, trail_length_forced: usize) -> bool {
             checker.clause_db.swap(head, head + pivot_index);
             if checker.flags.verbose {
                 puts!("lemma RAT ");
-                checker.puts_clause_with_id(lemma);
+                checker.puts_clause_with_id_and_witness(lemma, checker.clause(lemma));
                 puts!("\n");
             }
             if checker.flags.grat_filename.is_some() {
@@ -1730,7 +1730,7 @@ fn clause_is_satisfied<'a>(
 fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     if checker.flags.verbose {
         puts!("add premise ");
-        checker.puts_clause_with_id(clause);
+        puts_clause_with_id(clause, checker.clause(clause));
         puts!("\n");
     }
     add_clause(checker, clause)
@@ -1740,7 +1740,7 @@ fn add_premise(checker: &mut Checker, clause: Clause) -> MaybeConflict {
 fn add_lemma(checker: &mut Checker, lemma: Clause) -> MaybeConflict {
     if checker.flags.verbose {
         puts!("add lemma ");
-        checker.puts_clause_with_id(lemma);
+        checker.puts_clause_with_id_and_witness(lemma, checker.clause(lemma));
         puts!("\n");
     }
     add_clause(checker, lemma)
@@ -1889,7 +1889,7 @@ fn verify(checker: &mut Checker) -> bool {
             if !checker.fields(lemma).is_in_core() {
                 if checker.flags.verbose {
                     puts!("lemma skipped (not in core) ");
-                    checker.puts_clause_with_id(lemma);
+                    checker.puts_clause_with_id_and_witness(lemma, checker.clause(lemma));
                     puts!("\n");
                 }
                 continue;

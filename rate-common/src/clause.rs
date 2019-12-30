@@ -453,3 +453,19 @@ where
     puts!("[{}] ", clause);
     puts_clause(literals);
 }
+
+/// Write the clause ID, literals and a witness to stdout, like
+/// [<ID] <literals> <witness> 0.
+pub fn puts_clause_with_id_and_witness(clause: Clause, literals: &[Literal], witness: &[Literal]) {
+    // The order of literals in the clause may have changed,
+    // but not in the witness. Make sure to print the first
+    // literal in the witness first to maintain the PR format.
+    let witness_head = witness.first().cloned();
+    puts!("[{}] ", clause);
+    for &literal in literals {
+        if literal != Literal::BOTTOM && Some(literal) != witness_head {
+            puts!("{} ", literal);
+        }
+    }
+    puts_clause(witness);
+}
