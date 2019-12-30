@@ -95,6 +95,14 @@ Use \"-\" for an output file to write it to standard output."
         flags.memory_usage_breakdown,
     );
     // TODO check these before parsing the whole file
+    if parser.is_pr() {
+        if flags.lrat_filename.is_some() || flags.grat_filename.is_some() {
+            die!("error: LRAT or GRAT generation is not yet supported for PR")
+        }
+        if flags.pivot_is_first_literal {
+            die!("error: --pivot-is-first-literal is not yet supported for PR")
+        }
+    }
     if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
         die!("LRAT or GRAT generation is not yet supported for PR")
     }
@@ -559,15 +567,11 @@ impl Checker {
             }
         }
         checker.rejection.witness = Some(Vector::new());
-        checker.rejection.proof_format = match checker.redundancy_property {
-            RedundancyProperty::RAT => {
-                if checker.flags.pivot_is_first_literal {
-                    "DRAT-pivot-is-first-literal"
-                } else {
-                    "DRAT-arbitrary-pivot"
-                }
-            }
-            RedundancyProperty::PR => "PR",
+        // If PR fails, we overwrite this.
+        checker.rejection.proof_format = if checker.flags.pivot_is_first_literal {
+            "DRAT-pivot-is-first-literal"
+        } else {
+            "DRAT-arbitrary-pivot"
         }
         .to_string();
         checker
@@ -1122,6 +1126,7 @@ fn pr(checker: &mut Checker) -> bool {
                         extract_dependencies(checker, trail_length, None);
                     } else {
                         extract_natural_model(checker, trail_length);
+                        checker.rejection.proof_format = "PR".to_string();
                         let failing_clause = Vector::from_iter(
                             checker
                                 .clause(clause)

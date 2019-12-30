@@ -7,7 +7,7 @@ use crate::{
     clausedatabase::ClauseStorage,
     literal::Literal,
     memory::{Array, HeapSpace, Vector},
-    parser::{proof_format_by_extension, run_parser, HashTable, Parser},
+    parser::{run_parser, HashTable, Parser},
     puts, requires,
 };
 use serde_derive::{Deserialize, Serialize};
@@ -73,14 +73,12 @@ fn check_incorrectness_certificate_aux(
     sick: Sick,
     verbose: bool,
 ) -> Result<(), String> {
-    let proof_file_redundancy_property = proof_format_by_extension(proof_filename);
     let redundancy_property = match sick.proof_format.as_ref() {
         "DRAT-arbitrary-pivot" => RedundancyProperty::RAT,
         "DRAT-pivot-is-first-literal" => RedundancyProperty::RAT,
         "PR" => RedundancyProperty::PR,
         format => return Err(format!("Unsupported proof format: {}", format)),
     };
-    invariant!(redundancy_property == proof_file_redundancy_property);
     let mut clause_ids = HashTable::new();
     let mut parser = Parser::default();
     parser.max_proof_steps = sick.proof_step;
