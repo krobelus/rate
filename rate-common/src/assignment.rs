@@ -136,10 +136,7 @@ impl Display for Assignment {
 
 impl Index<Literal> for Assignment {
     type Output = bool;
-    /// This assumes that we don't ever pass a constant literal, however this
-    /// can be changed if necessary.
     fn index(&self, literal: Literal) -> &bool {
-        requires!(self.mapping[Literal::TOP] && !self.mapping[Literal::BOTTOM]);
         &self.mapping[literal]
     }
 }
