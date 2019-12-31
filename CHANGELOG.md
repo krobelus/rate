@@ -11,6 +11,7 @@
 - Make --lemmas print the optimized proof instead of simply all core
   lemmas (just like drat-trim); this makes the output a core also for
   non-monotonic proof formats RAT and PR.
+- Remove metric "skipped tautologies".
 
 # 0.2.3 (2019-10-09)
 

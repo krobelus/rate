@@ -112,7 +112,6 @@ This checks every single lemma at the expense of performance."))
     let result = run(&mut checker);
     print_key_value("premise clauses", checker.premise_length);
     print_key_value("proof steps", checker.proof.len());
-    print_key_value("skipped tautologies", checker.satisfied_count);
     print_key_value("RUP introductions", checker.rup_introductions);
     print_key_value("RAT introductions", checker.rat_introductions);
     if checker.redundancy_property == RedundancyProperty::PR {
@@ -428,9 +427,6 @@ pub struct Checker {
     reason_deletions: usize,
     /// Number of unique reason deletions that were applied.
     reason_deletions_shrinking_trail: usize,
-    /// Number of clauses that were already satisfied in the forward pass,
-    /// so with `--skip-unit-deletions` we do not add them to the watchlists.
-    satisfied_count: usize,
 }
 
 bitfield! {
@@ -559,7 +555,6 @@ impl Checker {
             skipped_deletions: 0,
             reason_deletions: 0,
             reason_deletions_shrinking_trail: 0,
-            satisfied_count: 0,
         };
         if lrat {
             for clause in Clause::range(0, checker.lemma) {
@@ -1756,9 +1751,7 @@ fn add_clause(checker: &mut Checker, clause: Clause) -> MaybeConflict {
     } else {
         false
     };
-    if already_satisfied {
-        checker.satisfied_count += 1;
-    } else if watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
+    if !already_satisfied && watches_add(checker, Stage::Preprocessing, clause) == CONFLICT {
         return CONFLICT;
     }
     propagate(checker)
