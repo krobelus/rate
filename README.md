@@ -175,4 +175,3 @@ Some possible improvements:
 - compute other features about clausal proofs (e.g. the lifespan of clauses)
 - speed up handling of reason clause deletions that do not shrink the trail
 - speed up RAT checks by caching resolution candidates
-- improve compile times
