@@ -118,7 +118,9 @@ This checks every single lemma at the expense of performance."))
         print_key_value("PR introductions", checker.pr_introductions);
     }
     print_key_value("deletions", checker.deletions);
-    print_key_value("skipped deletions", checker.skipped_deletions);
+    if checker.flags.skip_unit_deletions {
+        print_key_value("skipped deletions", checker.skipped_deletions);
+    }
     print_key_value("reason deletions", checker.reason_deletions);
     print_key_value(
         "reason deletions shrinking trail",
