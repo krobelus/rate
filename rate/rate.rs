@@ -250,7 +250,7 @@ impl Flags {
             if lrat {
                 incompatible_options("--forward --lrat");
             }
-            // TODO
+            // TODO we should support this
             if sick_filename.is_some() {
                 incompatible_options("--forward --sick");
             }
@@ -258,7 +258,7 @@ impl Flags {
         if lrat && noncore_rat_candidates {
             incompatible_options("--lrat --noncore-rat-candidates");
         }
-        // TODO
+        // TODO hard fail here?
         if skip_unit_deletions && sick_filename.is_some() {
             as_warning!(comment!(
                 "--sick can produce an incorrect SICK witness when used along --skip-unit-deletions."

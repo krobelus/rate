@@ -8,8 +8,6 @@ repository = "https://github.com/krobelus/rate"
 license = "MIT"
 readme = "README.md"
 
-# TODO rename
-
 [[bin]]
 name = "apply-proof"
 path = "apply-proof.rs"
