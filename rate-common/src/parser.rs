@@ -255,8 +255,8 @@ pub fn run_parser(
     )
     .unwrap_or_else(|err| die!("failed to parse proof: {}", err));
     // TODO these two should be (nightly) shrink_to(len() + 1), see rate::close_proof.
-    // parser.clause_db.shrink_to_fit();
-    // parser.witness_db.shrink_to_fit();
+    parser.clause_db.shrink_to_fit();
+    parser.witness_db.shrink_to_fit();
     parser.clause_pivot.shrink_to_fit();
     parser.proof.shrink_to_fit();
 }

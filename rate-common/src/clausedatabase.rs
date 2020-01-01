@@ -228,8 +228,13 @@ impl ClauseDatabase {
     }
     /// See [`Vec::shrink_to_fit()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.shrink_to_fit).
     pub fn shrink_to_fit(&mut self) {
+        // TODO: Should be (nightly) shrink_to(len() + 1), see rate::close_proof.
+        self.data.push(Literal::new(0));
         self.data.shrink_to_fit();
+        self.data.pop();
+        self.offset.push(0);
         self.offset.shrink_to_fit();
+        self.offset.pop();
     }
     /// Expected memory usage.
     #[allow(dead_code)]
@@ -333,8 +338,13 @@ impl WitnessDatabase {
     }
     /// See [`Vec::shrink_to_fit()`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.shrink_to_fit).
     pub fn shrink_to_fit(&mut self) {
+        // TODO: Should be (nightly) shrink_to(len() + 1), see rate::close_proof.
+        self.data.push(Literal::new(0));
         self.data.shrink_to_fit();
+        self.data.pop();
+        self.offset.push(0);
         self.offset.shrink_to_fit();
+        self.offset.pop();
     }
 }
 
