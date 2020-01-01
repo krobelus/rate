@@ -9,7 +9,7 @@ This is a proof checker that can verify proofs produced by a
 solver.  It supports proofs in the
 [DRAT](http://www.cs.cmu.edu/~mheule/publications/drat-trim.pdf)
 or [DPR](http://www.cs.cmu.edu/~mheule/publications/spr.pdf)
-format; `rate` is very similar to
+format. as such `rate` is very similar to
 [`drat-trim`](https://github.com/marijnheule/drat-trim),
 [`dpr-trim`](https://www.cs.utexas.edu/~marijn/pr/) or
 [`gratgen`](http://www21.in.tum.de/~lammich/grat/). The notable
@@ -69,13 +69,14 @@ Whenever the proof is accepted, this will exit with code 0 after printing
 
 ## SICK certificates
 
-If `rate` rejects a proof, it outputs and checks a certificate
-of incorrectness that tells you which proof step failed and why..
-The certificate can also be checked again with the `sick-check` binary
-which is much faster than a full proof checker (install `sick-check`
-using `cargo install rate-sick-check` for a stable version, or `cargo
-install --path rate-sick-check` to install from a local checkout). These
-certificates are useful to protect against bugs in the checker code.
+If `rate` rejects a proof, it checks a certificate of incorrectness that
+contains information on which proof step failed and why.  The certificate
+can be written to a file with the `-S` option and checked separately with
+the `sick-check` binary which is much faster than a full proof checker
+(install `sick-check` using `cargo install rate-sick-check` for a stable
+version, or `cargo install --path rate-sick-check` to install from a
+local checkout). These certificates are useful to protect against bugs
+in the checker code.
 
 ## Other utilities
 
@@ -106,9 +107,9 @@ deletions.  This will make the proof valid for every checker.  Look for
 `reason deletions shrinking trail` in the output of `rate`; this is the
 number of deletions in the proof that delete information - it should
 probably be zero, unless you are using certain advanced inprocessing
-techniques.  Example patches that avoid these deletions: Minisat
+techniques.  Example patches that avoid these deletions: MiniSat
 ([1](https://github.com/krobelus/minisat/commit/keep-locked-clauses) or
-[2](https://github.com/krobelus/minisat/commit/add-unit-before-deleting-locked-clause)),
+[2](https://github.com/krobelus/minisat/commit/add-unit-before-deleting-locked-clause))
 and `MapleLCMDistChronoBT`
 ([1](https://github.com/krobelus/MapleLCMDistChronoBT/commit/keep-locked-clauses)
 or
@@ -175,9 +176,8 @@ Find some background information and a performance evaluation in my [thesis].
 
 [thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
-The source code includes an abundance of doc comments. Use
-this command to turn them into internal documentation at
-`target/doc/{rate*,sick_check,apply_proof,bdrat2drat,drat2bdrat}/index.html`.
+The source code includes an abundance of doc comments. Use this command
+to turn them into internal documentation at `target/doc/rate*/index.html`.
 ```sh
 $ cargo doc --document-private-items --no-deps
 ```
