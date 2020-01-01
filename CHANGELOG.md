@@ -1,6 +1,6 @@
 # Unreleased
-- Fix PR check giving false positives given empty witnesses.
-- Fix PR check giving false positives due to not adding clauses to the
+- Fix PR check false positives given empty witnesses.
+- Fix PR check false positives due to not adding clauses to the
   core (except for the root conflict).
 - Fix PR checking with flag -d/--skip-unit-deletions.
 - Incorrectness certificates are now always checked internally when a

@@ -151,7 +151,8 @@ cargo test && ./test.py
 
 You can also selectively run tests, for example use `./test.py -k default
 benchmarks/crafted benchmarks/sadical/add4.cnf` to only run test functions
-matching `default` on the crafted benchmarks and on `add4.{cnf,dpr}`.
+matching `default` on the crafted benchmarks and on `add4.{cnf,dpr}`. See
+`./test.py -h` for more options.
 
 Above tests require
 - `python3` (version 3.6 or above)
