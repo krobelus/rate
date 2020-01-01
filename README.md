@@ -21,8 +21,8 @@ by default.
 - check DRAT proofs (default) and DPR proofs (file extension`.pr` or `.dpr`)
 - competitive performance (faster than `drat-trim` and `dpr-trim`, almost as
   fast as `gratgen`)
-- output core lemmas as DIMACS, LRAT or GRAT after verifying a proof
-- check and output SICK certificate of incorrectness after rejecting a proof
+- output a trimmed proof as DRAT, DPR, LRAT or GRAT after verifying a proof
+- check and output a SICK certificate of incorrectness after rejecting a proof
 - optionally ignore unit deletions for compatibility with `drat-trim`
   (flag `--skip-unit-deletions`)
 - transparently read compressed input files (Gzip, Zstandard, Bzip2, XZ, LZ4)
@@ -75,32 +75,55 @@ The certificate can also be checked again with the `sick-check` binary
 which is much faster than a full proof checker (install `sick-check`
 using `cargo install rate-sick-check` for a stable version, or `cargo
 install --path rate-sick-check` to install from a local checkout). These
-certificates are useful to protect against bugs checker code.
+certificates are useful to protect against bugs in the checker code.
 
 ## Other utilities
 
-Crate `rate-proof-utils` (install analoguosly to `rate` or
-`rate-sick-check`) contains several binaries that can be useful when
-working with clausal proofs:
+Install the crate `rate-proof-utils` (just like `rate` or
+`rate-sick-check`) for some binaries that can be useful when working
+with clausal proofs:
 
 - `drat2bdrat` and `bdrat2drat` convert a DRAT proof to the [Binary DRAT Format]
-  and vice versa.
+  and vice versa. Also works for DPR proofs.
 - `apply-proof` applies a proof up to a given proof step, and outputs the
   accumulated formula as well as the rest of the proof. This can be very
   useful for delta-debugging a tool that works with proofs.
 
 [Binary DRAT Format]: <https://github.com/marijnheule/drat-trim#binary-drat-format>
 
+# Unexpected rejections
+
+If you are using a solver based on
+[MiniSat](https://github.com/niklasso/minisat), then your proof might
+be rejected by `rate` while it is accepted by other checkers, like
+`drat-trim`. This is because the proof can contain some clause deletions
+that are ignored by other checkers. There are two options:
+
+1. Use `rate --skip-unit-deletions` to make it behave like other checkers.
+
+2. Alternatively, you can patch your solver to not generate those extra
+deletions.  This will make the proof valid for every checker.  Look for
+`reason deletions shrinking trail` in the output of `rate`; this is the
+number of deletions in the proof that delete information - it should
+probably be zero, unless you are using certain advanced inprocessing
+techniques.  Example patches that avoid these deletions: Minisat
+([1](https://github.com/krobelus/minisat/commit/keep-locked-clauses) or
+[2](https://github.com/krobelus/minisat/commit/add-unit-before-deleting-locked-clause)),
+and `MapleLCMDistChronoBT`
+([1](https://github.com/krobelus/MapleLCMDistChronoBT/commit/keep-locked-clauses)
+or
+[2](https://github.com/krobelus/MapleLCMDistChronoBT/commit/add-unit-before-deleting-locked-clause)).
+
 # Caveats
 
-Please note that `rate` accepts proof that are technically not fully correct.
-Just like other checkers, we perform some transformations on the proof before
-actually verifying the proofs steps.  This is done to improve performance.
-Some transformations on the proof ignore some clauses in the formula and some
-instructions in the proof. These are effectively removed from the formula
-or proof.  This means that `rate` might accept a proof that contains lemmas
-that are not correct inferences, but this should never happen for satisfiable
-formulas.
+Please note that `rate` accepts proofs that are technically not fully
+correct.  Just like other checkers, we perform some transformations
+on the proof before actually verifying the proofs steps.  This is done
+to improve performance.  These transformations can ignore unnecessary
+clauses or proof steps.  These are effectively removed from the formula
+or proof, respectively.  This means that `rate` might accept a proof
+that contains lemmas that are not valid inferences, but this should
+never happen for satisfiable formulas.
 
 Here are the transformations we do:
 - If `--skip-unit-deletions` is specified, then deletions of clauses that
@@ -138,8 +161,8 @@ Above tests require
     DRAT and LRAT proofs from PR proofs.
   - `gratchk` to validate produced GRAT proofs.
   - If any of `drat-trim`, `rupee`, or `gratgen` are executable they will be
-    run on the benchmarks and their results will be compared to the output of
-    `rate` in the appropriate compatibility mode.
+    run on the benchmarks and their verdicts will be compared to the output of
+    `rate`.
 
 You can use the [docker
 image](https://cloud.docker.com/repository/docker/krobelus/rate-test-environment)
