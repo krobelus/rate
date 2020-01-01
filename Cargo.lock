@@ -316,18 +316,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "rate"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "bitfield 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-common 0.2.3",
- "rate-macros 0.2.3",
+ "rate-common 0.3.0",
+ "rate-macros 0.3.0",
  "scopeguard 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "rate-common"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "bzip2 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -335,7 +335,7 @@ dependencies = [
  "flate2 1.0.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
  "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-macros 0.2.3",
+ "rate-macros 0.3.0",
  "scopeguard 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "rate-macros"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "proc-macro2 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -356,18 +356,18 @@ dependencies = [
 
 [[package]]
 name = "rate-proof-utils"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-common 0.2.3",
+ "rate-common 0.3.0",
 ]
 
 [[package]]
 name = "rate-sick-check"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rate-common 0.2.3",
+ "rate-common 0.3.0",
  "toml 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

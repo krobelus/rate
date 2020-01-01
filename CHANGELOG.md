@@ -1,4 +1,4 @@
-# Unreleased
+# 0.3.0 (2020-01-01)
 - Fix PR check false positives given empty witnesses.
 - Fix PR check false positives due to not adding clauses to the
   core (except for the root conflict).

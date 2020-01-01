@@ -1,6 +1,6 @@
 [package]
 name = "rate-common"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["Johannes Altmanninger <aclopte@gmail.com>"]
 edition = "2018"
 description = "Internal modules for rate"
@@ -9,7 +9,7 @@ license = "MIT"
 readme = "README.md"
 
 [dependencies]
-rate-macros = { path = "../rate-macros", version = "0.2.3" }
+rate-macros = { path = "../rate-macros", version = "0.3.0" }
 atty = "0.2"
 bzip2 = "0.3"
 derive_more = "0.99"
