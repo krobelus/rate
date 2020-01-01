@@ -15,8 +15,7 @@ use rate_common::{
     memory::{format_memory_usage, Array, BoundedVector, HeapSpace, Offset, StackMapping, Vector},
     output::{install_signal_handler, unreachable},
     output::{print_key_value, print_solution, Timer},
-    parser::parse_files,
-    parser::{open_file_for_writing, Parser},
+    parser::{open_file_for_writing, parse_files, proof_format_by_extension, Parser},
     puts, requires,
     sick::{check_incorrectness_certificate, Sick, Witness},
 };
@@ -96,15 +95,6 @@ This checks every single lemma, so it's more costly."))
         &flags.proof_filename,
         flags.memory_usage_breakdown,
     );
-    // TODO check these before parsing the whole file
-    if parser.is_pr() {
-        if flags.lrat_filename.is_some() || flags.grat_filename.is_some() {
-            die!("error: LRAT or GRAT generation is not yet supported for PR")
-        }
-        if flags.pivot_is_first_literal {
-            die!("error: --pivot-is-first-literal is not yet supported for PR")
-        }
-    }
     if parser.is_pr() && (flags.lrat_filename.is_some() || flags.grat_filename.is_some()) {
         die!("LRAT or GRAT generation is not yet supported for PR")
     }
@@ -215,6 +205,18 @@ impl Flags {
         let lemmas = matches.is_present("LEMMAS_FILE");
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
+        let proof_filename = matches.value_of("PROOF").unwrap().to_string();
+        let lrat_filename = matches.value_of("LRAT_FILE").map(String::from);
+        let grat_filename = matches.value_of("GRAT_FILE").map(String::from);
+        let redundancy_property = proof_format_by_extension(&proof_filename);
+        if redundancy_property == RedundancyProperty::PR {
+            if lrat_filename.is_some() || grat_filename.is_some() {
+                die!("error: LRAT or GRAT generation is not yet supported for PR")
+            }
+            if pivot_is_first_literal {
+                die!("error: --pivot-is-first-literal is not supported for PR")
+            }
+        }
         if drat_trim {
             as_warning!(comment!(
                 "option --drat-trim is deprecated, use --skip-unit-deletions instead"
@@ -279,7 +281,6 @@ impl Flags {
         if drat_trim && noncore_rat_candidates {
             incompatible_options("--drat-trim --noncore-rat-candidates");
         }
-        let proof_filename = matches.value_of("PROOF").unwrap().to_string();
         Flags {
             skip_unit_deletions: drat_trim || skip_unit_deletions,
             noncore_rat_candidates: rupee || forward || noncore_rat_candidates,
@@ -290,8 +291,8 @@ impl Flags {
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
             proof_filename,
             lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
-            lrat_filename: matches.value_of("LRAT_FILE").map(String::from),
-            grat_filename: matches.value_of("GRAT_FILE").map(String::from),
+            lrat_filename,
+            grat_filename,
             sick_filename,
         }
     }
