@@ -4,21 +4,21 @@
 [![CircleCI branch](https://img.shields.io/circleci/project/github/krobelus/rate/master.svg)](https://circleci.com/gh/krobelus/rate/tree/master)
 ![](https://img.shields.io/crates/l/rate.svg)
 
-This is a proof checker that can verify proofs produced by a
-[SAT](https://en.wikipedia.org/wiki/Boolean_satisfiability_problem)
-solver.  It supports proofs in the
-[DRAT](http://www.cs.cmu.edu/~mheule/publications/drat-trim.pdf)
-or [DPR](http://www.cs.cmu.edu/~mheule/publications/spr.pdf)
-format. as such `rate` is very similar to
+This is a proof checker that can verify proofs for [SAT
+instances](https://en.wikipedia.org/wiki/Boolean_satisfiability_problem),
+just like fellow checkers
 [`drat-trim`](https://github.com/marijnheule/drat-trim),
-[`dpr-trim`](https://www.cs.utexas.edu/~marijn/pr/) or
-[`gratgen`](http://www21.in.tum.de/~lammich/grat/). The notable
+[`dpr-trim`](https://github.com/marijnheule/dpr-trim) or
+[`gratgen`](http://www21.in.tum.de/~lammich/grat/).  The notable
 difference is that `rate` does not [ignore deletions of unit
 clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details)
 by default.
 
 # Features
-- check DRAT proofs (default) and DPR proofs (file extension`.pr` or `.dpr`)
+- check [DRAT](http://www.cs.cmu.edu/~mheule/publications/drat-trim.pdf)
+  proofs (default) and
+  [DPR](http://www.cs.cmu.edu/~mheule/publications/spr.pdf) proofs (file
+  extension`.pr` or `.dpr`)
 - competitive performance (faster than `drat-trim` and `dpr-trim`, almost as
   fast as `gratgen`)
 - output a trimmed proof as DRAT, DPR, LRAT or GRAT after verifying a proof
