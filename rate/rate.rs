@@ -188,6 +188,10 @@ pub struct Flags {
     pub grat_filename: Option<String>,
     /// Present when we want to write a SICK certificate
     pub sick_filename: Option<String>,
+    /// Whether we are computing an "optimized proof", which deletes
+    /// clauses as early as possible and only includes a minimal set
+    /// of lemmas.
+    need_optimized_proof: bool,
 }
 
 impl Flags {
@@ -205,9 +209,12 @@ impl Flags {
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
+        let lemmas_filename = matches.value_of("LEMMAS_FILE").map(String::from);
         let lrat_filename = matches.value_of("LRAT_FILE").map(String::from);
         let grat_filename = matches.value_of("GRAT_FILE").map(String::from);
         let redundancy_property = proof_format_by_extension(&proof_filename);
+        let need_optimized_proof =
+            (lemmas_filename.is_some() || lrat_filename.is_some()) && !forward;
         if redundancy_property == RedundancyProperty::PR {
             if lrat_filename.is_some() || grat_filename.is_some() {
                 die!("error: LRAT or GRAT generation is not yet supported for PR")
@@ -279,18 +286,12 @@ impl Flags {
             verbose: matches.is_present("v"),
             formula_filename: matches.value_of("INPUT").unwrap().to_string(),
             proof_filename,
-            lemmas_filename: matches.value_of("LEMMAS_FILE").map(String::from),
+            lemmas_filename,
             lrat_filename,
             grat_filename,
             sick_filename,
+            need_optimized_proof,
         }
-    }
-
-    /// Whether we are computing an "optimized proof". Which deletes
-    /// clauses as early as possible and only includes a minimal set
-    /// of lemmas.
-    fn need_optimized_proof(&self) -> bool {
-        (self.lemmas_filename.is_some() || self.lrat_filename.is_some()) && !self.forward
     }
 }
 
@@ -465,7 +466,7 @@ impl Checker {
         let assignment = Assignment::new(maxvar);
         let lrat = flags.lrat_filename.is_some();
         let grat = flags.grat_filename.is_some();
-        let optimized_proof = flags.need_optimized_proof();
+        let need_optimized_proof = flags.need_optimized_proof;
         let mut checker = Checker {
             processed: assignment.len(),
             assignment,
@@ -507,7 +508,7 @@ impl Checker {
             } else {
                 StackMapping::default()
             },
-            optimized_proof: if optimized_proof {
+            optimized_proof: if need_optimized_proof {
                 BoundedVector::with_capacity(2 * num_lemmas + num_clauses)
             } else {
                 BoundedVector::default()
@@ -786,7 +787,7 @@ const NO_CONFLICT: MaybeConflict = MaybeConflict(false);
 /// Add the clause to the core (schedule it for verification).
 fn add_to_core(checker: &mut Checker, clause: Clause) {
     if checker.soft_propagation && !checker.fields(clause).is_in_core() {
-        if checker.flags.need_optimized_proof() {
+        if checker.flags.need_optimized_proof {
             checker.optimized_proof.push(ProofStep::deletion(clause));
         }
         if checker.flags.grat_filename.is_some() {
@@ -1789,7 +1790,7 @@ fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
     checker.grat_pending.truncate(grat_pending_length);
     write_dependencies_for_lrat(checker, empty_clause, false);
     add_to_core(checker, empty_clause);
-    if checker.flags.need_optimized_proof() {
+    if checker.flags.need_optimized_proof {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
     if checker.flags.forward
@@ -1893,7 +1894,7 @@ fn verify(checker: &mut Checker) -> bool {
         if !accepted {
             return false;
         }
-        if checker.flags.need_optimized_proof() {
+        if checker.flags.need_optimized_proof {
             checker.optimized_proof.push(proof_step)
         }
     }
