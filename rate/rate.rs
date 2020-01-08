@@ -2017,10 +2017,12 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
     for proof_step in proof_steps {
         let clause = proof_step.clause();
         if proof_step.is_deletion() {
-            if clause != Clause::DOES_NOT_EXIST {
-                write!(&mut file, "d ")?;
-                write_clause(&mut file, checker.clause(clause).iter())?;
+            if checker.flags.forward && clause == Clause::DOES_NOT_EXIST {
+                continue;
             }
+            invariant!(clause != Clause::DOES_NOT_EXIST);
+            write!(&mut file, "d ")?;
+            write_clause(&mut file, checker.clause(clause).iter())?;
         } else {
             if checker.redundancy_property != RedundancyProperty::PR {
                 write_clause(&mut file, checker.clause(clause).iter())?;
@@ -2322,6 +2324,9 @@ fn write_lrat_deletion(
     clause_deleted: &mut Array<Clause, bool>,
     clause: Clause,
 ) -> io::Result<()> {
+    if checker.flags.forward && clause == Clause::DOES_NOT_EXIST {
+        return Ok(());
+    }
     invariant!(clause != Clause::DOES_NOT_EXIST);
     invariant!(clause != Clause::UNINITIALIZED);
     invariant!(
