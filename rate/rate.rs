@@ -202,7 +202,6 @@ impl Flags {
         let forward = matches.is_present("FORWARD");
         let no_terminating_empty_clause = matches.is_present("NO_TERMINATING_EMPTY_CLAUSE");
         let lrat = matches.is_present("LRAT_FILE");
-        let lemmas = matches.is_present("LEMMAS_FILE");
         let grat = matches.is_present("GRAT_FILE");
         let mut sick_filename = matches.value_of("SICK_FILE").map(String::from);
         let proof_filename = matches.value_of("PROOF").unwrap().to_string();
@@ -243,9 +242,6 @@ impl Flags {
         if forward {
             if grat {
                 incompatible_options("--forward --grat");
-            }
-            if lemmas {
-                incompatible_options("--forward --lemmas");
             }
             if lrat {
                 incompatible_options("--forward --lrat");
@@ -297,7 +293,7 @@ impl Flags {
     /// clauses as early as possible and only includes a minimal set
     /// of lemmas.
     fn need_optimized_proof(&self) -> bool {
-        self.lemmas_filename.is_some() || self.lrat_filename.is_some()
+        (self.lemmas_filename.is_some() || self.lrat_filename.is_some()) && !self.forward
     }
 }
 
@@ -685,6 +681,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
             }
             if add_lemma(checker, clause) == CONFLICT {
                 close_proof_after_steps(checker, i + 1);
+                checker.lemma = Clause::from_usize(checker.premise_length);
                 return Verdict::Verified;
             }
             checker.lemma += 1;
@@ -2008,12 +2005,18 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
             writeln!(&mut file, "")?;
         }
     }
-    for i in (0..checker.optimized_proof.len()).rev() {
-        let proof_step = checker.optimized_proof[i];
+    let proof_steps: Box<dyn Iterator<Item = &ProofStep>> = if checker.flags.forward {
+        Box::new(checker.proof.iter())
+    } else {
+        Box::new(checker.optimized_proof.iter().rev())
+    };
+    for proof_step in proof_steps {
         let clause = proof_step.clause();
         if proof_step.is_deletion() {
-            write!(&mut file, "d ")?;
-            write_clause(&mut file, checker.clause(clause).iter())?;
+            if clause != Clause::DOES_NOT_EXIST {
+                write!(&mut file, "d ")?;
+                write_clause(&mut file, checker.clause(clause).iter())?;
+            }
         } else {
             if checker.redundancy_property != RedundancyProperty::PR {
                 write_clause(&mut file, checker.clause(clause).iter())?;

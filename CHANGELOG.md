@@ -1,6 +1,7 @@
 # Unreleased
 
 - Enable incorrectness certificates in forward mode.
+- Enable -L/--lemmas output in forward mode.
 
 # 0.3.0 (2020-01-01)
 

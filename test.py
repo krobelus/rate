@@ -212,8 +212,7 @@ def double_check(drat_checker,
         log()
         name = cnf[:-len('.cnf')] if cnf.endswith('.cnf') else cnf
         pr = proof.endswith('.dpr') or proof.endswith('.pr')
-        pr2drat = pr and executable(
-            'pr2drat') and not forward and not noncore_rat_candidates
+        pr2drat = pr and executable('pr2drat') and not noncore_rat_candidates
         args = [cnf]
         args += [proof]
         if pr:
@@ -237,6 +236,7 @@ def double_check(drat_checker,
                     f.write(stdout)
                 # drat_checker is rate with some flags, use it to convert
                 # the output of pr2drat to LRAT
+                if forward: continue
                 stdout, stderr = process_expansion(
                     drat_checker + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
                 require(not stderr, 'rate stderr should be empty')
