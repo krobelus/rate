@@ -146,7 +146,7 @@ This checks every single lemma, so it's more costly."))
     } else {
         "NOT VERIFIED"
     });
-    if result != Verdict::Verified && !checker.flags.forward && !checker.flags.skip_unit_deletions {
+    if result != Verdict::Verified && !checker.flags.skip_unit_deletions {
         write_sick_witness(&checker)
             .unwrap_or_else(|err| die!("Failed to write SICK incorrectness witness: {}", err));
         if check_incorrectness_certificate(
@@ -249,10 +249,6 @@ impl Flags {
             }
             if lrat {
                 incompatible_options("--forward --lrat");
-            }
-            // TODO we should support this
-            if sick_filename.is_some() {
-                incompatible_options("--forward --sick");
             }
         }
         if lrat && noncore_rat_candidates {
