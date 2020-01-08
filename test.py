@@ -236,7 +236,6 @@ def double_check(drat_checker,
                     f.write(stdout)
                 # drat_checker is rate with some flags, use it to convert
                 # the output of pr2drat to LRAT
-                if forward: continue
                 stdout, stderr = process_expansion(
                     drat_checker + [cnf, f'{name}.core.drat', '-L', f'{name}.core.lrat'])
                 require(not stderr, 'rate stderr should be empty')

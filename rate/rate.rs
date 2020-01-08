@@ -243,9 +243,6 @@ impl Flags {
             if grat {
                 incompatible_options("--forward --grat");
             }
-            if lrat {
-                incompatible_options("--forward --lrat");
-            }
         }
         if lrat && noncore_rat_candidates {
             incompatible_options("--lrat --noncore-rat-candidates");
@@ -679,6 +676,7 @@ fn forward_check(checker: &mut Checker) -> Verdict {
             if !check_inference(checker, i) {
                 return Verdict::IncorrectLemma;
             }
+            checker.dependencies.clear();
             if add_lemma(checker, clause) == CONFLICT {
                 close_proof_after_steps(checker, i + 1);
                 checker.lemma = Clause::from_usize(checker.premise_length);
@@ -1794,6 +1792,12 @@ fn close_proof(checker: &mut Checker, last_added_clause: Clause) {
     if checker.flags.need_optimized_proof() {
         checker.optimized_proof.push(ProofStep::lemma(empty_clause));
     }
+    if checker.flags.forward
+        && (checker.flags.lemmas_filename.is_some() || checker.flags.lrat_filename.is_some())
+    {
+        checker.proof.truncate(checker.proof_steps_until_conflict);
+        checker.proof.push(ProofStep::lemma(empty_clause));
+    }
     if checker.flags.grat_filename.is_some() {
         if checker.clause(last_added_clause).is_empty() {
             add_to_core(checker, last_added_clause);
@@ -2203,7 +2207,13 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
         Some(filename) => open_file_for_writing(filename, &stdout),
         None => return Ok(()),
     };
-    let num_clauses = checker.optimized_proof.first().clause().as_offset() + 1;
+    let num_clauses = if checker.flags.forward {
+        checker.proof[checker.proof_steps_until_conflict]
+            .clause()
+            .as_offset()
+    } else {
+        checker.optimized_proof.first().clause().as_offset() + 1
+    };
     let mut clause_deleted = Array::new(false, num_clauses);
     let empty_clause_as_premise =
         Clause::range(0, checker.lemma).any(|clause| checker.clause(clause).is_empty());
@@ -2226,8 +2236,17 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
             write_lrat_deletion(checker, &mut file, &mut clause_deleted, clause)?;
         }
     }
-    for i in (0..checker.optimized_proof.len()).rev() {
-        let proof_step = checker.optimized_proof[i];
+    let proof_steps: Box<dyn Iterator<Item = usize>> = if checker.flags.forward {
+        Box::new((0..checker.proof.len()).into_iter())
+    } else {
+        Box::new((0..checker.optimized_proof.len()).into_iter().rev())
+    };
+    for i in proof_steps {
+        let proof_step = if checker.flags.forward {
+            checker.proof[i]
+        } else {
+            checker.optimized_proof[i]
+        };
         let clause = proof_step.clause();
         match state {
             State::Lemma => {
@@ -2270,7 +2289,7 @@ fn write_lrat_lemma(
     file: &mut impl Write,
     clause: Clause,
 ) -> io::Result<()> {
-    invariant!(checker.fields(clause).is_in_core());
+    invariant!(checker.flags.forward || checker.fields(clause).is_in_core());
     checker.lrat_id += 1;
     checker.clause_lrat_id[clause] = checker.lrat_id;
     write!(file, "{} ", lrat_id(checker, clause))?;
@@ -2307,7 +2326,8 @@ fn write_lrat_deletion(
     invariant!(clause != Clause::UNINITIALIZED);
     invariant!(
         (lrat_id(checker, clause) == Clause::UNINITIALIZED)
-            == (clause >= checker.lemma && !checker.fields(clause).is_in_core())
+            == (clause >= checker.lemma
+                && !(checker.flags.forward || checker.fields(clause).is_in_core()))
     );
     if lrat_id(checker, clause) != Clause::UNINITIALIZED
         && !clause_deleted[clause]
