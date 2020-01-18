@@ -15,6 +15,5 @@ path = "rate.rs"
 [dependencies]
 rate-common = { path = "../rate-common", version = "0.3.0" }
 rate-macros = { path = "../rate-macros", version = "0.3.0" }
-bitfield = "0.13"
 clap = "2.32"
 scopeguard = "1.0"

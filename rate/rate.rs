@@ -1,6 +1,5 @@
 //! Clausal proof checker (DRAT, DPR) for certifying SAT solvers' unsatisfiability results
 
-use bitfield::bitfield;
 use clap::{Arg, ArgMatches};
 use rate_common::{
     as_warning,
@@ -422,23 +421,80 @@ pub struct Checker {
     reason_deletions_shrinking_trail: usize,
 }
 
-bitfield! {
-    /// The data to store for each clause in the metadata field of the
+/// Some flags that we store in a single word for each clause
+struct ClauseFields<'a> {
+    /// Refers to the clauses' metadata field in the
     /// [ClauseDatabase](../clausedatabase/struct.ClauseDatabase.html).
-    pub struct ClauseFields(u32);
-    impl Debug;
+    bits: &'a u32,
+}
+
+impl<'a> ClauseFields<'a> {
+    const CORE: u32 = 1 << 0;
+    const REASON: u32 = 1 << 1;
+    const WATCHED: u32 = 1 << 2;
+    const REVISION: u32 = 1 << 3;
+    const DELETION_IGNORED: u32 = 1 << 4;
+    const IN_CONFLICT_GRAPH: u32 = 1 << 5;
+    fn bit(&self, mask: u32) -> bool {
+        (*self.bits & mask) != 0
+    }
     /// Whether the clause is in the core (scheduled for verification).
-    is_in_core, set_is_in_core: 0;
+    fn is_in_core(&self) -> bool {
+        self.bit(ClauseFields::CORE)
+    }
     /// Whether the clause is a reason in the current trail.
-    is_reason, set_is_reason: 1;
+    fn is_reason(&self) -> bool {
+        self.bit(ClauseFields::REASON)
+    }
     /// Whether the clause is in some watchlist.
-    is_in_watchlist, set_in_watchlist: 2;
+    fn is_in_watchlist(&self) -> bool {
+        self.bit(ClauseFields::WATCHED)
+    }
     /// Whether a deletion of this clause produced a revision.
-    has_revision, set_has_revision: 3;
+    fn has_revision(&self) -> bool {
+        self.bit(ClauseFields::REVISION)
+    }
     /// Whether a deletion of this clause was ignored.
-    deletion_ignored, set_deletion_ignored: 4;
+    fn deletion_ignored(&self) -> bool {
+        self.bit(ClauseFields::DELETION_IGNORED)
+    }
     /// Whether this clause is a reason for the current conflict.
-    in_conflict_graph, set_in_conflict_graph: 5;
+    fn in_conflict_graph(&self) -> bool {
+        self.bit(ClauseFields::IN_CONFLICT_GRAPH)
+    }
+}
+
+/// Mutable version of [ClauseFieldsMut](struct.ClauseFields.html)
+struct ClauseFieldsMut<'a> {
+    bits: &'a mut u32,
+}
+
+impl<'a> ClauseFieldsMut<'a> {
+    fn set_is_in_core(&mut self) {
+        self.set_bit(ClauseFields::CORE, true);
+    }
+    fn set_is_reason(&mut self, value: bool) {
+        self.set_bit(ClauseFields::REASON, value);
+    }
+    fn set_in_watchlist(&mut self, value: bool) {
+        self.set_bit(ClauseFields::WATCHED, value);
+    }
+    fn set_has_revision(&mut self) {
+        self.set_bit(ClauseFields::REVISION, true);
+    }
+    fn set_deletion_ignored(&mut self) {
+        self.set_bit(ClauseFields::DELETION_IGNORED, true);
+    }
+    fn set_in_conflict_graph(&mut self, value: bool) {
+        self.set_bit(ClauseFields::IN_CONFLICT_GRAPH, value);
+    }
+    fn set_bit(&mut self, mask: u32, value: bool) {
+        if value {
+            *self.bits |= mask;
+        } else {
+            *self.bits &= !mask;
+        }
+    }
 }
 
 /// Stores the information that was removed from the trail after a reason deletion
@@ -602,25 +658,29 @@ impl Checker {
         }
     }
     /// Access the metadata for this clause.
-    fn fields(&self, clause: Clause) -> &ClauseFields {
-        unsafe { &*(self.clause_db.fields(clause) as *const u32 as *const ClauseFields) }
+    fn fields(&self, clause: Clause) -> ClauseFields {
+        ClauseFields {
+            bits: self.clause_db.fields(clause),
+        }
     }
     /// Access the mutable metadata for this clause.
-    fn fields_mut(&mut self, clause: Clause) -> &mut ClauseFields {
-        unsafe { &mut *(self.clause_db.fields_mut(clause) as *mut u32 as *mut ClauseFields) }
+    fn fields_mut(&mut self, clause: Clause) -> ClauseFieldsMut {
+        ClauseFieldsMut {
+            bits: self.clause_db.fields_mut(clause),
+        }
     }
     /// Access the metadata for the clause with this offset.
     /// This is possibly more efficient than [`fields()`](#method.fields).
-    fn fields_from_offset(&self, offset: usize) -> &ClauseFields {
-        unsafe {
-            &*(self.clause_db.fields_from_offset(offset) as *const u32 as *const ClauseFields)
+    fn fields_from_offset(&self, offset: usize) -> ClauseFields {
+        ClauseFields {
+            bits: self.clause_db.fields_from_offset(offset),
         }
     }
     /// Access the mutable metadata for the clause with this offset.
     /// This is possibly more efficient than [`fields()`](#method.fields_mut).
-    fn fields_mut_from_offset(&mut self, offset: usize) -> &mut ClauseFields {
-        unsafe {
-            &mut *(self.clause_db.fields_mut_from_offset(offset) as *mut u32 as *mut ClauseFields)
+    fn fields_mut_from_offset(&mut self, offset: usize) -> ClauseFieldsMut {
+        ClauseFieldsMut {
+            bits: self.clause_db.fields_mut_from_offset(offset),
         }
     }
 
@@ -708,7 +768,7 @@ fn forward_delete(checker: &mut Checker, clause: Clause) {
             .count()
             == 1;
         if is_unit {
-            checker.fields_mut(clause).set_deletion_ignored(true);
+            checker.fields_mut(clause).set_deletion_ignored();
             checker.skipped_deletions += 1;
             skipped = true;
         } else {
@@ -794,7 +854,7 @@ fn add_to_core(checker: &mut Checker, clause: Clause) {
             checker.grat_pending_deletions.push(clause);
         }
     }
-    checker.fields_mut(clause).set_is_in_core(true);
+    checker.fields_mut(clause).set_is_in_core();
 }
 
 /// Change the reason flag for some clause.
@@ -2552,7 +2612,7 @@ fn revision_create(checker: &mut Checker, clause: Clause) {
         .unwrap();
     let unit_position = checker.assignment.position_in_trail(unit);
     let unit_reason = checker.assignment.trail_at(unit_position).1;
-    checker.fields_mut(clause).set_has_revision(true);
+    checker.fields_mut(clause).set_has_revision();
     let mut revision = Revision {
         cone: Vector::new(),
         position_in_trail: Vector::new(),
