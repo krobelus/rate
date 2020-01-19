@@ -43,7 +43,6 @@ sed -E -i '/(^version|^rate)/s/version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "'$r
 	eval $script
 ) << EOF
 atty = "0.2"
-bitfield = "0.13"
 bzip2 = "0.3"
 clap = "2.32"
 derive_more = "0.99"
@@ -52,7 +51,6 @@ libc = "0.2"
 lz4 = "1.23"
 proc-macro2 = "1.0"
 quote = "1.0"
-scopeguard = "1.0"
 serde = "1.0"
 serde_derive = "1.0"
 static_assertions = "1.1"

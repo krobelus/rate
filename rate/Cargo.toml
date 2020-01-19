@@ -16,4 +16,3 @@ path = "rate.rs"
 rate-common = { path = "../rate-common", version = "0.3.0" }
 rate-macros = { path = "../rate-macros", version = "0.3.0" }
 clap = "2.32"
-scopeguard = "1.0"
