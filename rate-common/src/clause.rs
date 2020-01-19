@@ -1,7 +1,6 @@
 //! Data structures for the checker
 
 use crate::memory::Offset;
-use derive_more::Add;
 use serde_derive::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::{
@@ -15,7 +14,7 @@ use std::{
 use crate::literal::Literal;
 
 /// An index uniquely identifying a clause or lemma during the lifetime of the program
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Add, Hash, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Default)]
 pub struct Clause {
     pub index: ClauseIdentifierType,
 }
@@ -61,6 +60,13 @@ impl Clause {
 impl Offset for Clause {
     fn as_offset(&self) -> usize {
         self.index as usize
+    }
+}
+
+impl Add<Clause> for Clause {
+    type Output = Clause;
+    fn add(self, value: Clause) -> Clause {
+        Clause::new(self.index + value.index)
     }
 }
 

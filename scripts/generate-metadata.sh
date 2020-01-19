@@ -45,7 +45,6 @@ sed -E -i '/(^version|^rate)/s/version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "'$r
 atty = "0.2"
 bzip2 = "0.3"
 clap = "2.32"
-derive_more = "0.99"
 flate2 = "1.0"
 libc = "0.2"
 lz4 = "1.23"
