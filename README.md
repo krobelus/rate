@@ -12,7 +12,9 @@ just like fellow checkers
 [`gratgen`](http://www21.in.tum.de/~lammich/grat/).  The notable
 difference is that `rate` does not [ignore deletions of unit
 clauses](https://github.com/marijnheule/drat-trim#clause-deletion-details)
-by default.
+by default.  You can cite our [CPP 2020 conference paper] (bibtex record
+[here](https://dblp.uni-trier.de/rec/bibtex/conf/cpp/AltmanningerP20))
+which describes the problem that `rate` tries to solve.
 
 # Features
 - check [DRAT](http://www.cs.cmu.edu/~mheule/publications/drat-trim.pdf)
@@ -32,7 +34,7 @@ by default.
 # Installation
 
 Install [Rust](https://www.rust-lang.org/en-US/install.html).  Recent versions
-of stable Rust are supported (e.g. 1.36 or later).
+of stable Rust are supported (1.36 or later).
 
 ## Stable version
 
@@ -173,8 +175,10 @@ dependencies](scripts/test-environment/).
 
 # Documentation
 
-Find some background information and a performance evaluation in my [thesis].
+Refer to our [CPP 2020 conference paper] or my [thesis] for some
+background information.
 
+[CPP 2020 conference paper]: <https://dl.acm.org/doi/10.1145/3372885.3373821>
 [thesis]: <https://github.com/krobelus/rate-experiments/blob/master/thesis.pdf>
 
 The source code includes an abundance of doc comments. Use this command
