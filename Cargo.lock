@@ -98,7 +98,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "clap"
-version = "2.33.0"
+version = "2.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "ansi_term 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -303,7 +303,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "rate"
 version = "0.3.0"
 dependencies = [
- "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rate-common 0.3.0",
  "rate-macros 0.3.0",
 ]
@@ -339,7 +339,7 @@ dependencies = [
 name = "rate-proof-utils"
 version = "0.3.0"
 dependencies = [
- "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rate-common 0.3.0",
 ]
 
@@ -347,7 +347,7 @@ dependencies = [
 name = "rate-sick-check"
 version = "0.3.0"
 dependencies = [
- "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rate-common 0.3.0",
  "toml 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -595,7 +595,7 @@ dependencies = [
 "checksum cargo_metadata 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "e5d1b4d380e1bab994591a24c2bdd1b054f64b60bef483a8c598c7c345bc3bbe"
 "checksum cc 1.0.48 (registry+https://github.com/rust-lang/crates.io-index)" = "f52a465a666ca3d838ebbf08b241383421412fe7ebb463527bba275526d89f76"
 "checksum cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)" = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
-"checksum clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
+"checksum clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)" = "bdfa80d47f954d53a35a64987ca1422f495b8d6483c0fe9f7117b36c2a792129"
 "checksum crc32fast 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ba125de2af0df55319f41944744ad91c71113bf74a4646efff39afe1f6842db1"
 "checksum error-chain 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3ab49e9dcb602294bc42f9a7dfc9bc6e936fca4418ea300dbfb84fe16de0b7d9"
 "checksum flate2 1.0.13 (registry+https://github.com/rust-lang/crates.io-index)" = "6bd6d6f4752952feb71363cffc9ebac9411b75b87c6ab6058c40c8900cf43c0f"

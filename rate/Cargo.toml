@@ -15,4 +15,4 @@ path = "rate.rs"
 [dependencies]
 rate-common = { path = "../rate-common", version = "0.3.0" }
 rate-macros = { path = "../rate-macros", version = "0.3.0" }
-clap = "2.32"
+clap = "2.33"
