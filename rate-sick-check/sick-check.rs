@@ -2,7 +2,6 @@
 
 use clap::Arg;
 use std::io::Read;
-use toml;
 
 use rate_common::{
     die,
@@ -43,11 +42,15 @@ fn main() -> Result<(), ()> {
         .unwrap_or_else(|err| die!("Failed to read SICK file: {}", err));
     let sick: Sick =
         toml::from_str(&toml_str).unwrap_or_else(|err| die!("Failed to parse SICK file: {}", err));
-    check_incorrectness_certificate(
+    if check_incorrectness_certificate(
         formula_filename,
         proof_filename,
         sick,
         /*verbose=*/ true,
-    )
-    .map(|()| print_solution("VERIFIED"))
+    ) {
+      print_solution("VERIFIED");
+      Ok(())
+    } else {
+      Err(())
+    }
 }

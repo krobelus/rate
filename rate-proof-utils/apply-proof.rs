@@ -62,8 +62,10 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         .unwrap()
         .parse()
         .unwrap_or_else(|err| die!("Line number must be an integer: {}", err));
-    let mut parser = Parser::default();
-    parser.verbose = false;
+    let mut parser = Parser {
+        verbose: false,
+        ..Parser::default()
+    };
     let binary = is_binary_drat(proof_filename);
     let mut clause_ids = HashTable::new();
     run_parser_on_formula(

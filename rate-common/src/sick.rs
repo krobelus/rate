@@ -50,21 +50,21 @@ impl HeapSpace for Witness {
 }
 
 /// Check a SICK certificate and prints an appropriate error message.
-/// Returns Ok(()) if accepted.
+/// Returns true if accepted.
 pub fn check_incorrectness_certificate(
     formula_filename: &str,
     proof_filename: &str,
     sick: Sick,
     verbose: bool,
-) -> Result<(), ()> {
+) -> bool {
     match check_incorrectness_certificate_aux(formula_filename, proof_filename, sick, verbose) {
-        Ok(()) => Ok(()),
+        Ok(()) => true,
         Err(string) => {
             as_error!({
                 puts!("{}\n", &string);
                 puts!("Proof claimed incorrect but validation failed, please report a bug!\n");
             });
-            Err(())
+            false
         }
     }
 }
@@ -84,9 +84,11 @@ fn check_incorrectness_certificate_aux(
         format => return Err(format!("Unsupported proof format: {}", format)),
     };
     let mut clause_ids = HashTable::new();
-    let mut parser = Parser::default();
-    parser.max_proof_steps = sick.proof_step;
-    parser.verbose = verbose;
+    let mut parser = Parser {
+        max_proof_steps: sick.proof_step,
+        verbose,
+        ..Parser::default()
+    };
     run_parser(
         &mut parser,
         formula_filename,

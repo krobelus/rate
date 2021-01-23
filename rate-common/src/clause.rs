@@ -165,7 +165,7 @@ impl Reason {
     /// the given offset.
     pub fn forced(offset: usize) -> Reason {
         Reason(
-            TaggedUSize::new(offset.try_into().unwrap())
+            TaggedUSize::new(offset)
                 .with_bit1()
                 .with_bit2(),
         )

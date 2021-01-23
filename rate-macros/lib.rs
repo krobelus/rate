@@ -4,7 +4,6 @@ extern crate proc_macro;
 extern crate proc_macro2;
 
 use quote::quote;
-use syn;
 
 /// Default implementation of [HeapSpace](../rate_common/memory/trait.HeapSpace.html).
 /// Use by adding `#[derive(HeapSpace)]` to your struct.

@@ -362,7 +362,7 @@ pub fn read_compressed_file(filename: &str, binary: bool) -> Input {
 /// If the file is compressed it is transparently uncompressed.
 fn read_from_compressed_file(file: File, filename: &str) -> Box<dyn Iterator<Item = u8>> {
     let (_basename, compression_format) = compression_format_by_extension(filename);
-    if compression_format == "" {
+    if compression_format.is_empty() {
         return Box::new(BufReader::new(file).bytes().map(panic_on_error));
     }
     match compression_format {
@@ -473,7 +473,7 @@ fn clause_hash(clause: &[Literal]) -> usize {
 
 /// Check if a character is a decimal digit.
 fn is_digit(value: u8) -> bool {
-    value >= b'0' && value <= b'9'
+    (b'0'..=b'9').contains(&value)
 }
 
 /// Check if a character is a decimal digit or a dash.
@@ -712,7 +712,7 @@ pub fn is_binary_drat(filename: &str) -> bool {
 /// Implementation of `is_binary_drat`.
 fn is_binary_drat_impl(buffer: impl Iterator<Item = u8>) -> bool {
     for c in buffer.take(10) {
-        if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && ((c < 48) || (c > 57))
+        if (c != 100) && (c != 10) && (c != 13) && (c != 32) && (c != 45) && !(48..=57).contains(&c)
         {
             return true;
         }

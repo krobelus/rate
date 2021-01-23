@@ -21,7 +21,7 @@ pub fn current_executable() -> String {
                 .file_name()
                 .map(|f| f.to_str().unwrap_or("").to_string())
         })
-        .unwrap_or("".to_string())
+        .unwrap_or_else(|| "".to_string())
 }
 
 /// Unwraps a result, panicking on error.

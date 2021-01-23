@@ -22,7 +22,6 @@ use rate_macros::{self, HeapSpace};
 use std::{
     cmp, fmt,
     io::{self, Write},
-    iter::FromIterator,
     ops::{self, Index},
 };
 
@@ -148,14 +147,12 @@ This checks every single lemma, so it's more costly."))
     if result != Verdict::Verified && !checker.flags.skip_unit_deletions {
         write_sick_witness(&checker)
             .unwrap_or_else(|err| die!("Failed to write SICK incorrectness witness: {}", err));
-        if check_incorrectness_certificate(
+        if !check_incorrectness_certificate(
             &checker.flags.formula_filename,
             &checker.flags.proof_filename,
             checker.rejection,
             /*verbose=*/ false,
-        )
-        .is_err()
-        {
+        ) {
             return 2;
         }
     }
@@ -245,10 +242,8 @@ impl Flags {
                 ));
             }
         }
-        if forward {
-            if grat {
-                incompatible_options("--forward --grat");
-            }
+        if forward && grat {
+            incompatible_options("--forward --grat");
         }
         if lrat && noncore_rat_candidates {
             incompatible_options("--lrat --noncore-rat-candidates");
@@ -1184,13 +1179,12 @@ fn pr(checker: &mut Checker) -> bool {
                     } else {
                         extract_natural_model(checker, trail_length);
                         checker.rejection.proof_format = "PR".to_string();
-                        let failing_clause = Vector::from_iter(
-                            checker
-                                .clause(clause)
-                                .iter()
-                                .filter(|&literal| literal != &Literal::BOTTOM)
-                                .cloned(),
-                        );
+                        let failing_clause = checker
+                            .clause(clause)
+                            .iter()
+                            .filter(|&literal| literal != &Literal::BOTTOM)
+                            .cloned()
+                            .collect();
                         let failing_model = checker
                             .assignment
                             .iter()
@@ -1427,13 +1421,12 @@ fn rat_given_resolution_candidates(
         preserve_assignment!(checker, {
             watch_invariants(checker);
             if rup(checker, resolution_candidate, Some(pivot)) == NO_CONFLICT {
-                let failing_clause = Vector::from_iter(
-                    checker
-                        .clause(resolution_candidate)
-                        .iter()
-                        .filter(|&literal| literal != &Literal::BOTTOM)
-                        .cloned(),
-                );
+                let failing_clause = checker
+                    .clause(resolution_candidate)
+                    .iter()
+                    .filter(|&literal| literal != &Literal::BOTTOM)
+                    .cloned()
+                    .collect();
                 let failing_model = checker
                     .assignment
                     .iter()
@@ -2067,7 +2060,7 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
         if !checker.fields(clause).is_in_core() {
             write!(&mut file, "d ")?;
             write_clause(&mut file, checker.clause(clause).iter())?;
-            writeln!(&mut file, "")?;
+            writeln!(&mut file)?;
         }
     }
     let proof_steps: Box<dyn Iterator<Item = &ProofStep>> = if checker.flags.forward {
@@ -2084,26 +2077,24 @@ fn write_lemmas(checker: &Checker) -> io::Result<()> {
             invariant!(clause != Clause::DOES_NOT_EXIST);
             write!(&mut file, "d ")?;
             write_clause(&mut file, checker.clause(clause).iter())?;
+        } else if checker.redundancy_property != RedundancyProperty::PR {
+            write_clause(&mut file, checker.clause(clause).iter())?;
         } else {
-            if checker.redundancy_property != RedundancyProperty::PR {
-                write_clause(&mut file, checker.clause(clause).iter())?;
-            } else {
-                // The order of literals in the clause may have changed,
-                // but not in the witness. Make sure to print the first
-                // literal in the witness first to maintain the PR format.
-                let witness_head = checker.witness(clause).first().cloned();
-                if let Some(literal) = witness_head {
+            // The order of literals in the clause may have changed,
+            // but not in the witness. Make sure to print the first
+            // literal in the witness first to maintain the PR format.
+            let witness_head = checker.witness(clause).first().cloned();
+            if let Some(literal) = witness_head {
+                write!(file, "{} ", literal)?;
+            }
+            for &literal in checker.clause(clause) {
+                if literal != Literal::BOTTOM && Some(literal) != witness_head {
                     write!(file, "{} ", literal)?;
                 }
-                for &literal in checker.clause(clause) {
-                    if literal != Literal::BOTTOM && Some(literal) != witness_head {
-                        write!(file, "{} ", literal)?;
-                    }
-                }
-                write_clause(&mut file, checker.witness(clause).iter())?;
             }
+            write_clause(&mut file, checker.witness(clause).iter())?;
         }
-        writeln!(&mut file, "")?;
+        writeln!(&mut file)?;
     }
     Ok(())
 }
@@ -2300,9 +2291,9 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
         }
     }
     let proof_steps: Box<dyn Iterator<Item = usize>> = if checker.flags.forward {
-        Box::new((0..checker.proof.len()).into_iter())
+        Box::new(0..checker.proof.len())
     } else {
-        Box::new((0..checker.optimized_proof.len()).into_iter().rev())
+        Box::new((0..checker.optimized_proof.len()).rev())
     };
     for i in proof_steps {
         let proof_step = if checker.flags.forward {
