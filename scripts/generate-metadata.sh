@@ -43,8 +43,8 @@ sed -E -i '/(^version|^rate)/s/version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "'$r
 	eval $script
 ) << EOF
 atty = "0.2"
-bzip2 = "0.3"
-clap = "2.32"
+bzip2 = "0.4"
+clap = "2.33"
 flate2 = "1.0"
 libc = "0.2"
 lz4 = "1.23"
@@ -56,8 +56,8 @@ static_assertions = "1.1"
 syn = "1.0"
 toml = "0.5"
 xz2 = "0.1"
-zstd = "0.5"
+zstd = "0.6"
 EOF
 
 # update Cargo.lock
-cargo build
+cargo build --all
