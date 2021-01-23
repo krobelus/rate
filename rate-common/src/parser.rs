@@ -468,7 +468,7 @@ fn clause_hash(clause: &[Literal]) -> usize {
         sum = sum.wrapping_add(literal.as_offset());
         xor ^= literal.as_offset();
     }
-    ((1023 * sum + prod) ^ (31 * xor))
+    (1023 * sum + prod) ^ (31 * xor)
 }
 
 /// Check if a character is a decimal digit.
