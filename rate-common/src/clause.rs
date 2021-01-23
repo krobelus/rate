@@ -164,11 +164,7 @@ impl Reason {
     /// Create a reason for a clause that has been forced by the clause with
     /// the given offset.
     pub fn forced(offset: usize) -> Reason {
-        Reason(
-            TaggedUSize::new(offset)
-                .with_bit1()
-                .with_bit2(),
-        )
+        Reason(TaggedUSize::new(offset).with_bit1().with_bit2())
     }
     /// Return true when this is an assumption.
     pub fn is_assumed(self) -> bool {

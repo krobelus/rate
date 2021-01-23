@@ -48,9 +48,9 @@ fn main() -> Result<(), ()> {
         sick,
         /*verbose=*/ true,
     ) {
-      print_solution("VERIFIED");
-      Ok(())
+        print_solution("VERIFIED");
+        Ok(())
     } else {
-      Err(())
+        Err(())
     }
 }
