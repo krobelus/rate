@@ -236,10 +236,9 @@ pub fn assert_in_bounds(bounds: Range<usize>, offset: usize) {
     if config::ENABLE_BOUNDS_CHECKING {
         assert!(
             bounds.contains_item(&offset),
-            format!(
-                "array index out of bounds: {} (range is {:?})",
-                offset, bounds
-            )
+            "array index out of bounds: {} (range is {:?})",
+            offset,
+            bounds,
         );
     }
 }

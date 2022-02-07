@@ -215,7 +215,7 @@ pub fn run_parser_on_formula(
     proof_file: &str,
     clause_ids: &mut HashTable,
 ) {
-    parser.redundancy_property = proof_format_by_extension(&proof_file);
+    parser.redundancy_property = proof_format_by_extension(proof_file);
     if parser.verbose {
         comment!("mode: {}", parser.redundancy_property);
     }
@@ -224,7 +224,7 @@ pub fn run_parser_on_formula(
         _timer.disabled = true;
     }
     parse_formula(
-        &mut parser,
+        parser,
         clause_ids,
         read_compressed_file(formula_file, false),
     )
@@ -233,7 +233,7 @@ pub fn run_parser_on_formula(
 
 /// Parse a formula and a proof file using a given hash table.
 pub fn run_parser(
-    mut parser: &mut Parser,
+    parser: &mut Parser,
     formula: &str,
     proof_file: &str,
     clause_ids: &mut HashTable,
@@ -248,7 +248,7 @@ pub fn run_parser(
         comment!("binary proof mode");
     }
     parse_proof(
-        &mut parser,
+        parser,
         clause_ids,
         read_compressed_file(proof_file, binary),
         binary,
@@ -593,7 +593,7 @@ fn parse_comment(input: &mut Input) -> Result<()> {
     match input.peek() {
         Some(b'c') => {
             input.next();
-            while let Some(c) = input.next() {
+            for c in input.by_ref() {
                 if c == b'\n' {
                     return Ok(());
                 }

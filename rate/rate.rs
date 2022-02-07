@@ -347,8 +347,6 @@ pub struct Checker {
     /// [`move_falsified_literals_to_end`](fn.move_falsified_literals_to_end.html).
     rejected_lemma: Vector<Literal>,
 
-    /// Contains clauses that caused a conflict
-    implication_graph: StackMapping<usize, bool>,
     /// Used in the forward pass for literals that are unassigned after a reason deletion
     literal_is_in_cone_preprocess: Array<Literal, bool>,
     /// The watch-lists for non-core clauses
@@ -533,11 +531,6 @@ impl Checker {
             witness_db: parser.witness_db,
             redundancy_property: parser.redundancy_property,
             soft_propagation: false,
-            implication_graph: StackMapping::with_array_value_size_stack_size(
-                false,
-                maxvar.array_size_for_literals(),
-                maxvar.as_offset() + 1, // need + 1 to hold a conflicting literal
-            ),
             is_in_witness: Array::new(false, maxvar.array_size_for_literals()),
             lrat_id: if lrat {
                 Clause::new(0)
@@ -2280,7 +2273,7 @@ fn write_lrat_certificate(checker: &mut Checker) -> io::Result<()> {
     enum State {
         Lemma,
         Deletion,
-    };
+    }
     let mut state = State::Deletion;
     invariant!(checker.lrat_id == lrat_id(checker, checker.lemma - 1));
     write!(file, "{} d ", checker.lrat_id)?;

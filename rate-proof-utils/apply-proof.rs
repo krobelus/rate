@@ -75,7 +75,7 @@ formula to <FORMULA_OUTPUT> and the remaining proof to <PROOF_OUTPUT>."
         &mut clause_ids,
     );
     let mut state = ProofParserState::Start;
-    let mut proof_input = read_compressed_file(&proof_filename, binary);
+    let mut proof_input = read_compressed_file(proof_filename, binary);
     let stdout = io::stdout();
     let mut formula_output =
         open_file_for_writing(matches.value_of("FORMULA_OUTPUT").unwrap(), &stdout);

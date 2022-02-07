@@ -20,12 +20,12 @@ where
         U: ?Sized + PartialOrd<T>,
     {
         (match self.start_bound() {
-            Bound::Included(ref start) => *start <= item,
-            Bound::Excluded(ref start) => *start < item,
+            Bound::Included(start) => *start <= *item,
+            Bound::Excluded(start) => *start < *item,
             Bound::Unbounded => true,
         }) && (match self.end_bound() {
-            Bound::Included(ref end) => item <= *end,
-            Bound::Excluded(ref end) => item < *end,
+            Bound::Included(end) => *item <= *end,
+            Bound::Excluded(end) => *item < *end,
             Bound::Unbounded => true,
         })
     }
